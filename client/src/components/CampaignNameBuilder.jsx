@@ -178,11 +178,22 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
 
       {/* Preview */}
       {value ? (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-1">Preview</p>
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-sm text-blue-900 flex-1 break-all">{value}</span>
-            <CopyButton text={value} />
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 space-y-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-1">Campaign Name</p>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm text-blue-900 flex-1 break-all">{value}</span>
+              <CopyButton text={value} />
+            </div>
+          </div>
+          <div className="border-t border-blue-200 pt-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-1">URL Parameters</p>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm text-blue-800 flex-1">
+                {[selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&')}
+              </span>
+              <CopyButton text={[selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&')} />
+            </div>
           </div>
         </div>
       ) : (
