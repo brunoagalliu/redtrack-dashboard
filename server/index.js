@@ -4,7 +4,9 @@ const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 
+const { init: initDb } = require('./db');
 const authRouter = require('./routes/auth');
+const listsRouter = require('./routes/lists');
 const campaignsRouter = require('./routes/campaigns');
 const offersRouter = require('./routes/offers');
 const landingsRouter = require('./routes/landings');
@@ -37,6 +39,7 @@ app.use('/api', (req, res, next) => {
   }
 });
 
+app.use('/api/lists', listsRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/offers', offersRouter);
 app.use('/api/landings', landingsRouter);
@@ -52,6 +55,11 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+initDb()
+  .then(() => {
+    app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+  })
+  .catch((err) => {
+    console.error('DB init failed:', err.message);
+    process.exit(1);
+  });

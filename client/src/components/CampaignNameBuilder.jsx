@@ -1,39 +1,12 @@
 import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '../lib/api';
 import CopyButton from './CopyButton';
 
-const DEFAULT_PROVIDERS = ['TK', 'Pineapple', 'CM', 'InfoBip', 'Mr.Messaging', 'Campaigner', 'SMS Gateway', 'Tells', 'IT Decision', 'BSG'];
-const DEFAULT_ROUTES    = ['USMS', 'ltsauto', 'cloudstorage4u', 'iphonetechzone', 'maxtechie', 'triallooks', 'dominantwire'];
-const DEFAULT_VERTICALS = ['CLOUD', 'AUTO', 'AV', 'DEBT', 'CLINICAL'];
-const DEFAULT_PARTNERS  = [
-  { alias: 'JC',      id: 'P001' },
-  { alias: 'AVANTO',  id: 'P002' },
-  { alias: 'LM',      id: 'P003' },
-  { alias: 'UPSTART', id: 'P004' },
-  { alias: 'KOINO',   id: 'P005' },
-];
-
-function load(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch { return fallback; }
-}
-function persist(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
-
-function nextPartnerId(partners) {
-  const nums = partners.map((p) => parseInt(p.id.replace('P', ''), 10)).filter(Number.isFinite);
-  return `P${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`;
-}
-
-function todayMMDD() {
-  const d = new Date();
-  return `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-}
-
 // ── Inline-add dropdown ──────────────────────────────────────────────────────
-function CreatableSelect({ value, onChange, options, placeholder, onAdd, addLabel }) {
+function CreatableSelect({ value, onChange, items = [], onAdd, addLabel, loading }) {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft]   = useState('');
+  const [draft,  setDraft]  = useState('');
 
   function handleChange(e) {
     if (e.target.value === '__add__') { setAdding(true); }
@@ -41,14 +14,15 @@ function CreatableSelect({ value, onChange, options, placeholder, onAdd, addLabe
   }
   function commit() {
     const t = draft.trim();
-    if (t) { onAdd(t); onChange(t); }
+    if (t) onAdd(t);
     setAdding(false); setDraft('');
   }
 
   if (adding) {
     return (
       <div className="flex gap-1">
-        <input autoFocus type="text" value={draft} onChange={(e) => setDraft(e.target.value)}
+        <input autoFocus type="text" value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
           className="input flex-1 text-sm" placeholder={addLabel} />
         <button type="button" onClick={commit} className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white font-medium">Add</button>
@@ -57,18 +31,18 @@ function CreatableSelect({ value, onChange, options, placeholder, onAdd, addLabe
     );
   }
   return (
-    <select value={value} onChange={handleChange} className="input">
-      <option value="">{placeholder || 'Select…'}</option>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+    <select value={value} onChange={handleChange} className="input" disabled={loading}>
+      <option value="">{loading ? 'Loading…' : 'Select…'}</option>
+      {items.map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
       <option value="__add__">＋ {addLabel}</option>
     </select>
   );
 }
 
 // ── Inline-add dropdown for partners ────────────────────────────────────────
-function CreatablePartnerSelect({ value, onChange, partners, onAdd }) {
+function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading }) {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft]   = useState('');
+  const [draft,  setDraft]  = useState('');
 
   function handleChange(e) {
     if (e.target.value === '__add__') { setAdding(true); }
@@ -76,14 +50,15 @@ function CreatablePartnerSelect({ value, onChange, partners, onAdd }) {
   }
   function commit() {
     const alias = draft.trim().toUpperCase();
-    if (alias) { onAdd(alias); onChange(alias); }
+    if (alias) onAdd(alias);
     setAdding(false); setDraft('');
   }
 
   if (adding) {
     return (
       <div className="flex gap-1">
-        <input autoFocus type="text" value={draft} onChange={(e) => setDraft(e.target.value)}
+        <input autoFocus type="text" value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
           className="input flex-1 uppercase text-sm" placeholder="Partner alias e.g. NEWCO" />
         <button type="button" onClick={commit} className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white font-medium">Add</button>
@@ -92,39 +67,44 @@ function CreatablePartnerSelect({ value, onChange, partners, onAdd }) {
     );
   }
   return (
-    <select value={value} onChange={handleChange} className="input">
-      <option value="">Select…</option>
-      {partners.map((p) => <option key={p.alias} value={p.alias}>{p.alias} ({p.id})</option>)}
+    <select value={value} onChange={handleChange} className="input" disabled={loading}>
+      <option value="">{loading ? 'Loading…' : 'Select…'}</option>
+      {partners.map((p) => <option key={p.id} value={p.alias}>{p.alias} ({p.code})</option>)}
       <option value="__add__">＋ Add new partner…</option>
     </select>
   );
 }
 
 // ── Pill button group with inline add ───────────────────────────────────────
-function CreatableButtonGroup({ items, selected, onSelect, onAdd, addLabel }) {
+function CreatableButtonGroup({ items = [], selected, onSelect, onAdd, addLabel, loading }) {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft]   = useState('');
+  const [draft,  setDraft]  = useState('');
 
   function commit() {
     const t = draft.trim();
-    if (t) { onAdd(t); onSelect(t); }
+    if (t) onAdd(t);
     setAdding(false); setDraft('');
+  }
+
+  if (loading) {
+    return <p className="text-xs text-gray-400">Loading…</p>;
   }
 
   return (
     <div className="flex flex-wrap gap-2 items-center">
       {items.map((item) => (
-        <button key={item} type="button"
-          onClick={() => onSelect(selected === item ? '' : item)}
+        <button key={item.id} type="button"
+          onClick={() => onSelect(selected === item.value ? '' : item.value)}
           className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
-            selected === item ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+            selected === item.value ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
           }`}>
-          {item}
+          {item.value}
         </button>
       ))}
       {adding ? (
         <div className="flex gap-1 items-center">
-          <input autoFocus type="text" value={draft} onChange={(e) => setDraft(e.target.value)}
+          <input autoFocus type="text" value={draft}
+            onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
             className="input w-36 py-1 text-xs" placeholder={addLabel} />
           <button type="button" onClick={commit} className="px-2 py-1 text-xs rounded-md bg-blue-600 text-white font-medium">Add</button>
@@ -141,14 +121,24 @@ function CreatableButtonGroup({ items, selected, onSelect, onAdd, addLabel }) {
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-// value / onChange control the final campaign name string.
-// urlParams is exposed via onUrlParams for the parent to store if needed.
-
 export default function CampaignNameBuilder({ value, onChange, error }) {
-  const [providers, setProviders] = useState(() => load('nb.providers', DEFAULT_PROVIDERS));
-  const [routes,    setRoutes]    = useState(() => load('nb.routes',    DEFAULT_ROUTES));
-  const [verticals, setVerticals] = useState(() => load('nb.verticals', DEFAULT_VERTICALS));
-  const [partners,  setPartners]  = useState(() => load('nb.partners',  DEFAULT_PARTNERS));
+  const qc = useQueryClient();
+
+  const { data: providers = [], isLoading: loadingProviders } = useQuery({ queryKey: ['list', 'provider'], queryFn: () => api.getList('provider') });
+  const { data: routes    = [], isLoading: loadingRoutes    } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
+  const { data: verticals = [], isLoading: loadingVerticals } = useQuery({ queryKey: ['list', 'vertical'], queryFn: () => api.getList('vertical') });
+  const { data: partners  = [], isLoading: loadingPartners  } = useQuery({ queryKey: ['list', 'partners'], queryFn: () => api.getPartners() });
+
+  const addItem = (list) => useMutation({
+    mutationFn: (val) => api.addListItem(list, val),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', list] }),
+  });
+
+  // Can't call hooks conditionally so define all four upfront
+  const addProvider = useMutation({ mutationFn: (v) => api.addListItem('provider', v), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'provider'] }) });
+  const addRoute    = useMutation({ mutationFn: (v) => api.addListItem('route', v),    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
+  const addVertical = useMutation({ mutationFn: (v) => api.addListItem('vertical', v), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
+  const addPartner  = useMutation({ mutationFn: (alias) => api.addPartner(alias),       onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'partners'] }) });
 
   const [provider, setProvider] = useState('');
   const [route,    setRoute]    = useState('');
@@ -156,15 +146,10 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
   const [partner,  setPartner]  = useState('');
   const [clickers, setClickers] = useState(false);
   const [listName, setListName] = useState('');
-  const [date,     setDate]     = useState(todayMMDD);
-
-  function addProvider(v) { const n = [...providers, v]; setProviders(n); persist('nb.providers', n); }
-  function addRoute(v)    { const n = [...routes, v];    setRoutes(n);    persist('nb.routes', n); }
-  function addVertical(v) { const n = [...verticals, v]; setVerticals(n); persist('nb.verticals', n); }
-  function addPartner(alias) {
-    const n = [...partners, { alias, id: nextPartnerId(partners) }];
-    setPartners(n); persist('nb.partners', n);
-  }
+  const [date,     setDate]     = useState(() => {
+    const d = new Date();
+    return `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  });
 
   const selectedPartner = partners.find((p) => p.alias === partner);
 
@@ -178,19 +163,16 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
     onChange(build(state.provider, state.route, state.vertical, state.partner, state.clickers, state.listName, state.date));
   }
 
-  function sel(field, setter) {
-    return (val) => { setter(val); update(field, val); };
-  }
-
   return (
     <div className="space-y-4">
       {/* Provider */}
       <div>
         <label className="label">SMS Provider</label>
         <CreatableButtonGroup
-          items={providers} selected={provider}
-          onSelect={sel('provider', setProvider)}
-          onAdd={addProvider} addLabel="New provider"
+          items={providers} selected={provider} loading={loadingProviders}
+          onSelect={(v) => { setProvider(v); update('provider', v); }}
+          onAdd={(v) => addProvider.mutate(v)}
+          addLabel="New provider"
         />
       </div>
 
@@ -198,27 +180,28 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="label">Route</label>
-          <CreatableSelect value={route} onChange={sel('route', setRoute)}
-            options={routes} placeholder="Select…" onAdd={addRoute} addLabel="New route…" />
+          <CreatableSelect value={route} items={routes} loading={loadingRoutes}
+            onChange={(v) => { setRoute(v); update('route', v); }}
+            onAdd={(v) => addRoute.mutate(v)} addLabel="New route…" />
         </div>
         <div>
           <label className="label">Vertical</label>
-          <CreatableSelect value={vertical} onChange={sel('vertical', setVertical)}
-            options={verticals} placeholder="Select…" onAdd={addVertical} addLabel="New vertical…" />
+          <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
+            onChange={(v) => { setVertical(v); update('vertical', v); }}
+            onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
         </div>
         <div>
           <label className="label">Data Partner</label>
-          <CreatablePartnerSelect value={partner} onChange={sel('partner', setPartner)}
-            partners={partners} onAdd={addPartner} />
+          <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
+            onChange={(v) => { setPartner(v); update('partner', v); }}
+            onAdd={(alias) => addPartner.mutate(alias)} />
           {selectedPartner && (
-            <p className="mt-1 text-xs text-gray-400">
-              Encodes as <span className="font-mono">{selectedPartner.id}</span> in URLs
-            </p>
+            <p className="mt-1 text-xs text-gray-400">Encodes as <span className="font-mono">{selectedPartner.code}</span> in URLs</p>
           )}
         </div>
       </div>
 
-      {/* Clickers + List Name + Date */}
+      {/* List Name + Date */}
       <div className="grid grid-cols-3 gap-3 items-end">
         <div className="col-span-2">
           <label className="label">List Name</label>
@@ -264,16 +247,12 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
         </div>
       )}
 
-      {/* Resulting name (editable) */}
+      {/* Editable name field */}
       <div>
         <label className="label">Campaign Name *</label>
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+        <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
           className={`input font-mono text-sm ${error ? 'border-red-400 focus:border-red-400' : ''}`}
-          placeholder="Or type manually"
-        />
+          placeholder="Or type manually" />
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       </div>
     </div>

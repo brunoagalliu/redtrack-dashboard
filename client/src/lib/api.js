@@ -58,4 +58,12 @@ export const api = {
   getDomains: () => request('/domains'),
   getSources: () => request('/sources'),
   getNetworks: () => request('/networks'),
+
+  // Name builder lists
+  getList: (list) => request(`/lists/${list}`),
+  addListItem: (list, value) => request(`/lists/${list}`, { method: 'POST', body: JSON.stringify({ value }) }),
+  deleteListItem: (list, id) => request(`/lists/${list}/${id}`, { method: 'DELETE' }),
+  getPartners: () => request('/lists/partners/all'),
+  addPartner: (alias) => request('/lists/partners', { method: 'POST', body: JSON.stringify({ alias }) }),
+  deletePartner: (id) => request(`/lists/partners/${id}`, { method: 'DELETE' }),
 };
