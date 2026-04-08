@@ -75,51 +75,6 @@ function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading
   );
 }
 
-// ── Pill button group with inline add ───────────────────────────────────────
-function CreatableButtonGroup({ items = [], selected, onSelect, onAdd, addLabel, loading }) {
-  const [adding, setAdding] = useState(false);
-  const [draft,  setDraft]  = useState('');
-
-  function commit() {
-    const t = draft.trim();
-    if (t) onAdd(t);
-    setAdding(false); setDraft('');
-  }
-
-  if (loading) {
-    return <p className="text-xs text-gray-400">Loading…</p>;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-2 items-center">
-      {items.map((item) => (
-        <button key={item.id} type="button"
-          onClick={() => onSelect(selected === item.value ? '' : item.value)}
-          className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
-            selected === item.value ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-          }`}>
-          {item.value}
-        </button>
-      ))}
-      {adding ? (
-        <div className="flex gap-1 items-center">
-          <input autoFocus type="text" value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
-            className="input w-36 py-1 text-xs" placeholder={addLabel} />
-          <button type="button" onClick={commit} className="px-2 py-1 text-xs rounded-md bg-blue-600 text-white font-medium">Add</button>
-          <button type="button" onClick={() => { setAdding(false); setDraft(''); }} className="px-2 py-1 text-xs rounded-md border border-gray-300 text-gray-600">✕</button>
-        </div>
-      ) : (
-        <button type="button" onClick={() => setAdding(true)}
-          className="px-3 py-1.5 text-xs font-medium rounded-md border border-dashed border-gray-400 text-gray-500 hover:bg-gray-50">
-          ＋ Add
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ── Main component ───────────────────────────────────────────────────────────
 export default function CampaignNameBuilder({ value, onChange, error }) {
   const qc = useQueryClient();
@@ -165,19 +120,14 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
 
   return (
     <div className="space-y-4">
-      {/* Provider */}
-      <div>
-        <label className="label">SMS Provider</label>
-        <CreatableButtonGroup
-          items={providers} selected={provider} loading={loadingProviders}
-          onSelect={(v) => { setProvider(v); update('provider', v); }}
-          onAdd={(v) => addProvider.mutate(v)}
-          addLabel="New provider"
-        />
-      </div>
-
-      {/* Route · Vertical · Partner */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Row 1: Provider · Route · Vertical · Partner */}
+      <div className="grid grid-cols-4 gap-3">
+        <div>
+          <label className="label">SMS Provider</label>
+          <CreatableSelect value={provider} items={providers} loading={loadingProviders}
+            onChange={(v) => { setProvider(v); update('provider', v); }}
+            onAdd={(v) => addProvider.mutate(v)} addLabel="New provider…" />
+        </div>
         <div>
           <label className="label">Route</label>
           <CreatableSelect value={route} items={routes} loading={loadingRoutes}
@@ -196,33 +146,35 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
             onChange={(v) => { setPartner(v); update('partner', v); }}
             onAdd={(alias) => addPartner.mutate(alias)} />
           {selectedPartner && (
-            <p className="mt-1 text-xs text-gray-400">Encodes as <span className="font-mono">{selectedPartner.code}</span> in URLs</p>
+            <p className="mt-1 text-xs text-gray-400">ID: <span className="font-mono">{selectedPartner.code}</span></p>
           )}
         </div>
       </div>
 
-      {/* List Name */}
-      <div>
-        <label className="label">List Name</label>
-        <input type="text" value={listName}
-          onChange={(e) => { setListName(e.target.value); update('listName', e.target.value); }}
-          className="input" placeholder="e.g. healthcare_MAR_50k_mar31_vz_13k" />
-      </div>
-
-      {/* Clickers toggle */}
-      <label className="flex items-center gap-2 cursor-pointer select-none">
-        <div className="relative">
-          <input type="checkbox" checked={clickers}
-            onChange={(e) => { setClickers(e.target.checked); update('clickers', e.target.checked); }}
-            className="sr-only" />
-          <div className={`w-9 h-5 rounded-full transition-colors ${clickers ? 'bg-blue-600' : 'bg-gray-300'}`} />
-          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${clickers ? 'translate-x-4' : ''}`} />
+      {/* Row 2: List Name · Clickers */}
+      <div className="flex gap-3 items-end">
+        <div className="flex-1">
+          <label className="label">List Name</label>
+          <input type="text" value={listName}
+            onChange={(e) => { setListName(e.target.value); update('listName', e.target.value); }}
+            className="input" placeholder="e.g. healthcare_MAR_50k_mar31_vz_13k" />
         </div>
-        <span className="text-sm text-gray-700">Clickers</span>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-mono ${clickers ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-          clk={clickers ? 1 : 0}
-        </span>
-      </label>
+        <div className="pb-2">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <div className="relative">
+              <input type="checkbox" checked={clickers}
+                onChange={(e) => { setClickers(e.target.checked); update('clickers', e.target.checked); }}
+                className="sr-only" />
+              <div className={`w-9 h-5 rounded-full transition-colors ${clickers ? 'bg-blue-600' : 'bg-gray-300'}`} />
+              <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${clickers ? 'translate-x-4' : ''}`} />
+            </div>
+            <span className="text-sm text-gray-700">Clickers</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-mono ${clickers ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+              clk={clickers ? 1 : 0}
+            </span>
+          </label>
+        </div>
+      </div>
 
       {/* Preview */}
       {value ? (
@@ -235,7 +187,7 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-center">
-          <p className="text-xs text-gray-400">Select a provider and at least one component to preview the name.</p>
+          <p className="text-xs text-gray-400">Select a provider and at least one field to preview the name.</p>
         </div>
       )}
 
