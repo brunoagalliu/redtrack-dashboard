@@ -146,10 +146,10 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
   const [partner,  setPartner]  = useState('');
   const [clickers, setClickers] = useState(false);
   const [listName, setListName] = useState('');
-  const [date,     setDate]     = useState(() => {
+  const date = (() => {
     const d = new Date();
     return `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  });
+  })();
 
   const selectedPartner = partners.find((p) => p.alias === partner);
 
@@ -201,20 +201,12 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
         </div>
       </div>
 
-      {/* List Name + Date */}
-      <div className="grid grid-cols-3 gap-3 items-end">
-        <div className="col-span-2">
-          <label className="label">List Name</label>
-          <input type="text" value={listName}
-            onChange={(e) => { setListName(e.target.value); update('listName', e.target.value); }}
-            className="input" placeholder="e.g. healthcare_MAR_50k_mar31_vz_13k" />
-        </div>
-        <div>
-          <label className="label">Date (MM.DD)</label>
-          <input type="text" value={date}
-            onChange={(e) => { setDate(e.target.value); update('date', e.target.value); }}
-            className="input" placeholder="04.08" />
-        </div>
+      {/* List Name */}
+      <div>
+        <label className="label">List Name</label>
+        <input type="text" value={listName}
+          onChange={(e) => { setListName(e.target.value); update('listName', e.target.value); }}
+          className="input" placeholder="e.g. healthcare_MAR_50k_mar31_vz_13k" />
       </div>
 
       {/* Clickers toggle */}
