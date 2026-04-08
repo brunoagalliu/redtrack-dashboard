@@ -4,9 +4,20 @@ import { api } from '../lib/api';
 import CopyButton from '../components/CopyButton';
 
 function appendParams(url, params) {
-  if (!url || !params) return url;
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}${params}`;
+  if (!url) return url;
+  try {
+    const [base, qs] = url.split('?');
+    const existing = new URLSearchParams(qs || '');
+    // Remove any existing sourceid/clk so we don't duplicate
+    existing.delete('sourceid');
+    existing.delete('clk');
+    const newParams = new URLSearchParams(params || '');
+    newParams.forEach((v, k) => existing.set(k, v));
+    const finalQs = existing.toString();
+    return finalQs ? `${base}?${finalQs}` : base;
+  } catch {
+    return url;
+  }
 }
 
 export default function CampaignDetailPage() {
