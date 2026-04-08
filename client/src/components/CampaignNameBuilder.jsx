@@ -155,7 +155,7 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
 
   function build(p, r, ve, pa, clk, ln, dt) {
     const suffix = [r, ve, pa, clk ? 'clickers' : '', ln, dt].filter(Boolean).join('_');
-    return p && suffix ? `${p} - ${suffix}` : '';
+    return p && suffix ? `${p}_${suffix}` : '';
   }
 
   function update(field, val) {
