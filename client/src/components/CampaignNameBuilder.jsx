@@ -113,6 +113,10 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
     return p && suffix ? `${p}_${suffix}` : '';
   }
 
+  // Always derived from local state — never stale
+  const preview = build(provider, route, vertical, partner, clickers, listName, date);
+  const urlParams = [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
+
   function update(field, val) {
     const state = { provider, route, vertical, partner, clickers, listName, date, [field]: val };
     onChange(build(state.provider, state.route, state.vertical, state.partner, state.clickers, state.listName, state.date));
@@ -177,22 +181,20 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
       </div>
 
       {/* Preview */}
-      {value ? (
+      {preview ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 space-y-2">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-1">Campaign Name</p>
             <div className="flex items-center gap-3">
-              <span className="font-mono text-sm text-blue-900 flex-1 break-all">{value}</span>
-              <CopyButton text={value} />
+              <span className="font-mono text-sm text-blue-900 flex-1 break-all">{preview}</span>
+              <CopyButton text={preview} />
             </div>
           </div>
           <div className="border-t border-blue-200 pt-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-1">URL Parameters</p>
             <div className="flex items-center gap-3">
-              <span className="font-mono text-sm text-blue-800 flex-1">
-                {[selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&')}
-              </span>
-              <CopyButton text={[selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&')} />
+              <span className="font-mono text-sm text-blue-800 flex-1">{urlParams}</span>
+              <CopyButton text={urlParams} />
             </div>
           </div>
         </div>
