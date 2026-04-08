@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import CopyButton from './CopyButton';
@@ -117,10 +117,10 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
   const preview = build(provider, route, vertical, partner, clickers, listName, date);
   const urlParams = [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
 
-  function update(field, val) {
-    const state = { provider, route, vertical, partner, clickers, listName, date, [field]: val };
-    onChange(build(state.provider, state.route, state.vertical, state.partner, state.clickers, state.listName, state.date));
-  }
+  // Keep form.name in sync with preview whenever local state changes
+  useEffect(() => {
+    if (preview) onChange(preview);
+  }, [preview]);
 
   return (
     <div className="space-y-4">
@@ -129,25 +129,25 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
         <div>
           <label className="label">SMS Provider</label>
           <CreatableSelect value={provider} items={providers} loading={loadingProviders}
-            onChange={(v) => { setProvider(v); update('provider', v); }}
+            onChange={setProvider}
             onAdd={(v) => addProvider.mutate(v)} addLabel="New provider…" />
         </div>
         <div>
           <label className="label">Route</label>
           <CreatableSelect value={route} items={routes} loading={loadingRoutes}
-            onChange={(v) => { setRoute(v); update('route', v); }}
+            onChange={setRoute}
             onAdd={(v) => addRoute.mutate(v)} addLabel="New route…" />
         </div>
         <div>
           <label className="label">Vertical</label>
           <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
-            onChange={(v) => { setVertical(v); update('vertical', v); }}
+            onChange={setVertical}
             onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
         </div>
         <div>
           <label className="label">Data Partner</label>
           <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
-            onChange={(v) => { setPartner(v); update('partner', v); }}
+            onChange={setPartner}
             onAdd={(alias) => addPartner.mutate(alias)} />
           {selectedPartner && (
             <p className="mt-1 text-xs text-gray-400">ID: <span className="font-mono">{selectedPartner.code}</span></p>
@@ -160,14 +160,14 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
         <div className="flex-1">
           <label className="label">List Name</label>
           <input type="text" value={listName}
-            onChange={(e) => { setListName(e.target.value); update('listName', e.target.value); }}
+            onChange={(e) => setListName(e.target.value)}
             className="input" placeholder="e.g. healthcare_MAR_50k_mar31_vz_13k" />
         </div>
         <div className="pb-2">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <div className="relative">
               <input type="checkbox" checked={clickers}
-                onChange={(e) => { setClickers(e.target.checked); update('clickers', e.target.checked); }}
+                onChange={(e) => setClickers(e.target.checked)}
                 className="sr-only" />
               <div className={`w-9 h-5 rounded-full transition-colors ${clickers ? 'bg-blue-600' : 'bg-gray-300'}`} />
               <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${clickers ? 'translate-x-4' : ''}`} />
