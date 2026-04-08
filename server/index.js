@@ -17,6 +17,7 @@ const networksRouter = require('./routes/networks');
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+const API_KEY    = process.env.API_KEY;
 
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' ? false : 'http://localhost:5173',
@@ -26,8 +27,13 @@ app.use(express.json());
 // Public — login endpoint
 app.use('/api/auth', authRouter);
 
-// Auth middleware for all other /api routes
+// Auth middleware — accepts JWT (dashboard) or API key (external tools)
 app.use('/api', (req, res, next) => {
+  // API key check
+  const apiKey = req.headers['x-api-key'];
+  if (API_KEY && apiKey === API_KEY) return next();
+
+  // JWT check
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return res.status(401).json({ message: 'Unauthorized.' });
