@@ -39,6 +39,7 @@ function defaultForm() {
     tags: '',
     notes: '',
     postbacks: [],
+    urlParams: '',
   };
 }
 
@@ -150,6 +151,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
               <CampaignNameBuilder
                 value={form.name}
                 onChange={(v) => { set('name', v); setFieldErrors((fe) => ({ ...fe, name: undefined })); }}
+                onUrlParams={(p) => set('urlParams', p)}
                 error={fieldErrors.name}
               />
               <div className="grid grid-cols-2 gap-4">

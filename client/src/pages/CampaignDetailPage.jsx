@@ -1,10 +1,18 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import CopyButton from '../components/CopyButton';
 
+function appendParams(url, params) {
+  if (!url || !params) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}${params}`;
+}
+
 export default function CampaignDetailPage() {
   const { id } = useParams();
+  const { state } = useLocation();
+  const urlParams = state?.urlParams || '';
 
   const { data: campaign, isLoading, isError } = useQuery({
     queryKey: ['campaign', id],
@@ -55,9 +63,9 @@ export default function CampaignDetailPage() {
               <p className="label mb-1">Tracking Link</p>
               <div className="flex items-center gap-2">
                 <span className="flex-1 text-xs font-mono text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2 truncate">
-                  {campaign.trackback_url || '—'}
+                  {appendParams(campaign.trackback_url, urlParams) || '—'}
                 </span>
-                {campaign.trackback_url && <CopyButton text={campaign.trackback_url} />}
+                {campaign.trackback_url && <CopyButton text={appendParams(campaign.trackback_url, urlParams)} />}
               </div>
             </div>
 
@@ -65,9 +73,9 @@ export default function CampaignDetailPage() {
               <p className="label mb-1">Impression Link</p>
               <div className="flex items-center gap-2">
                 <span className="flex-1 text-xs font-mono text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2 truncate">
-                  {campaign.impression_url || '—'}
+                  {appendParams(campaign.impression_url, urlParams) || '—'}
                 </span>
-                {campaign.impression_url && <CopyButton text={campaign.impression_url} />}
+                {campaign.impression_url && <CopyButton text={appendParams(campaign.impression_url, urlParams)} />}
               </div>
             </div>
           </div>

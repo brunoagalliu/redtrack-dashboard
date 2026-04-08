@@ -76,7 +76,7 @@ function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-export default function CampaignNameBuilder({ value, onChange, error }) {
+export default function CampaignNameBuilder({ value, onChange, onUrlParams, error }) {
   const qc = useQueryClient();
 
   const { data: providers = [], isLoading: loadingProviders } = useQuery({ queryKey: ['list', 'provider'], queryFn: () => api.getList('provider') });
@@ -117,10 +117,11 @@ export default function CampaignNameBuilder({ value, onChange, error }) {
   const preview = build(provider, route, vertical, partner, clickers, listName, date);
   const urlParams = [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
 
-  // Keep form.name in sync with preview whenever local state changes
+  // Keep form.name and urlParams in sync with local state
   useEffect(() => {
     if (preview) onChange(preview);
-  }, [preview]);
+    if (onUrlParams) onUrlParams(urlParams);
+  }, [preview, urlParams]);
 
   return (
     <div className="space-y-4">

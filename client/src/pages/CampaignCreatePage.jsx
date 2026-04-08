@@ -48,15 +48,15 @@ export default function CampaignCreatePage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { mutateAsync, isPending } = useMutation({
-    mutationFn: (payload) => api.createCampaign(payload),
-    onSuccess: (data) => {
+    mutationFn: ({ payload }) => api.createCampaign(payload),
+    onSuccess: (data, { urlParams }) => {
       qc.invalidateQueries({ queryKey: ['campaigns'] });
-      navigate(`/campaigns/${data.id}`);
+      navigate(`/campaigns/${data.id}`, { state: { urlParams } });
     },
   });
 
   async function handleSubmit(form) {
-    await mutateAsync(buildPayload(form));
+    await mutateAsync({ payload: buildPayload(form), urlParams: form.urlParams });
   }
 
   return (
