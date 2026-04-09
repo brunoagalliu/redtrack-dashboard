@@ -23,10 +23,27 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get single campaign
+// Get single campaign (with stream details enriched)
 router.get('/:id', async (req, res) => {
   try {
     const { data } = await redtrack.get(`/campaigns/${req.params.id}`);
+
+    // Redtrack may return streams without the nested stream body (offers/landings).
+    // Fetch each stream's details and attach them so the edit form can populate correctly.
+    if (Array.isArray(data.streams)) {
+      data.streams = await Promise.all(
+        data.streams.map(async (s) => {
+          if (s.stream) return s; // already enriched
+          try {
+            const { data: streamData } = await redtrack.get(`/streams/${s.id}`);
+            return { ...s, stream: streamData };
+          } catch {
+            return s;
+          }
+        })
+      );
+    }
+
     res.json(data);
   } catch (err) {
     res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
