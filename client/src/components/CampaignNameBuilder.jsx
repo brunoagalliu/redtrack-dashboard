@@ -75,6 +75,38 @@ function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading
   );
 }
 
+// ── Parse a built name back into its parts ───────────────────────────────────
+function parseName(name, providers, routes, verticals, partners) {
+  // Strip "Copy of " prefix added by clone
+  const n = name.replace(/^Copy of\s+/i, '');
+  const parts = n.split('_');
+
+  const providerSet  = new Set(providers.map((p) => p.value));
+  const routeSet     = new Set(routes.map((r) => r.value));
+  const verticalSet  = new Set(verticals.map((v) => v.value));
+  const partnerSet   = new Set(partners.map((p) => p.alias));
+  const dateRegex    = /^\d{2}\.\d{2}$/;
+
+  let parsedProvider = '';
+  let parsedRoute    = '';
+  let parsedVertical = '';
+  let parsedPartner  = '';
+  let parsedClickers = false;
+  const listParts    = [];
+
+  for (const part of parts) {
+    if (!parsedProvider && providerSet.has(part)) { parsedProvider = part; }
+    else if (!parsedRoute && routeSet.has(part))  { parsedRoute = part; }
+    else if (!parsedVertical && verticalSet.has(part)) { parsedVertical = part; }
+    else if (!parsedPartner && partnerSet.has(part))   { parsedPartner = part; }
+    else if (part.toLowerCase() === 'clickers')   { parsedClickers = true; }
+    else if (dateRegex.test(part))                { /* skip date */ }
+    else                                          { listParts.push(part); }
+  }
+
+  return { provider: parsedProvider, route: parsedRoute, vertical: parsedVertical, partner: parsedPartner, clickers: parsedClickers, listName: listParts.join('_') };
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 export default function CampaignNameBuilder({ value, onChange, onUrlParams, error }) {
   const qc = useQueryClient();
@@ -83,11 +115,6 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, erro
   const { data: routes    = [], isLoading: loadingRoutes    } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
   const { data: verticals = [], isLoading: loadingVerticals } = useQuery({ queryKey: ['list', 'vertical'], queryFn: () => api.getList('vertical') });
   const { data: partners  = [], isLoading: loadingPartners  } = useQuery({ queryKey: ['list', 'partners'], queryFn: () => api.getPartners() });
-
-  const addItem = (list) => useMutation({
-    mutationFn: (val) => api.addListItem(list, val),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', list] }),
-  });
 
   // Can't call hooks conditionally so define all four upfront
   const addProvider = useMutation({ mutationFn: (v) => api.addListItem('provider', v), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'provider'] }) });
@@ -101,6 +128,20 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, erro
   const [partner,  setPartner]  = useState('');
   const [clickers, setClickers] = useState(false);
   const [listName, setListName] = useState('');
+  const [initialized, setInitialized] = useState(false);
+
+  // Prefill structured fields from an existing campaign name (e.g. after clone/edit)
+  useEffect(() => {
+    if (initialized || !value || loadingProviders || loadingRoutes || loadingVerticals || loadingPartners) return;
+    const parsed = parseName(value, providers, routes, verticals, partners);
+    if (parsed.provider) setProvider(parsed.provider);
+    if (parsed.route)    setRoute(parsed.route);
+    if (parsed.vertical) setVertical(parsed.vertical);
+    if (parsed.partner)  setPartner(parsed.partner);
+    setClickers(parsed.clickers);
+    if (parsed.listName) setListName(parsed.listName);
+    setInitialized(true);
+  }, [value, loadingProviders, loadingRoutes, loadingVerticals, loadingPartners, initialized, providers, routes, verticals, partners]);
   const date = (() => {
     const d = new Date();
     return `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
