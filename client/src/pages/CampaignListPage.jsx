@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import CopyButton from '../components/CopyButton';
 
@@ -10,6 +10,8 @@ const PAGE_SIZE = 50;
 export default function CampaignListPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const navigate = useNavigate();
+  const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['campaigns', { search }],
@@ -21,6 +23,14 @@ export default function CampaignListPage() {
 
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const campaigns = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const cloneMutation = useMutation({
+    mutationFn: (id) => api.cloneCampaign(id),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      navigate(`/campaigns/${data.id}/edit`);
+    },
+  });
 
   function handleSearch(value) {
     setSearch(value);
@@ -63,7 +73,7 @@ export default function CampaignListPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                {['#', 'Campaign Name', 'Impression Link', 'Tracking Link', ''].map((h) => (
+                {['#', 'Campaign Name', 'Tracking Link', 'Impression Link', ''].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {h}
                   </th>
@@ -74,24 +84,36 @@ export default function CampaignListPage() {
               {campaigns.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-400 w-12">{c.serial_number}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-xs truncate">
-                    <Link to={`/campaigns/${c.id}/edit`} className="hover:text-blue-600">
-                      {c.title}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 max-w-sm font-mono">
-                    {c.impression_url ? (
-                      <div className="flex items-center gap-2">
-                        <span className="truncate">{c.impression_url}</span>
-                        <CopyButton text={c.impression_url} />
-                      </div>
-                    ) : '—'}
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-xs">
+                    <div className="flex items-center gap-2">
+                      <Link to={`/campaigns/${c.id}/edit`} className="hover:text-blue-600 truncate">
+                        {c.title}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => cloneMutation.mutate(c.id)}
+                        disabled={cloneMutation.isPending}
+                        title="Clone campaign"
+                        className="shrink-0 px-2 py-1 text-xs rounded border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-medium disabled:opacity-50"
+                      >
+                        Clone
+                      </button>
+                      <CopyButton text={c.title} />
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-sm font-mono">
                     {c.trackback_url ? (
                       <div className="flex items-center gap-2">
                         <span className="truncate">{c.trackback_url}</span>
                         <CopyButton text={c.trackback_url} />
+                      </div>
+                    ) : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 max-w-sm font-mono">
+                    {c.impression_url ? (
+                      <div className="flex items-center gap-2">
+                        <span className="truncate">{c.impression_url}</span>
+                        <CopyButton text={c.impression_url} />
                       </div>
                     ) : '—'}
                   </td>

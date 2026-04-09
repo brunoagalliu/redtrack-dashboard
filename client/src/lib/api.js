@@ -45,6 +45,7 @@ export const api = {
   createCampaign: (body) => request('/campaigns', { method: 'POST', body: JSON.stringify(body) }),
   updateCampaign: (id, body) => request(`/campaigns/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   updateCampaignStatus: (body) => request('/campaigns/status', { method: 'PATCH', body: JSON.stringify(body) }),
+  cloneCampaign: (id) => request(`/campaigns/${id}/clone`, { method: 'POST' }),
 
   // Dropdowns
   getOffers: (params = {}) => {

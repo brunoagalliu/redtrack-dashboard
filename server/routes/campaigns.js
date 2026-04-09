@@ -90,6 +90,33 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Clone campaign
+router.post('/:id/clone', async (req, res) => {
+  try {
+    const { data: source } = await redtrack.get(`/campaigns/${req.params.id}`);
+
+    // Strip read-only fields; prefix title
+    const { id: _id, serial_number: _sn, trackback_url: _tu, impression_url: _iu, ...campaignBody } = source;
+    campaignBody.title = `Copy of ${source.title}`;
+
+    // Strip stream IDs so resolveStreams creates fresh streams
+    const rawStreams = (source.streams || []).map((s) => ({
+      weight: s.weight,
+      optimization: s.optimization,
+      stream: s.stream,
+    }));
+
+    const resolvedStreams = await resolveStreams(rawStreams);
+    const { data } = await redtrack.post('/campaigns', {
+      ...campaignBody,
+      streams: resolvedStreams.length ? resolvedStreams : undefined,
+    });
+    res.status(201).json(data);
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
+  }
+});
+
 // Bulk status update
 router.patch('/status', async (req, res) => {
   try {
