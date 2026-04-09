@@ -115,9 +115,9 @@ function FunnelCard({ funnel, index, onChange, onRemove }) {
   const showPreLandings = funnel.flow === 'prelanding_landing_offer';
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-gray-200 rounded-lg">
       {/* Funnel header */}
-      <div className="flex items-center gap-3 bg-gray-50 px-4 py-3 border-b border-gray-200">
+      <div className="flex items-center gap-3 bg-gray-50 px-4 py-3 border-b border-gray-200 rounded-t-lg">
         <span className="text-sm font-medium text-gray-700">Funnel #{index + 1}</span>
         <input
           type="text"
