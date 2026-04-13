@@ -22,14 +22,36 @@ function appendParams(url, params) {
   }
 }
 
-function buildUrlParams(title, partners) {
-  if (!title || !partners?.length) return '';
+// Returns { tracking: string|null, impression: string|null } per channel
+function buildUrlParams(title, partners, sourceTitle) {
+  if (sourceTitle === 'SMS - Internal') {
+    return { tracking: null, impression: null };
+  }
+
+  if (sourceTitle === 'SMS - UPM') {
+    return {
+      tracking: 'phone=PHONE&firstname=FIRST_NAME&templateid=TEMPLATE_ID&sourceid=sourceid&clk=clk',
+      impression: 'phone={PHONE}&firstname={FIRST_NAME}&templateid={TEMPLATE_ID}',
+    };
+  }
+
+  if (sourceTitle === 'SMS - Ranhog') {
+    if (!title || !partners?.length) return { tracking: null, impression: null };
+    const parts = title.split('_');
+    const partnerAliasSet = new Map(partners.map((p) => [p.alias, p.code]));
+    const matchedCode = parts.map((p) => partnerAliasSet.get(p)).find(Boolean);
+    return { tracking: matchedCode ? `sourceid=${matchedCode}` : null, impression: null };
+  }
+
+  // Default: sourceid + clk derived from campaign name
+  if (!title || !partners?.length) return { tracking: null, impression: null };
   const parts = title.split('_');
   const hasClickers = parts.some((p) => p.toLowerCase() === 'clickers');
   const partnerAliasSet = new Map(partners.map((p) => [p.alias, p.code]));
   const matchedCode = parts.map((p) => partnerAliasSet.get(p)).find(Boolean);
   const clkParam = `clk=${hasClickers ? 1 : 0}`;
-  return matchedCode ? `sourceid=${matchedCode}&${clkParam}` : clkParam;
+  const tracking = matchedCode ? `sourceid=${matchedCode}&${clkParam}` : clkParam;
+  return { tracking, impression: null };
 }
 
 export default function CampaignListPage() {
@@ -112,9 +134,9 @@ export default function CampaignListPage() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
               {campaigns.map((c) => {
-                const urlParams = buildUrlParams(c.title, partners);
-                const trackingUrl = appendParams(c.trackback_url, urlParams);
-                const impressionUrl = appendParams(c.impression_url, urlParams);
+                const { tracking: trackingParams, impression: impressionParams } = buildUrlParams(c.title, partners, c.source_title);
+                const trackingUrl = appendParams(c.trackback_url, trackingParams);
+                const impressionUrl = appendParams(c.impression_url, impressionParams);
                 return (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-400 w-12">{c.serial_number}</td>

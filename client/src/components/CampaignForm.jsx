@@ -350,6 +350,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
         <div className="flex gap-2">
           {tab !== 'funnels' ? (
             <button
+              key="next"
               type="button"
               onClick={() => setTab(tab === 'details' ? 'postback' : 'funnels')}
               className="btn-primary"
@@ -357,7 +358,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
               Next
             </button>
           ) : (
-            <button type="submit" disabled={isSubmitting} className="btn-primary">
+            <button key="submit" type="submit" disabled={isSubmitting} className="btn-primary">
               {isSubmitting ? 'Saving…' : initialValues ? 'Update Campaign' : 'Create Campaign'}
             </button>
           )}

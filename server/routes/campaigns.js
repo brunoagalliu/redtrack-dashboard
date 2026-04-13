@@ -3,7 +3,7 @@ const redtrack = require('../redtrack');
 
 const router = express.Router();
 
-const LIST_FIELDS = ['id', 'serial_number', 'title', 'impression_url', 'trackback_url'];
+const LIST_FIELDS = ['id', 'serial_number', 'title', 'impression_url', 'trackback_url', 'source_title'];
 
 // List campaigns
 router.get('/', async (req, res) => {
