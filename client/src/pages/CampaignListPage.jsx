@@ -29,8 +29,15 @@ function buildUrlParams(title, partners, sourceTitle) {
   }
 
   if (sourceTitle === 'SMS - UPM') {
+    const parts = title ? title.split('_') : [];
+    const hasClickers = parts.some((p) => p.toLowerCase() === 'clickers');
+    const partnerAliasSet = new Map((partners || []).map((p) => [p.alias, p.code]));
+    const matchedCode = parts.map((p) => partnerAliasSet.get(p)).find(Boolean);
+    const sourceidParam = matchedCode ? `sourceid=${matchedCode}` : '';
+    const clkParam = `clk=${hasClickers ? 1 : 0}`;
+    const trackingExtra = [sourceidParam, clkParam].filter(Boolean).join('&');
     return {
-      tracking: 'phone=PHONE&firstname=FIRST_NAME&templateid=TEMPLATE_ID&sourceid=sourceid&clk=clk',
+      tracking: `phone=PHONE&firstname=FIRST_NAME&templateid=TEMPLATE_ID&${trackingExtra}`,
       impression: 'phone={PHONE}&firstname={FIRST_NAME}&templateid={TEMPLATE_ID}',
     };
   }
