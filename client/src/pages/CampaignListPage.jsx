@@ -6,6 +6,16 @@ import CopyButton from '../components/CopyButton';
 
 const PAGE_SIZE = 50;
 
+function replaceParams(url, params) {
+  if (!url) return url;
+  try {
+    const [base] = url.split('?');
+    return params ? `${base}?${params}` : base;
+  } catch {
+    return url;
+  }
+}
+
 function appendParams(url, params) {
   if (!url || !params) return url;
   try {
@@ -47,7 +57,7 @@ function buildUrlParams(title, partners, sourceTitle) {
     const parts = title.split('_');
     const partnerAliasSet = new Map(partners.map((p) => [p.alias, p.code]));
     const matchedCode = parts.map((p) => partnerAliasSet.get(p)).find(Boolean);
-    return { tracking: matchedCode ? `sourceid=${matchedCode}` : null, impression: null };
+    return { tracking: matchedCode ? `sourceid=${matchedCode}` : null, impression: null, replace: true };
   }
 
   // Default: sourceid + clk derived from campaign name
@@ -141,9 +151,10 @@ export default function CampaignListPage() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
               {campaigns.map((c) => {
-                const { tracking: trackingParams, impression: impressionParams } = buildUrlParams(c.title, partners, c.source_title);
-                const trackingUrl = appendParams(c.trackback_url, trackingParams);
-                const impressionUrl = appendParams(c.impression_url, impressionParams);
+                const { tracking: trackingParams, impression: impressionParams, replace } = buildUrlParams(c.title, partners, c.source_title);
+                const applyParams = replace ? replaceParams : appendParams;
+                const trackingUrl = applyParams(c.trackback_url, trackingParams);
+                const impressionUrl = applyParams(c.impression_url, impressionParams);
                 return (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-400 w-12">{c.serial_number}</td>
