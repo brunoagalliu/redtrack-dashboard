@@ -4,8 +4,33 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import CopyButton from '../components/CopyButton';
 
-
 const PAGE_SIZE = 50;
+
+function appendParams(url, params) {
+  if (!url || !params) return url;
+  try {
+    const [base, qs] = url.split('?');
+    const existing = new URLSearchParams(qs || '');
+    existing.delete('sourceid');
+    existing.delete('clk');
+    const newParams = new URLSearchParams(params);
+    newParams.forEach((v, k) => existing.set(k, v));
+    const finalQs = existing.toString();
+    return finalQs ? `${base}?${finalQs}` : base;
+  } catch {
+    return url;
+  }
+}
+
+function buildUrlParams(title, partners) {
+  if (!title || !partners?.length) return '';
+  const parts = title.split('_');
+  const hasClickers = parts.some((p) => p.toLowerCase() === 'clickers');
+  const partnerAliasSet = new Map(partners.map((p) => [p.alias, p.code]));
+  const matchedCode = parts.map((p) => partnerAliasSet.get(p)).find(Boolean);
+  const clkParam = `clk=${hasClickers ? 1 : 0}`;
+  return matchedCode ? `sourceid=${matchedCode}&${clkParam}` : clkParam;
+}
 
 export default function CampaignListPage() {
   const [search, setSearch] = useState('');
@@ -16,6 +41,11 @@ export default function CampaignListPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['campaigns', { search }],
     queryFn: () => api.getCampaigns({ title: search || undefined }),
+  });
+
+  const { data: partners = [] } = useQuery({
+    queryKey: ['list', 'partners'],
+    queryFn: () => api.getPartners(),
   });
 
   const sorted = [...(Array.isArray(data) ? data : (data?.items ?? []))]
@@ -81,7 +111,11 @@ export default function CampaignListPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {campaigns.map((c) => (
+              {campaigns.map((c) => {
+                const urlParams = buildUrlParams(c.title, partners);
+                const trackingUrl = appendParams(c.trackback_url, urlParams);
+                const impressionUrl = appendParams(c.impression_url, urlParams);
+                return (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-400 w-12">{c.serial_number}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-xs">
@@ -102,18 +136,18 @@ export default function CampaignListPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-sm font-mono">
-                    {c.trackback_url ? (
+                    {trackingUrl ? (
                       <div className="flex items-center gap-2">
-                        <span className="truncate">{c.trackback_url}</span>
-                        <CopyButton text={c.trackback_url} />
+                        <span className="truncate">{trackingUrl}</span>
+                        <CopyButton text={trackingUrl} />
                       </div>
                     ) : '—'}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-sm font-mono">
-                    {c.impression_url ? (
+                    {impressionUrl ? (
                       <div className="flex items-center gap-2">
-                        <span className="truncate">{c.impression_url}</span>
-                        <CopyButton text={c.impression_url} />
+                        <span className="truncate">{impressionUrl}</span>
+                        <CopyButton text={impressionUrl} />
                       </div>
                     ) : '—'}
                   </td>
@@ -126,7 +160,8 @@ export default function CampaignListPage() {
                     </Link>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
