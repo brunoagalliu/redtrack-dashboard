@@ -1,6 +1,119 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useOffers, useLandings } from '../hooks/useDropdowns';
 import SearchableSelect from './SearchableSelect';
+import { api } from '../lib/api';
+
+// Filter types that have API-backed option lists
+const FILTER_OPTION_ENDPOINTS = {
+  country: 'countries',
+  region: 'regions',
+  browser: 'browsers',
+  os: 'os',
+  device_brand: 'device_brands',
+  connection_type: 'connection_types',
+  languages: 'languages',
+};
+
+function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
+  const endpoint = FILTER_OPTION_ENDPOINTS[filterKey];
+  const { data: options = [], isLoading } = useQuery({
+    queryKey: ['filter-options', filterKey],
+    queryFn: () => api.getFilterOptions(endpoint),
+    enabled: !!endpoint,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+        setQuery('');
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const selectedSet = new Set(values);
+
+  if (endpoint) {
+    const filtered = options.filter(
+      (o) => !selectedSet.has(o.value) && o.label.toLowerCase().includes(query.toLowerCase())
+    );
+
+    return (
+      <div ref={containerRef} className="relative flex-1">
+        <div
+          className="flex flex-wrap gap-1 items-center border border-gray-300 rounded-md px-2 py-1.5 bg-white min-h-[36px] cursor-text"
+          onClick={() => { setOpen(true); setTimeout(() => containerRef.current?.querySelector('input')?.focus(), 0); }}
+        >
+          {values.map((v) => {
+            const label = options.find((o) => o.value === v)?.label || v;
+            return (
+              <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-mono shrink-0">
+                {label}
+                <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(v); }} className="text-blue-400 hover:text-blue-600 leading-none">×</button>
+              </span>
+            );
+          })}
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            placeholder={values.length ? '' : (isLoading ? 'Loading…' : 'Search…')}
+            className="flex-1 min-w-[80px] text-xs outline-none bg-transparent"
+          />
+        </div>
+        {open && filtered.length > 0 && (
+          <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto py-1">
+            {filtered.map((o) => (
+              <li
+                key={o.value}
+                onMouseDown={(e) => { e.preventDefault(); onAdd(o.value); setQuery(''); }}
+                className="px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 hover:text-blue-700 text-gray-700"
+              >
+                {o.label}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // Free-text fallback
+  function commitDraft() {
+    const t = draft.trim();
+    if (t) { onAdd(t); setDraft(''); }
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1 items-center border border-gray-300 rounded-md px-2 py-1.5 bg-white min-h-[36px] flex-1">
+      {values.map((v) => (
+        <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-mono shrink-0">
+          {v}
+          <button type="button" onClick={() => onRemove(v)} className="text-blue-400 hover:text-blue-600 leading-none">×</button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commitDraft(); } }}
+        onBlur={commitDraft}
+        placeholder={values.length ? '' : 'Type and press Enter…'}
+        className="flex-1 min-w-[100px] text-xs outline-none bg-transparent"
+      />
+    </div>
+  );
+}
 
 const FLOW_TYPES = [
   { value: 'offer', label: 'Offer' },
@@ -26,21 +139,7 @@ const FILTER_TYPES = [
   { key: 'languages', label: 'Languages' },
 ];
 
-function FilterRow({ label, filter, onChange, onRemove, onAddValue, onRemoveValue }) {
-  const [draft, setDraft] = useState('');
-
-  function commitDraft() {
-    const t = draft.trim();
-    if (t) { onAddValue(t); setDraft(''); }
-  }
-
-  function handleKeyDown(e) {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      commitDraft();
-    }
-  }
-
+function FilterRow({ filterKey, label, filter, onChange, onRemove, onAddValue, onRemoveValue }) {
   return (
     <div className="grid grid-cols-[120px_110px_1fr_32px] gap-2 items-start">
       <span className="text-sm text-gray-700 font-medium pt-2">{label}</span>
@@ -52,23 +151,12 @@ function FilterRow({ label, filter, onChange, onRemove, onAddValue, onRemoveValu
         <option value="include">Include</option>
         <option value="exclude">Exclude</option>
       </select>
-      <div className="flex flex-wrap gap-1 items-center border border-gray-300 rounded-md px-2 py-1.5 bg-white min-h-[36px]">
-        {(filter.values || []).map((v) => (
-          <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-mono">
-            {v}
-            <button type="button" onClick={() => onRemoveValue(v)} className="text-blue-400 hover:text-blue-600 leading-none">×</button>
-          </span>
-        ))}
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={commitDraft}
-          placeholder={filter.values?.length ? '' : 'Type and press Enter…'}
-          className="flex-1 min-w-[100px] text-xs outline-none bg-transparent"
-        />
-      </div>
+      <FilterValueInput
+        filterKey={filterKey}
+        values={filter.values || []}
+        onAdd={onAddValue}
+        onRemove={onRemoveValue}
+      />
       <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-500 p-1 mt-1">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -156,6 +244,7 @@ function FilterBuilder({ filters = {}, onChange }) {
                 return (
                   <FilterRow
                     key={key}
+                    filterKey={key}
                     label={typeLabel}
                     filter={filter}
                     onChange={(update) => updateFilter(key, update)}

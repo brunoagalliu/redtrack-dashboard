@@ -67,4 +67,7 @@ export const api = {
   getPartners: () => request('/lists/partners'),
   addPartner: (alias) => request('/lists/partners', { method: 'POST', body: JSON.stringify({ alias }) }),
   deletePartner: (id) => request(`/lists/partners/${id}`, { method: 'DELETE' }),
+
+  // Filter options
+  getFilterOptions: (type, params) => request(`/filter-options/${type}${params ? '?' + new URLSearchParams(params).toString() : ''}`),
 };

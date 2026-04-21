@@ -13,6 +13,7 @@ const landingsRouter = require('./routes/landings');
 const domainsRouter = require('./routes/domains');
 const sourcesRouter = require('./routes/sources');
 const networksRouter = require('./routes/networks');
+const filterOptionsRouter = require('./routes/filter-options');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -52,6 +53,7 @@ app.use('/api/landings', landingsRouter);
 app.use('/api/domains', domainsRouter);
 app.use('/api/sources', sourcesRouter);
 app.use('/api/networks', networksRouter);
+app.use('/api/filter-options', filterOptionsRouter);
 
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {

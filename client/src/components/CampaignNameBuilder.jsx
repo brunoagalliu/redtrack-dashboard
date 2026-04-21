@@ -77,8 +77,8 @@ function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading
 
 // ── Parse a built name back into its parts ───────────────────────────────────
 function parseName(name, providers, routes, verticals, partners) {
-  // Strip "Copy of " prefix added by clone
-  const n = name.replace(/^Copy of\s+/i, '');
+  // Strip legacy "Copy of " prefix or "_copy" suffix added by clone
+  const n = name.replace(/^Copy of\s+/i, '').replace(/_copy$/i, '');
   const parts = n.split('_');
 
   const providerSet  = new Set(providers.map((p) => p.value));

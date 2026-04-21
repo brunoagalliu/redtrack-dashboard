@@ -114,7 +114,7 @@ router.post('/:id/clone', async (req, res) => {
 
     // Strip read-only fields; prefix title
     const { id: _id, serial_number: _sn, trackback_url: _tu, impression_url: _iu, ...campaignBody } = source;
-    campaignBody.title = `Copy of ${source.title}`;
+    campaignBody.title = `${source.title}_copy`;
 
     // Strip stream IDs so resolveStreams creates fresh streams
     const rawStreams = (source.streams || []).map((s) => ({
