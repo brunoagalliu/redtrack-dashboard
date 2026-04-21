@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import CopyButton from './CopyButton';
+import SearchableSelect from './SearchableSelect';
 
 // ── Inline-add dropdown ──────────────────────────────────────────────────────
 function CreatableSelect({ value, onChange, items = [], onAdd, addLabel, loading }) {
@@ -110,7 +111,7 @@ function parseName(name, providers, routes, verticals, partners) {
 const SIMPLIFIED_SOURCES = ['SMS - UPM', 'SMS - Ranhog'];
 
 // ── Main component ───────────────────────────────────────────────────────────
-export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRoute, error, sourceName }) {
+export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRoute, error, sourceName, domains = [], domainId, onDomainChange, loadingDomains }) {
   const isSimplified = SIMPLIFIED_SOURCES.includes(sourceName);
   const qc = useQueryClient();
 
@@ -223,6 +224,18 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
           </div>
         </div>
       )}
+
+      {/* Domain */}
+      <div className="max-w-xs">
+        <label className="label">Domain</label>
+        <SearchableSelect
+          options={domains.map((d) => ({ value: d.id, label: d.url || d.domain || d.name }))}
+          value={domainId || ''}
+          onChange={onDomainChange}
+          placeholder="Select domain"
+          disabled={loadingDomains}
+        />
+      </div>
 
       {/* Row 2: List Name · Clickers */}
       <div className="flex gap-3 items-end">

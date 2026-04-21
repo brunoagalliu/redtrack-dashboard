@@ -176,19 +176,6 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
           <div className="card p-6">
             <p className="section-title">General</p>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Domain</label>
-                  <SearchableSelect
-                    options={filteredDomains.map((d) => ({ value: d.id, label: d.url || d.domain || d.name }))}
-                    value={form.domain_id}
-                    onChange={(v) => set('domain_id', v)}
-                    placeholder="Select domain"
-                    disabled={loadingDomains}
-                  />
-                </div>
-              </div>
-
               <CampaignNameBuilder
                 value={form.name}
                 onChange={(v) => { set('name', v); setFieldErrors((fe) => ({ ...fe, name: undefined })); }}
@@ -196,6 +183,10 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
                 error={fieldErrors.name}
                 sourceName={selectedSource?.name || selectedSource?.title}
                 onRoute={setRouteFilter}
+                domains={filteredDomains}
+                domainId={form.domain_id}
+                onDomainChange={(v) => set('domain_id', v)}
+                loadingDomains={loadingDomains}
               />
 
               {/* Cost model */}
