@@ -157,21 +157,26 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
       {/* ── CAMPAIGN DETAILS TAB ── */}
       {tab === 'details' && (
         <div className="grid grid-cols-1 gap-6">
+          {/* Template */}
+          <div className="card p-6">
+            <p className="section-title">Template</p>
+            <div className="max-w-xs">
+              <label className="label">Traffic Channel</label>
+              <SearchableSelect
+                options={sources.map((s) => ({ value: s.id, label: s.name || s.title }))}
+                value={form.traffic_source_id}
+                onChange={(v) => set('traffic_source_id', v)}
+                placeholder="Select traffic channel"
+                disabled={loadingSources}
+              />
+            </div>
+          </div>
+
           {/* General */}
           <div className="card p-6">
             <p className="section-title">General</p>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Traffic Channel</label>
-                  <SearchableSelect
-                    options={sources.map((s) => ({ value: s.id, label: s.name || s.title }))}
-                    value={form.traffic_source_id}
-                    onChange={(v) => set('traffic_source_id', v)}
-                    placeholder="Select traffic channel"
-                    disabled={loadingSources}
-                  />
-                </div>
                 <div>
                   <label className="label">Domain</label>
                   <SearchableSelect
