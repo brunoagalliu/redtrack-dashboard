@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDomains, useSources } from '../hooks/useDropdowns';
 import FunnelBuilder from './FunnelBuilder';
 import PostbackConfig from './PostbackConfig';
