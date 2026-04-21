@@ -70,9 +70,21 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
   const [tab, setTab] = useState('details');
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [routeFilter, setRouteFilter] = useState('');
 
   const { data: sources = [], isLoading: loadingSources } = useSources();
   const { data: domains = [], isLoading: loadingDomains } = useDomains();
+
+  const filteredDomains = routeFilter
+    ? domains.filter((d) => (d.url || d.domain || d.name || '').toLowerCase().includes(routeFilter.toLowerCase()))
+    : domains;
+
+  // Auto-select when exactly one domain matches the route
+  useEffect(() => {
+    if (filteredDomains.length === 1 && String(form.domain_id) !== String(filteredDomains[0].id)) {
+      set('domain_id', filteredDomains[0].id);
+    }
+  }, [filteredDomains.length === 1 ? filteredDomains[0]?.id : null]);
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -163,7 +175,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
                 <div>
                   <label className="label">Domain</label>
                   <SearchableSelect
-                    options={domains.map((d) => ({ value: d.id, label: d.url || d.domain || d.name }))}
+                    options={filteredDomains.map((d) => ({ value: d.id, label: d.url || d.domain || d.name }))}
                     value={form.domain_id}
                     onChange={(v) => set('domain_id', v)}
                     placeholder="Select domain"
@@ -178,6 +190,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
                 onUrlParams={(p) => set('urlParams', p)}
                 error={fieldErrors.name}
                 sourceName={selectedSource?.name || selectedSource?.title}
+                onRoute={setRouteFilter}
               />
 
               {/* Cost model */}

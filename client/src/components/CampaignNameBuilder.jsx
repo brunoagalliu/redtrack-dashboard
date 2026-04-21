@@ -110,7 +110,7 @@ function parseName(name, providers, routes, verticals, partners) {
 const SIMPLIFIED_SOURCES = ['SMS - UPM', 'SMS - Ranhog'];
 
 // ── Main component ───────────────────────────────────────────────────────────
-export default function CampaignNameBuilder({ value, onChange, onUrlParams, error, sourceName }) {
+export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRoute, error, sourceName }) {
   const isSimplified = SIMPLIFIED_SOURCES.includes(sourceName);
   const qc = useQueryClient();
 
@@ -175,6 +175,11 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, erro
     if (preview) onChange(preview);
     if (onUrlParams) onUrlParams(urlParams);
   }, [preview, urlParams]);
+
+  // Notify parent when route changes so it can filter/auto-select the domain
+  useEffect(() => {
+    if (onRoute) onRoute(route);
+  }, [route]);
 
   return (
     <div className="space-y-4">
