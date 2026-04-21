@@ -24,10 +24,11 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const [draft, setDraft] = useState('');
   const containerRef = useRef(null);
+  const searchRef = useRef(null);
 
   useEffect(() => {
     function handleClick(e) {
@@ -47,12 +48,22 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
       (o) => !selectedSet.has(o.value) && o.label.toLowerCase().includes(query.toLowerCase())
     );
 
+    function handleOpen() {
+      setOpen(true);
+      setQuery('');
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
+
     return (
       <div ref={containerRef} className="relative flex-1">
+        {/* Trigger: shows chips + open button */}
         <div
-          className="flex flex-wrap gap-1 items-center border border-gray-300 rounded-md px-2 py-1.5 bg-white min-h-[36px] cursor-text"
-          onClick={() => { setOpen(true); setTimeout(() => containerRef.current?.querySelector('input')?.focus(), 0); }}
+          className="flex flex-wrap gap-1 items-center border border-gray-300 rounded-md px-2 py-1.5 bg-white min-h-[36px] cursor-pointer"
+          onClick={handleOpen}
         >
+          {values.length === 0 && (
+            <span className="text-xs text-gray-400">{isLoading ? 'Loading…' : 'Select values…'}</span>
+          )}
           {values.map((v) => {
             const label = options.find((o) => o.value === v)?.label || v;
             return (
@@ -62,27 +73,36 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
               </span>
             );
           })}
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-            onFocus={() => setOpen(true)}
-            placeholder={values.length ? '' : (isLoading ? 'Loading…' : 'Search…')}
-            className="flex-1 min-w-[80px] text-xs outline-none bg-transparent"
-          />
         </div>
-        {open && filtered.length > 0 && (
-          <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto py-1">
-            {filtered.map((o) => (
-              <li
-                key={o.value}
-                onMouseDown={(e) => { e.preventDefault(); onAdd(o.value); setQuery(''); }}
-                className="px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 hover:text-blue-700 text-gray-700"
-              >
-                {o.label}
-              </li>
-            ))}
-          </ul>
+        {/* Dropdown with search inside */}
+        {open && (
+          <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg">
+            <div className="p-2 border-b border-gray-100">
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Type to search…"
+                className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded outline-none focus:border-blue-400"
+              />
+            </div>
+            <ul className="max-h-48 overflow-y-auto py-1">
+              {filtered.length === 0 ? (
+                <li className="px-3 py-2 text-xs text-gray-400">No results</li>
+              ) : (
+                filtered.map((o) => (
+                  <li
+                    key={o.value}
+                    onMouseDown={(e) => { e.preventDefault(); onAdd(o.value); }}
+                    className="px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 hover:text-blue-700 text-gray-700"
+                  >
+                    {o.label}
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
         )}
       </div>
     );
