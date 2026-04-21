@@ -107,8 +107,11 @@ function parseName(name, providers, routes, verticals, partners) {
   return { provider: parsedProvider, route: parsedRoute, vertical: parsedVertical, partner: parsedPartner, clickers: parsedClickers, listName: listParts.join('_') };
 }
 
+const SIMPLIFIED_SOURCES = ['SMS - UPM', 'SMS - Ranhog'];
+
 // ── Main component ───────────────────────────────────────────────────────────
-export default function CampaignNameBuilder({ value, onChange, onUrlParams, error }) {
+export default function CampaignNameBuilder({ value, onChange, onUrlParams, error, sourceName }) {
+  const isSimplified = SIMPLIFIED_SOURCES.includes(sourceName);
   const qc = useQueryClient();
 
   const { data: providers = [], isLoading: loadingProviders } = useQuery({ queryKey: ['list', 'provider'], queryFn: () => api.getList('provider') });
@@ -154,9 +157,18 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, erro
     return p && suffix ? `${p}_${suffix}` : '';
   }
 
+  function buildSimplified(ve, clk, ln, dt) {
+    const parts = [ve, clk ? 'clickers' : '', ln, dt].filter(Boolean);
+    return ve ? parts.join('_') : '';
+  }
+
   // Always derived from local state — never stale
-  const preview = build(provider, route, vertical, partner, clickers, listName, date);
-  const urlParams = [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
+  const preview = isSimplified
+    ? buildSimplified(vertical, clickers, listName, date)
+    : build(provider, route, vertical, partner, clickers, listName, date);
+  const urlParams = isSimplified
+    ? `clk=${clickers ? 1 : 0}`
+    : [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
 
   // Keep form.name and urlParams in sync with local state
   useEffect(() => {
@@ -166,36 +178,46 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, erro
 
   return (
     <div className="space-y-4">
-      {/* Row 1: Provider · Route · Vertical · Partner */}
-      <div className="grid grid-cols-4 gap-3">
-        <div>
-          <label className="label">SMS Provider</label>
-          <CreatableSelect value={provider} items={providers} loading={loadingProviders}
-            onChange={setProvider}
-            onAdd={(v) => addProvider.mutate(v)} addLabel="New provider…" />
-        </div>
-        <div>
-          <label className="label">Route</label>
-          <CreatableSelect value={route} items={routes} loading={loadingRoutes}
-            onChange={setRoute}
-            onAdd={(v) => addRoute.mutate(v)} addLabel="New route…" />
-        </div>
-        <div>
+      {/* Simplified mode (UPM / Ranhog): Vertical only */}
+      {isSimplified ? (
+        <div className="max-w-xs">
           <label className="label">Vertical</label>
           <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
             onChange={setVertical}
             onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
         </div>
-        <div>
-          <label className="label">Data Partner</label>
-          <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
-            onChange={setPartner}
-            onAdd={(alias) => addPartner.mutate(alias)} />
-          {selectedPartner && (
-            <p className="mt-1 text-xs text-gray-400">ID: <span className="font-mono">{selectedPartner.code}</span></p>
-          )}
+      ) : (
+        /* Full mode: Provider · Route · Vertical · Partner */
+        <div className="grid grid-cols-4 gap-3">
+          <div>
+            <label className="label">SMS Provider</label>
+            <CreatableSelect value={provider} items={providers} loading={loadingProviders}
+              onChange={setProvider}
+              onAdd={(v) => addProvider.mutate(v)} addLabel="New provider…" />
+          </div>
+          <div>
+            <label className="label">Route</label>
+            <CreatableSelect value={route} items={routes} loading={loadingRoutes}
+              onChange={setRoute}
+              onAdd={(v) => addRoute.mutate(v)} addLabel="New route…" />
+          </div>
+          <div>
+            <label className="label">Vertical</label>
+            <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
+              onChange={setVertical}
+              onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
+          </div>
+          <div>
+            <label className="label">Data Partner</label>
+            <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
+              onChange={setPartner}
+              onAdd={(alias) => addPartner.mutate(alias)} />
+            {selectedPartner && (
+              <p className="mt-1 text-xs text-gray-400">ID: <span className="font-mono">{selectedPartner.code}</span></p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Row 2: List Name · Clickers */}
       <div className="flex gap-3 items-end">

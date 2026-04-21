@@ -149,12 +149,6 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
           <div className="card p-6">
             <p className="section-title">General</p>
             <div className="space-y-4">
-              <CampaignNameBuilder
-                value={form.name}
-                onChange={(v) => { set('name', v); setFieldErrors((fe) => ({ ...fe, name: undefined })); }}
-                onUrlParams={(p) => set('urlParams', p)}
-                error={fieldErrors.name}
-              />
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label">Traffic Channel</label>
@@ -177,6 +171,14 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
                   />
                 </div>
               </div>
+
+              <CampaignNameBuilder
+                value={form.name}
+                onChange={(v) => { set('name', v); setFieldErrors((fe) => ({ ...fe, name: undefined })); }}
+                onUrlParams={(p) => set('urlParams', p)}
+                error={fieldErrors.name}
+                sourceName={selectedSource?.name}
+              />
 
               {/* Cost model */}
               <div>
