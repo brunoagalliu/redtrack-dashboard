@@ -177,7 +177,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
                 onChange={(v) => { set('name', v); setFieldErrors((fe) => ({ ...fe, name: undefined })); }}
                 onUrlParams={(p) => set('urlParams', p)}
                 error={fieldErrors.name}
-                sourceName={selectedSource?.name}
+                sourceName={selectedSource?.name || selectedSource?.title}
               />
 
               {/* Cost model */}
