@@ -103,7 +103,7 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
                 className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded outline-none focus:border-blue-400"
               />
             </div>
-            <ul ref={listRef} className="max-h-48 overflow-y-auto py-1">
+            <ul ref={listRef} key={lowerQuery} className="max-h-48 overflow-y-auto py-1">
               {filtered.length === 0 ? (
                 <li className="px-3 py-2 text-xs text-gray-400">No results</li>
               ) : (
