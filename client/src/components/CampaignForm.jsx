@@ -23,6 +23,7 @@ const DEFAULT_FUNNEL = {
   landings: [],
   pre_landings: [],
   smart_traffic: false,
+  filters: {},
 };
 
 function defaultForm() {

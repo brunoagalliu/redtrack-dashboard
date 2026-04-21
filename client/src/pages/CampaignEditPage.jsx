@@ -7,6 +7,28 @@ const REDIRECT_TYPE_MAP = { '302': 1, '301': 2, meta: 3, js: 4, double: 5 };
 const REDIRECT_TYPE_REVERSE = { 1: '302', 2: '301', 3: 'meta', 4: 'js', 5: 'double' };
 const COST_VALUE_FIELDS = { CPC: 'cpc', CPM: 'cpm', CPA: 'cpa', POPCPM: 'popcpm', REVSHARE: 'rev_share' };
 
+function mapStreamFilters(apiFilters) {
+  if (!apiFilters) return {};
+  const result = {};
+  for (const [key, filter] of Object.entries(apiFilters)) {
+    if (filter.active && Array.isArray(filter.values) && filter.values.length > 0) {
+      result[key] = { exclude: filter.exclude || false, values: filter.values };
+    }
+  }
+  return result;
+}
+
+function buildStreamFilters(formFilters) {
+  if (!formFilters) return undefined;
+  const result = {};
+  for (const [key, filter] of Object.entries(formFilters)) {
+    if (filter.values?.length > 0) {
+      result[key] = { values: filter.values, active: true, exclude: filter.exclude || false, comparison_type: 'EQ' };
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function deriveFlow(stream) {
   if (!stream) return 'offer';
   if ((stream.prelandings || []).length > 0) return 'prelanding_landing_offer';
@@ -39,6 +61,7 @@ function toFormValues(campaign) {
           offers: (s.stream?.offers || []).map((o) => ({ offer_id: o.id, weight: o.weight ?? 100 })),
           landings: (s.stream?.landings || []).map((l) => ({ landing_id: l.id, weight: l.weight ?? 100 })),
           pre_landings: (s.stream?.prelandings || []).map((l) => ({ landing_id: l.id, weight: l.weight ?? 100 })),
+          filters: mapStreamFilters(s.stream?.filters),
         }))
       : [{ label: '', weight: 100, flow: 'offer', offers: [], landings: [], pre_landings: [], smart_traffic: false }],
     tags: Array.isArray(campaign.tags) ? campaign.tags.join(', ') : (campaign.tags || ''),
@@ -76,6 +99,7 @@ function buildPayload(form) {
         offers: f.offers.filter((o) => o.offer_id).map((o) => ({ id: o.offer_id, weight: o.weight })),
         landings: (f.landings || []).filter((l) => l.landing_id).map((l) => ({ id: l.landing_id, weight: l.weight })),
         prelandings: (f.pre_landings || []).filter((l) => l.landing_id).map((l) => ({ id: l.landing_id, weight: l.weight })),
+        filters: buildStreamFilters(f.filters),
       },
     })),
     tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],

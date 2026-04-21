@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useOffers, useLandings } from '../hooks/useDropdowns';
 import SearchableSelect from './SearchableSelect';
 
@@ -7,6 +8,170 @@ const FLOW_TYPES = [
   { value: 'prelanding_landing_offer', label: 'Pre-Landing > Landing > Offer' },
   { value: 'template', label: 'Template' },
 ];
+
+const FILTER_TYPES = [
+  { key: 'country', label: 'Countries' },
+  { key: 'region', label: 'Regions' },
+  { key: 'city', label: 'Cities' },
+  { key: 'isp', label: 'ISP' },
+  { key: 'browser', label: 'Browser' },
+  { key: 'browser_version', label: 'Browser version' },
+  { key: 'os', label: 'OS' },
+  { key: 'os_version', label: 'OS version' },
+  { key: 'device_brand', label: 'Device brand' },
+  { key: 'device_model', label: 'Device model' },
+  { key: 'ip', label: 'IP' },
+  { key: 'device_type', label: 'Device type' },
+  { key: 'connection_type', label: 'Connection type' },
+  { key: 'languages', label: 'Languages' },
+];
+
+function FilterRow({ label, filter, onChange, onRemove, onAddValue, onRemoveValue }) {
+  const [draft, setDraft] = useState('');
+
+  function commitDraft() {
+    const t = draft.trim();
+    if (t) { onAddValue(t); setDraft(''); }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      commitDraft();
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-[120px_110px_1fr_32px] gap-2 items-start">
+      <span className="text-sm text-gray-700 font-medium pt-2">{label}</span>
+      <select
+        value={filter.exclude ? 'exclude' : 'include'}
+        onChange={(e) => onChange({ exclude: e.target.value === 'exclude' })}
+        className="input text-xs"
+      >
+        <option value="include">Include</option>
+        <option value="exclude">Exclude</option>
+      </select>
+      <div className="flex flex-wrap gap-1 items-center border border-gray-300 rounded-md px-2 py-1.5 bg-white min-h-[36px]">
+        {(filter.values || []).map((v) => (
+          <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 font-mono">
+            {v}
+            <button type="button" onClick={() => onRemoveValue(v)} className="text-blue-400 hover:text-blue-600 leading-none">×</button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={commitDraft}
+          placeholder={filter.values?.length ? '' : 'Type and press Enter…'}
+          className="flex-1 min-w-[100px] text-xs outline-none bg-transparent"
+        />
+      </div>
+      <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-500 p-1 mt-1">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function FilterBuilder({ filters = {}, onChange }) {
+  const [open, setOpen] = useState(false);
+
+  const activeFilters = Object.entries(filters);
+  const usedKeys = new Set(Object.keys(filters));
+  const availableTypes = FILTER_TYPES.filter((t) => !usedKeys.has(t.key));
+
+  function addFilter(key) {
+    if (!key) return;
+    onChange({ ...filters, [key]: { exclude: false, values: [] } });
+  }
+
+  function removeFilter(key) {
+    const updated = { ...filters };
+    delete updated[key];
+    onChange(updated);
+  }
+
+  function updateFilter(key, update) {
+    onChange({ ...filters, [key]: { ...filters[key], ...update } });
+  }
+
+  function addValue(key, value) {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const existing = filters[key]?.values || [];
+    if (existing.includes(trimmed)) return;
+    updateFilter(key, { values: [...existing, trimmed] });
+  }
+
+  function removeValue(key, value) {
+    updateFilter(key, { values: (filters[key]?.values || []).filter((v) => v !== value) });
+  }
+
+  return (
+    <div className="border-t border-gray-200">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold w-full rounded-b-lg transition-colors ${
+          activeFilters.length > 0 ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        }`}
+      >
+        FILTERS({activeFilters.length})
+        <svg className={`w-3.5 h-3.5 ml-auto transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4 bg-gray-50 border-t border-gray-100">
+          <div className="flex items-center gap-3">
+            <select
+              value=""
+              onChange={(e) => { addFilter(e.target.value); e.target.value = ''; }}
+              className="input max-w-xs text-sm"
+              disabled={availableTypes.length === 0}
+            >
+              <option value="">Add filter…</option>
+              {availableTypes.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {activeFilters.length > 0 && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-[120px_110px_1fr_32px] gap-2 text-xs font-medium text-gray-400 uppercase tracking-wider px-1">
+                <span>Filter by</span>
+                <span>Type</span>
+                <span>Values</span>
+                <span />
+              </div>
+              {activeFilters.map(([key, filter]) => {
+                const typeLabel = FILTER_TYPES.find((t) => t.key === key)?.label || key;
+                return (
+                  <FilterRow
+                    key={key}
+                    label={typeLabel}
+                    filter={filter}
+                    onChange={(update) => updateFilter(key, update)}
+                    onRemove={() => removeFilter(key)}
+                    onAddValue={(v) => addValue(key, v)}
+                    onRemoveValue={(v) => removeValue(key, v)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function OfferRow({ offer, index, onChange, onRemove }) {
   const { data: offers = [], isLoading } = useOffers();
@@ -260,6 +425,12 @@ function FunnelCard({ funnel, index, onChange, onRemove }) {
           <span className="text-xs text-gray-600">Smart traffic distribution</span>
         </label>
       </div>
+
+      {/* Filters */}
+      <FilterBuilder
+        filters={funnel.filters || {}}
+        onChange={(f) => onChange({ ...funnel, filters: f })}
+      />
     </div>
   );
 }
@@ -268,7 +439,7 @@ export default function FunnelBuilder({ funnels, onChange }) {
   function addFunnel() {
     onChange([
       ...funnels,
-      { label: '', weight: 100, flow: 'offer', offers: [{ offer_id: '', weight: 100 }], landings: [], pre_landings: [], smart_traffic: false },
+      { label: '', weight: 100, flow: 'offer', offers: [{ offer_id: '', weight: 100 }], landings: [], pre_landings: [], smart_traffic: false, filters: {} },
     ]);
   }
 

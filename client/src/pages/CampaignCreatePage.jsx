@@ -6,6 +6,17 @@ import CampaignForm from '../components/CampaignForm';
 const REDIRECT_TYPE_MAP = { '302': 1, '301': 2, meta: 3, js: 4, double: 5 };
 const COST_VALUE_FIELDS = { CPC: 'cpc', CPM: 'cpm', CPA: 'cpa', POPCPM: 'popcpm', REVSHARE: 'rev_share' };
 
+function buildStreamFilters(formFilters) {
+  if (!formFilters) return undefined;
+  const result = {};
+  for (const [key, filter] of Object.entries(formFilters)) {
+    if (filter.values?.length > 0) {
+      result[key] = { values: filter.values, active: true, exclude: filter.exclude || false, comparison_type: 'EQ' };
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function buildPayload(form) {
   const costField = COST_VALUE_FIELDS[form.cost_type];
   const costValue = form.cost_value !== '' ? Number(form.cost_value) : 0;
@@ -26,6 +37,7 @@ function buildPayload(form) {
         offers: f.offers.filter((o) => o.offer_id).map((o) => ({ id: o.offer_id, weight: o.weight })),
         landings: (f.landings || []).filter((l) => l.landing_id).map((l) => ({ id: l.landing_id, weight: l.weight })),
         prelandings: (f.pre_landings || []).filter((l) => l.landing_id).map((l) => ({ id: l.landing_id, weight: l.weight })),
+        filters: buildStreamFilters(f.filters),
       },
     })),
     tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
