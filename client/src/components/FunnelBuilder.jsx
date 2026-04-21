@@ -44,9 +44,10 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
   const selectedSet = new Set(values);
 
   if (endpoint) {
-    const filtered = options.filter(
-      (o) => !selectedSet.has(o.value) && o.label.toLowerCase().includes(query.toLowerCase())
-    );
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? options.filter((o) => !selectedSet.has(o.value) && String(o.label ?? '').toLowerCase().includes(q))
+      : options.filter((o) => !selectedSet.has(o.value));
 
     function handleOpen() {
       setOpen(true);
@@ -87,7 +88,7 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
                 className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded outline-none focus:border-blue-400"
               />
             </div>
-            <ul className="max-h-48 overflow-y-auto py-1">
+            <ul key={q} className="max-h-48 overflow-y-auto py-1">
               {filtered.length === 0 ? (
                 <li className="px-3 py-2 text-xs text-gray-400">No results</li>
               ) : (
