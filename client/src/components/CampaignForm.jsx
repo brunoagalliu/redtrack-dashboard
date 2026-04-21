@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useDomains, useSources } from '../hooks/useDropdowns';
 import FunnelBuilder from './FunnelBuilder';
-import PostbackConfig, { newEntry } from './PostbackConfig';
+import PostbackConfig from './PostbackConfig';
 import SearchableSelect from './SearchableSelect';
 import CampaignNameBuilder from './CampaignNameBuilder';
 
@@ -39,7 +39,7 @@ function defaultForm() {
     funnels: [{ ...DEFAULT_FUNNEL }],
     tags: '',
     notes: '',
-    postbacks: [],
+    postbacks: [{ _key: 1, url: 'https://api.smsapp.co/conversion/?click-id={ref_id}&payout={offer_payout}', payout_type: 'percentage', payout_value: 100, method: 'GET', no_updated_conversions: false, conditional: false }],
     urlParams: '',
   };
 }
