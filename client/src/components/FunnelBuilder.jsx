@@ -29,6 +29,7 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
   const [draft, setDraft] = useState('');
   const containerRef = useRef(null);
   const searchRef = useRef(null);
+  const listRef = useRef(null);
 
   useEffect(() => {
     function handleClick(e) {
@@ -41,18 +42,32 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  // Focus search when dropdown opens
+  useEffect(() => {
+    if (open) {
+      searchRef.current?.focus();
+    }
+  }, [open]);
+
+  // Scroll list to top whenever query changes
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [query]);
+
   const selectedSet = new Set(values);
 
   if (endpoint) {
-    const q = query.trim().toLowerCase();
-    const filtered = q
-      ? options.filter((o) => !selectedSet.has(o.value) && String(o.label ?? '').toLowerCase().includes(q))
-      : options.filter((o) => !selectedSet.has(o.value));
+    const lowerQuery = query.trim().toLowerCase();
+    const unselected = options.filter((o) => !selectedSet.has(o.value));
+    const filtered = lowerQuery
+      ? unselected.filter((o) => (o.label || '').toLowerCase().includes(lowerQuery))
+      : unselected;
 
     function handleOpen() {
-      setOpen(true);
-      setQuery('');
-      setTimeout(() => searchRef.current?.focus(), 0);
+      if (!open) {
+        setOpen(true);
+        setQuery('');
+      }
     }
 
     return (
@@ -88,7 +103,7 @@ function FilterValueInput({ filterKey, values, onAdd, onRemove }) {
                 className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded outline-none focus:border-blue-400"
               />
             </div>
-            <ul key={q} className="max-h-48 overflow-y-auto py-1">
+            <ul ref={listRef} className="max-h-48 overflow-y-auto py-1">
               {filtered.length === 0 ? (
                 <li className="px-3 py-2 text-xs text-gray-400">No results</li>
               ) : (
