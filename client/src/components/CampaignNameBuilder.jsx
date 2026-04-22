@@ -158,18 +158,16 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
     return p && suffix ? `${p}_${suffix}` : '';
   }
 
-  function buildSimplified(ve, clk, ln, dt) {
-    const parts = [ve, clk ? 'clickers' : '', ln, dt].filter(Boolean);
+  function buildSimplified(ve, pa, clk, ln, dt) {
+    const parts = [ve, pa, clk ? 'clickers' : '', ln, dt].filter(Boolean);
     return ve ? parts.join('_') : '';
   }
 
   // Always derived from local state — never stale
   const preview = isSimplified
-    ? buildSimplified(vertical, clickers, listName, date)
+    ? buildSimplified(vertical, partner, clickers, listName, date)
     : build(provider, route, vertical, partner, clickers, listName, date);
-  const urlParams = isSimplified
-    ? `clk=${clickers ? 1 : 0}`
-    : [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
+  const urlParams = [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
 
   // Keep form.name and urlParams in sync with local state
   useEffect(() => {
@@ -184,13 +182,24 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
 
   return (
     <div className="space-y-4">
-      {/* Simplified mode (UPM / Ranhog): Vertical only */}
+      {/* Simplified mode (UPM / Ranhog): Vertical + Partner */}
       {isSimplified ? (
-        <div className="max-w-xs">
-          <label className="label">Vertical</label>
-          <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
-            onChange={setVertical}
-            onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
+        <div className="grid grid-cols-2 gap-3 max-w-sm">
+          <div>
+            <label className="label">Vertical</label>
+            <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
+              onChange={setVertical}
+              onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
+          </div>
+          <div>
+            <label className="label">Data Partner</label>
+            <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
+              onChange={setPartner}
+              onAdd={(alias) => addPartner.mutate(alias)} />
+            {selectedPartner && (
+              <p className="mt-1 text-xs text-gray-400">ID: <span className="font-mono">{selectedPartner.code}</span></p>
+            )}
+          </div>
         </div>
       ) : (
         /* Full mode: Provider · Route · Vertical · Partner */
