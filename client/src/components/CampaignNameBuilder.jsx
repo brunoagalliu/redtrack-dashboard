@@ -41,13 +41,13 @@ function CreatableSelect({ value, onChange, items = [], onAdd, addLabel, loading
 }
 
 // ── Inline-add dropdown for partners ────────────────────────────────────────
-function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading }) {
+function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading, onSearch }) {
   const [adding, setAdding] = useState(false);
   const [draft,  setDraft]  = useState('');
 
-  function handleChange(e) {
-    if (e.target.value === '__add__') { setAdding(true); }
-    else { onChange(e.target.value); }
+  function handleChange(val) {
+    if (val === '__add__') { setAdding(true); }
+    else { onChange(val); }
   }
   function commit() {
     const alias = draft.trim().toUpperCase();
@@ -67,12 +67,23 @@ function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading
       </div>
     );
   }
+
+  const options = [
+    ...partners.map(p => ({ alias: p.alias, value: p.alias })),
+    // { alias: '＋ Add new partner…', value: '__add__' }
+  ];
+
   return (
-    <select value={value} onChange={handleChange} className="input" disabled={loading}>
-      <option value="">{loading ? 'Loading…' : 'Select…'}</option>
-      {partners.map((p) => <option key={p.id} value={p.alias}>{p.alias} ({p.code})</option>)}
-      <option value="__add__">＋ Add new partner…</option>
-    </select>
+    <SearchableSelect
+      options={options}
+      value={value}
+      onChange={handleChange}
+      onQueryChange={onSearch}
+      labelKey="alias"
+      valueKey="value"
+      disabled={loading}
+      placeholder="Search partner…"
+    />
   );
 }
 
@@ -115,10 +126,27 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
   const isSimplified = SIMPLIFIED_SOURCES.includes(sourceName);
   const qc = useQueryClient();
 
+  const [partnerSearch, setPartnerSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(partnerSearch), 500);
+    return () => clearTimeout(timer);
+  }, [partnerSearch]);
+
   const { data: providers = [], isLoading: loadingProviders } = useQuery({ queryKey: ['list', 'provider'], queryFn: () => api.getList('provider') });
   const { data: routes    = [], isLoading: loadingRoutes    } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
   const { data: verticals = [], isLoading: loadingVerticals } = useQuery({ queryKey: ['list', 'vertical'], queryFn: () => api.getList('vertical') });
-  const { data: partners  = [], isLoading: loadingPartners  } = useQuery({ queryKey: ['list', 'partners'], queryFn: () => api.getPartners() });
+  const { data: partnersData = { content: [] }, isLoading: loadingPartners } = useQuery({
+    queryKey: ['partners', debouncedSearch],
+    queryFn: () => api.searchDataSources(debouncedSearch, 0, 50, 'name,asc', 'name')
+  });
+
+  const partners = partnersData.content.map(p => ({
+    id: p.id,
+    alias: p.name,
+    code: p.name
+  }));
 
   // Can't call hooks conditionally so define all four upfront
   const addProvider = useMutation({ mutationFn: (v) => api.addListItem('provider', v), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'provider'] }) });
@@ -158,18 +186,16 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
     return p && suffix ? `${p}_${suffix}` : '';
   }
 
-  function buildSimplified(ve, clk, ln, dt) {
-    const parts = [ve, clk ? 'clickers' : '', ln, dt].filter(Boolean);
+  function buildSimplified(ve, pa, clk, ln, dt) {
+    const parts = [ve, pa, clk ? 'clickers' : '', ln, dt].filter(Boolean);
     return ve ? parts.join('_') : '';
   }
 
   // Always derived from local state — never stale
   const preview = isSimplified
-    ? buildSimplified(vertical, clickers, listName, date)
+    ? buildSimplified(vertical, partner, clickers, listName, date)
     : build(provider, route, vertical, partner, clickers, listName, date);
-  const urlParams = isSimplified
-    ? `clk=${clickers ? 1 : 0}`
-    : [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
+  const urlParams = [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
 
   // Keep form.name and urlParams in sync with local state
   useEffect(() => {
@@ -184,13 +210,22 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
 
   return (
     <div className="space-y-4">
-      {/* Simplified mode (UPM / Ranhog): Vertical only */}
+      {/* Simplified mode (UPM / Ranhog): Vertical + Partner */}
       {isSimplified ? (
-        <div className="max-w-xs">
-          <label className="label">Vertical</label>
-          <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
-            onChange={setVertical}
-            onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
+        <div className="grid grid-cols-2 gap-3 max-w-sm">
+          <div>
+            <label className="label">Vertical</label>
+            <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
+              onChange={setVertical}
+              onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
+          </div>
+          <div>
+            <label className="label">Data Partner</label>
+            <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
+              onChange={setPartner}
+              onSearch={setPartnerSearch}
+              onAdd={(alias) => addPartner.mutate(alias)} />
+          </div>
         </div>
       ) : (
         /* Full mode: Provider · Route · Vertical · Partner */
@@ -208,19 +243,17 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
               onAdd={(v) => addRoute.mutate(v)} addLabel="New route…" />
           </div>
           <div>
-            <label className="label">Vertical</label>
+              <label className="label">Vertical</label>
             <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
               onChange={setVertical}
               onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
           </div>
           <div>
-            <label className="label">Data Partner</label>
+              <label className="label">Data Partner</label>
             <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
               onChange={setPartner}
-              onAdd={(alias) => addPartner.mutate(alias)} />
-            {selectedPartner && (
-              <p className="mt-1 text-xs text-gray-400">ID: <span className="font-mono">{selectedPartner.code}</span></p>
-            )}
+                onSearch={setPartnerSearch}
+                onAdd={(alias) => addPartner.mutate(alias)} />
           </div>
         </div>
       )}

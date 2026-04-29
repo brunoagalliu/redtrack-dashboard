@@ -1,4 +1,5 @@
 const BASE = '/api';
+const SMS_API_BASE = 'https://api.smsapp.co';
 
 export function getToken() { return localStorage.getItem('auth_token'); }
 export function setToken(t) { localStorage.setItem('auth_token', t); }
@@ -70,4 +71,31 @@ export const api = {
 
   // Filter options
   getFilterOptions: (type, params) => request(`/filter-options/${type}${params ? '?' + new URLSearchParams(params).toString() : ''}`),
+
+      searchDataSources: async (searchKey, page = 0, size = 10, sort = 'email,asc', searchField = 'email') => {
+    try {
+      const params = new URLSearchParams();
+      params.append(searchField, searchKey || '');
+      params.append('page', page);
+      params.append('size', size);
+      params.append('sort', sort);
+
+      const response = await fetch(
+        `${SMS_API_BASE}/data-source/?${params.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error('Failed to search data sources');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error searching data sources:', error);
+      throw error;
+    }
+  },
 };

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-export default function SearchableSelect({ options = [], value, onChange, placeholder = 'Select…', labelKey = 'label', valueKey = 'value', disabled = false }) {
+export default function SearchableSelect({ options = [], value, onChange, placeholder = 'Select…', labelKey = 'label', valueKey = 'value', disabled = false, onQueryChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef(null);
@@ -8,7 +8,7 @@ export default function SearchableSelect({ options = [], value, onChange, placeh
 
   const selected = options.find((o) => String(o[valueKey]) === String(value));
 
-  const filtered = query.trim()
+  const filtered = query.trim() && !onQueryChange
     ? options.filter((o) => String(o[labelKey]).toLowerCase().includes(query.toLowerCase()))
     : options;
 
@@ -17,6 +17,7 @@ export default function SearchableSelect({ options = [], value, onChange, placeh
       if (containerRef.current && !containerRef.current.contains(e.target)) {
         setOpen(false);
         setQuery('');
+        onQueryChange?.('');
       }
     }
     document.addEventListener('mousedown', handleClick);
@@ -34,6 +35,7 @@ export default function SearchableSelect({ options = [], value, onChange, placeh
     onChange(option[valueKey]);
     setOpen(false);
     setQuery('');
+    onQueryChange?.('');
   }
 
   function handleClear(e) {
@@ -80,18 +82,20 @@ export default function SearchableSelect({ options = [], value, onChange, placeh
               ref={inputRef}
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); onQueryChange?.(e.target.value); }}
               placeholder="Type to search…"
               className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded outline-none focus:border-blue-400"
             />
           </div>
           <ul className="max-h-52 overflow-y-auto py-1">
-            {filtered.length === 0 ? (
+            {disabled ? (
+              <li className="px-3 py-2 text-sm text-gray-400">Loading…</li>
+            ) : filtered.length === 0 ? (
               <li className="px-3 py-2 text-sm text-gray-400">No results</li>
             ) : (
-              filtered.map((option) => (
+              filtered.map((option, idx) => (
                 <li
-                  key={option[valueKey]}
+                  key={`${option[valueKey]}-${idx}`}
                   onClick={() => handleSelect(option)}
                   className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 hover:text-blue-700 ${
                     String(option[valueKey]) === String(value) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
