@@ -43,6 +43,16 @@ async function cleanupOldStats() {
   return { deleted: rowCount, cutoff };
 }
 
+async function persistSyncStatus() {
+  await pool.query(
+    `INSERT INTO rt_sync_status (id, status, processed, total, started_at, completed_at, error)
+     VALUES (1, $1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE SET
+       status=$1, processed=$2, total=$3, started_at=$4, completed_at=$5, error=$6`,
+    [sync.status, sync.processed, sync.total, sync.startedAt, sync.completedAt, sync.error || null]
+  );
+}
+
 async function runSync(dateFrom, dateTo) {
   if (sync.running) return;
   sync.running  = true;
@@ -52,6 +62,7 @@ async function runSync(dateFrom, dateTo) {
   sync.startedAt = new Date();
   sync.completedAt = null;
   sync.error    = null;
+  await persistSyncStatus();
 
   try {
     const today = new Date().toISOString().slice(0, 10);
@@ -140,20 +151,24 @@ async function runSync(dateFrom, dateTo) {
     for (let i = 0; i < toSyncHistorical.length; i++) {
       await fetchAndStore(toSyncHistorical[i], dateFrom, historicalTo);
       sync.processed = i + 1;
+      if (sync.processed % 50 === 0) await persistSyncStatus();
     }
 
     // Today sync
     for (let i = 0; i < toSyncToday.length; i++) {
       await fetchAndStore(toSyncToday[i], today, today);
       sync.processed = toSyncHistorical.length + i + 1;
+      if (sync.processed % 50 === 0) await persistSyncStatus();
     }
 
     sync.status = 'complete';
     sync.completedAt = new Date();
     sync.lastSyncedAt = new Date();
+    await persistSyncStatus();
   } catch (err) {
     sync.status = 'error';
     sync.error  = err.message;
+    await persistSyncStatus().catch(() => {});
   } finally {
     sync.running = false;
   }
@@ -175,8 +190,15 @@ router.post('/sync', (req, res) => {
   res.status(202).json({ status: 'started', dateFrom, dateTo });
 });
 
-// Sync status
-router.get('/sync/status', (_req, res) => res.json(sync));
+// Sync status — live from memory, falls back to DB if server restarted
+router.get('/sync/status', async (_req, res) => {
+  if (sync.status !== 'idle') return res.json(sync);
+  try {
+    const { rows } = await pool.query(`SELECT * FROM rt_sync_status WHERE id = 1`);
+    if (rows.length) return res.json({ ...rows[0], running: false });
+  } catch { /* ignore */ }
+  res.json(sync);
+});
 
 // Manual cleanup trigger (also called by scheduled job in index.js)
 router.post('/cleanup', async (_req, res) => {

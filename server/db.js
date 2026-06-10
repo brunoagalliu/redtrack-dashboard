@@ -7,6 +7,16 @@ const pool = new Pool({
 
 async function init() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS rt_sync_status (
+      id           INT PRIMARY KEY DEFAULT 1,
+      status       TEXT,
+      processed    INT,
+      total        INT,
+      started_at   TIMESTAMP,
+      completed_at TIMESTAMP,
+      error        TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS rt_campaigns (
       id         TEXT PRIMARY KEY,
       title      TEXT NOT NULL,

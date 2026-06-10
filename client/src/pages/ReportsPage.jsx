@@ -108,6 +108,15 @@ export default function ReportsPage() {
 
   const queryClient = useQueryClient();
 
+  const { data: syncStatus, refetch: refetchStatus } = useQuery({
+    queryKey: ['reports', 'sync-status'],
+    queryFn: () => fetch('/api/reports/sync/status', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` },
+    }).then((r) => r.json()),
+    staleTime: 0,
+    refetchInterval: (query) => query.state.data?.status === 'running' ? 3000 : false,
+  });
+
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['reports', 'media-buyers', applied.date_from, applied.date_to],
     queryFn: () => api.getMediaBuyerReport(applied),
@@ -121,6 +130,7 @@ export default function ReportsPage() {
 
   function onSynced() {
     queryClient.invalidateQueries({ queryKey: ['reports', 'media-buyers'] });
+    refetchStatus();
   }
 
   function toggleBuyer(buyer) {
@@ -176,10 +186,25 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {data?.synced_at && (
-        <p className="text-xs text-gray-400 mb-4">
-          Last synced: {new Date(data.synced_at).toLocaleString()}
-        </p>
+      {/* Sync status banner */}
+      {syncStatus && syncStatus.status !== 'idle' && (
+        <div className={`rounded-md px-4 py-2.5 mb-4 text-sm flex items-center gap-2 ${
+          syncStatus.status === 'complete' ? 'bg-green-50 text-green-700 border border-green-200' :
+          syncStatus.status === 'running'  ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+          syncStatus.status === 'error'    ? 'bg-red-50 text-red-700 border border-red-200' :
+          'bg-gray-50 text-gray-600 border border-gray-200'
+        }`}>
+          {syncStatus.status === 'running' && (
+            <span className="inline-block w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin shrink-0" />
+          )}
+          {syncStatus.status === 'complete' && <span>✓</span>}
+          {syncStatus.status === 'error'    && <span>✗</span>}
+          <span>
+            {syncStatus.status === 'running' && `Sync in progress — ${syncStatus.processed} / ${syncStatus.total} campaigns`}
+            {syncStatus.status === 'complete' && `Last sync completed ${new Date(syncStatus.completed_at).toLocaleString()} — ${syncStatus.total} campaigns`}
+            {syncStatus.status === 'error'    && `Last sync failed: ${syncStatus.error}`}
+          </span>
+        </div>
       )}
 
       {/* Error */}
