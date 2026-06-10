@@ -4,8 +4,13 @@ const redtrack = require('../redtrack');
 const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i };
-const CONCURRENCY = 25;  // individual stat calls in parallel
-const SCAN_BATCH = 50;   // campaigns per batch in pass-1 activity scan
+const SCAN_BATCH = 50;
+const CALL_INTERVAL_MS = 3100; // 20 calls/min = 1 every 3s; 3.1s gives a small safety margin
+
+// In-memory cache: key → { data, expires }
+const cache = new Map();
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 function defaultDateRange() {
   const to = new Date();
@@ -16,17 +21,17 @@ function defaultDateRange() {
   };
 }
 
-function isActive(stats) {
-  return (stats.clicks || 0) > 10 || (stats.conversions || 0) >= 1 || (stats.revenue || 0) > 0;
-}
-
 async function fetchAllCampaigns() {
   const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
   return data.items || [];
 }
 
-// Returns combined aggregate for a list of campaign IDs (one API call)
-async function fetchBatchTotal(ids, dateFrom, dateTo) {
+// Rate-limited single report call — returns the `total` aggregate for provided campaign IDs
+let lastCallTime = 0;
+async function rateLimitedBatchTotal(ids, dateFrom, dateTo) {
+  const wait = Math.max(0, CALL_INTERVAL_MS - (Date.now() - lastCallTime));
+  if (wait > 0) await sleep(wait);
+  lastCallTime = Date.now();
   try {
     const { data } = await redtrack.get('/report', {
       params: { date_from: dateFrom, date_to: dateTo, campaign_id: ids.join(','), total: 1, per: 1 },
@@ -37,81 +42,28 @@ async function fetchBatchTotal(ids, dateFrom, dateTo) {
   }
 }
 
-// Returns stats for a single campaign
-async function fetchCampaignStats(id, dateFrom, dateTo) {
-  try {
-    const { data } = await redtrack.get('/report', {
-      params: { date_from: dateFrom, date_to: dateTo, campaign_id: id, total: 1, per: 1 },
-    });
-    return data?.total || {};
-  } catch {
-    return {};
+async function getBuyerStats(campaignIds, dateFrom, dateTo) {
+  const acc = { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 };
+  for (let i = 0; i < campaignIds.length; i += SCAN_BATCH) {
+    const t = await rateLimitedBatchTotal(campaignIds.slice(i, i + SCAN_BATCH), dateFrom, dateTo);
+    acc.clicks      += t.clicks      || 0;
+    acc.conversions += t.conversions || 0;
+    acc.cost        += t.cost        || 0;
+    acc.revenue     += t.revenue     || 0;
+    acc.profit      += t.profit      || 0;
   }
-}
-
-async function runWithConcurrency(items, fn) {
-  const results = [];
-  for (let i = 0; i < items.length; i += CONCURRENCY) {
-    const batch = items.slice(i, i + CONCURRENCY);
-    results.push(...await Promise.all(batch.map(fn)));
-  }
-  return results;
-}
-
-async function processBuyer(candidates, dateFrom, dateTo) {
-  if (!candidates.length) {
-    return { campaigns: [], totals: { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }, checked: 0 };
-  }
-
-  // Pass 1 — scan all candidates in batches of SCAN_BATCH to find which groups have any activity
-  const batches = [];
-  for (let i = 0; i < candidates.length; i += SCAN_BATCH) {
-    batches.push(candidates.slice(i, i + SCAN_BATCH));
-  }
-
-  const scanResults = await Promise.all(
-    batches.map(async (batch) => {
-      const t = await fetchBatchTotal(batch.map((c) => c.id), dateFrom, dateTo);
-      const hasActivity = (t.clicks || 0) > 0 || (t.conversions || 0) > 0 || (t.revenue || 0) > 0;
-      return { batch, hasActivity };
-    })
-  );
-
-  // Pass 2 — fetch individual stats only for campaigns inside active batches
-  const activeCandidates = scanResults.filter((r) => r.hasActivity).flatMap((r) => r.batch);
-
-  if (!activeCandidates.length) {
-    return { campaigns: [], totals: { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }, checked: candidates.length };
-  }
-
-  const withStats = await runWithConcurrency(activeCandidates, async (c) => {
-    const stats = await fetchCampaignStats(c.id, dateFrom, dateTo);
-    return { id: c.id, title: c.title, ...stats };
-  });
-
-  const active = withStats
-    .filter(isActive)
-    .sort((a, b) => (b.clicks || 0) - (a.clicks || 0));
-
-  const totals = active.reduce(
-    (acc, c) => ({
-      clicks: acc.clicks + (c.clicks || 0),
-      conversions: acc.conversions + (c.conversions || 0),
-      cost: acc.cost + (c.cost || 0),
-      revenue: acc.revenue + (c.revenue || 0),
-      profit: acc.profit + (c.profit || 0),
-    }),
-    { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }
-  );
-
-  return { campaigns: active, totals, checked: candidates.length };
+  return acc;
 }
 
 router.get('/media-buyers', async (req, res) => {
   try {
     const defaults = defaultDateRange();
     const dateFrom = req.query.date_from || defaults.date_from;
-    const dateTo = req.query.date_to || defaults.date_to;
+    const dateTo   = req.query.date_to   || defaults.date_to;
+
+    const cacheKey = `mb:${dateFrom}:${dateTo}`;
+    const hit = cache.get(cacheKey);
+    if (hit && hit.expires > Date.now()) return res.json(hit.data);
 
     const campaigns = await fetchAllCampaigns();
 
@@ -120,23 +72,29 @@ router.get('/media-buyers', async (req, res) => {
       const title = c.title.trim();
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
         if (pattern.test(title)) {
-          grouped[buyer].push({ id: c.id, title: c.title.trim() });
+          grouped[buyer].push({ id: c.id, title });
           break;
         }
       }
     }
 
-    const [tk, ma, ds] = await Promise.all([
-      processBuyer(grouped.TK, dateFrom, dateTo),
-      processBuyer(grouped.MA, dateFrom, dateTo),
-      processBuyer(grouped.DS, dateFrom, dateTo),
-    ]);
+    // Sequential rate-limited calls — all three buyers share the same rate-limit token
+    const tkStats = await getBuyerStats(grouped.TK.map((c) => c.id), dateFrom, dateTo);
+    const maStats = await getBuyerStats(grouped.MA.map((c) => c.id), dateFrom, dateTo);
+    const dsStats = await getBuyerStats(grouped.DS.map((c) => c.id), dateFrom, dateTo);
 
-    res.json({
+    const result = {
       date_from: dateFrom,
-      date_to: dateTo,
-      buyers: { TK: tk, MA: ma, DS: ds },
-    });
+      date_to:   dateTo,
+      buyers: {
+        TK: { ...tkStats, campaign_count: grouped.TK.length },
+        MA: { ...maStats, campaign_count: grouped.MA.length },
+        DS: { ...dsStats, campaign_count: grouped.DS.length },
+      },
+    };
+
+    cache.set(cacheKey, { data: result, expires: Date.now() + 10 * 60 * 1000 });
+    res.json(result);
   } catch (err) {
     console.error('Media buyer report error:', err.message);
     res.status(500).json({ error: err.message });
