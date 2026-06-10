@@ -4,8 +4,8 @@ const redtrack = require('../redtrack');
 const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i };
-const CONCURRENCY = 25;
-const LOOKBACK_BUFFER_DAYS = 90; // extra days before date_from to catch still-running campaigns
+const CONCURRENCY = 25;  // individual stat calls in parallel
+const SCAN_BATCH = 50;   // campaigns per batch in pass-1 activity scan
 
 function defaultDateRange() {
   const to = new Date();
@@ -25,10 +25,23 @@ async function fetchAllCampaigns() {
   return data.items || [];
 }
 
-async function fetchCampaignStats(campaignId, dateFrom, dateTo) {
+// Returns combined aggregate for a list of campaign IDs (one API call)
+async function fetchBatchTotal(ids, dateFrom, dateTo) {
   try {
     const { data } = await redtrack.get('/report', {
-      params: { date_from: dateFrom, date_to: dateTo, campaign_id: campaignId, total: 1, per: 1 },
+      params: { date_from: dateFrom, date_to: dateTo, campaign_id: ids.join(','), total: 1, per: 1 },
+    });
+    return data?.total || {};
+  } catch {
+    return {};
+  }
+}
+
+// Returns stats for a single campaign
+async function fetchCampaignStats(id, dateFrom, dateTo) {
+  try {
+    const { data } = await redtrack.get('/report', {
+      params: { date_from: dateFrom, date_to: dateTo, campaign_id: id, total: 1, per: 1 },
     });
     return data?.total || {};
   } catch {
@@ -40,16 +53,38 @@ async function runWithConcurrency(items, fn) {
   const results = [];
   for (let i = 0; i < items.length; i += CONCURRENCY) {
     const batch = items.slice(i, i + CONCURRENCY);
-    const batchResults = await Promise.all(batch.map(fn));
-    results.push(...batchResults);
+    results.push(...await Promise.all(batch.map(fn)));
   }
   return results;
 }
 
 async function processBuyer(candidates, dateFrom, dateTo) {
-  if (!candidates.length) return { campaigns: [], totals: { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }, checked: 0 };
+  if (!candidates.length) {
+    return { campaigns: [], totals: { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }, checked: 0 };
+  }
 
-  const withStats = await runWithConcurrency(candidates, async (c) => {
+  // Pass 1 — scan all candidates in batches of SCAN_BATCH to find which groups have any activity
+  const batches = [];
+  for (let i = 0; i < candidates.length; i += SCAN_BATCH) {
+    batches.push(candidates.slice(i, i + SCAN_BATCH));
+  }
+
+  const scanResults = await Promise.all(
+    batches.map(async (batch) => {
+      const t = await fetchBatchTotal(batch.map((c) => c.id), dateFrom, dateTo);
+      const hasActivity = (t.clicks || 0) > 0 || (t.conversions || 0) > 0 || (t.revenue || 0) > 0;
+      return { batch, hasActivity };
+    })
+  );
+
+  // Pass 2 — fetch individual stats only for campaigns inside active batches
+  const activeCandidates = scanResults.filter((r) => r.hasActivity).flatMap((r) => r.batch);
+
+  if (!activeCandidates.length) {
+    return { campaigns: [], totals: { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }, checked: candidates.length };
+  }
+
+  const withStats = await runWithConcurrency(activeCandidates, async (c) => {
     const stats = await fetchCampaignStats(c.id, dateFrom, dateTo);
     return { id: c.id, title: c.title, ...stats };
   });
@@ -78,22 +113,14 @@ router.get('/media-buyers', async (req, res) => {
     const dateFrom = req.query.date_from || defaults.date_from;
     const dateTo = req.query.date_to || defaults.date_to;
 
-    // Only consider campaigns created within the date range + buffer
-    // (SMS campaigns are short-lived; this keeps the candidate set manageable)
-    const lookbackFrom = new Date(new Date(dateFrom).getTime() - LOOKBACK_BUFFER_DAYS * 86400000)
-      .toISOString()
-      .slice(0, 10);
-
     const campaigns = await fetchAllCampaigns();
 
     const grouped = { TK: [], MA: [], DS: [] };
     for (const c of campaigns) {
-      const createdAt = (c.created_at || '').slice(0, 10);
-      if (createdAt < lookbackFrom) continue;
-
+      const title = c.title.trim();
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
-        if (pattern.test(c.title)) {
-          grouped[buyer].push({ id: c.id, title: c.title, created_at: createdAt });
+        if (pattern.test(title)) {
+          grouped[buyer].push({ id: c.id, title: c.title.trim() });
           break;
         }
       }
