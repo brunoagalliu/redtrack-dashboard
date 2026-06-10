@@ -40,13 +40,17 @@ async function init() {
 
     CREATE INDEX IF NOT EXISTS rt_campaign_stats_date ON rt_campaign_stats(stat_date);
     CREATE INDEX IF NOT EXISTS rt_campaigns_buyer     ON rt_campaigns(buyer);
-    CREATE INDEX IF NOT EXISTS rt_campaigns_vertical  ON rt_campaigns(vertical);
   `);
 
   // Migrate existing DBs that pre-date the vertical/platform columns
   await pool.query(`
     ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS vertical TEXT;
     ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS platform TEXT;
+  `);
+
+  // Index after column is guaranteed to exist
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS rt_campaigns_vertical ON rt_campaigns(vertical);
   `);
 
   await pool.query(`
