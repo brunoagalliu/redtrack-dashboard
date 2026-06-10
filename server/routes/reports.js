@@ -6,6 +6,7 @@ const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i };
 const CALL_INTERVAL_MS = 3200; // 20 calls/min limit → ~3s between calls
+const MAX_HISTORY_DAYS = 90;
 
 // ── Sync state (in-memory; reset on server restart) ─────────────────────────
 const sync = {
@@ -28,6 +29,20 @@ function defaultDateRange() {
 }
 
 // ── Background sync ──────────────────────────────────────────────────────────
+async function cleanupOldStats() {
+  const cutoff = new Date(Date.now() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
+  const { rowCount } = await pool.query(
+    `DELETE FROM rt_campaign_stats WHERE stat_date < $1`,
+    [cutoff]
+  );
+  // Remove campaigns with no remaining stats
+  await pool.query(
+    `DELETE FROM rt_campaigns WHERE id NOT IN (SELECT DISTINCT campaign_id FROM rt_campaign_stats)`
+  );
+  console.log(`[cleanup] Removed stats before ${cutoff} (${rowCount} rows)`);
+  return { deleted: rowCount, cutoff };
+}
+
 async function runSync(dateFrom, dateTo) {
   if (sync.running) return;
   sync.running  = true;
@@ -41,6 +56,10 @@ async function runSync(dateFrom, dateTo) {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+    // Clamp dateFrom to 90-day window
+    const earliest = new Date(Date.now() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
+    if (dateFrom < earliest) dateFrom = earliest;
 
     // 1. Fetch all campaigns from RedTrack
     const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
@@ -158,6 +177,19 @@ router.post('/sync', (req, res) => {
 
 // Sync status
 router.get('/sync/status', (_req, res) => res.json(sync));
+
+// Manual cleanup trigger (also called by scheduled job in index.js)
+router.post('/cleanup', async (_req, res) => {
+  try {
+    const result = await cleanupOldStats();
+    res.json(result);
+  } catch (err) {
+    console.error('Cleanup error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports.cleanupOldStats = cleanupOldStats;
 
 // Media buyer report — reads from DB
 router.get('/media-buyers', async (req, res) => {

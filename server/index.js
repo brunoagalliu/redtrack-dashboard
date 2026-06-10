@@ -15,6 +15,7 @@ const sourcesRouter = require('./routes/sources');
 const networksRouter = require('./routes/networks');
 const filterOptionsRouter = require('./routes/filter-options');
 const reportsRouter = require('./routes/reports');
+const { cleanupOldStats } = require('./routes/reports');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -65,8 +66,17 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+function scheduleDailyCleanup() {
+  // Run once at startup to catch any overdue rows, then every 24 hours
+  cleanupOldStats().catch((err) => console.error('Startup cleanup failed:', err.message));
+  setInterval(() => {
+    cleanupOldStats().catch((err) => console.error('Scheduled cleanup failed:', err.message));
+  }, 24 * 60 * 60 * 1000);
+}
+
 initDb()
   .then(() => {
+    scheduleDailyCleanup();
     app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
   })
   .catch((err) => {
