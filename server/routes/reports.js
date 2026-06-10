@@ -39,6 +39,9 @@ async function runSync(dateFrom, dateTo) {
   sync.error    = null;
 
   try {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
     // 1. Fetch all campaigns from RedTrack
     const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
     const campaigns = data.items || [];
@@ -58,18 +61,7 @@ async function runSync(dateFrom, dateTo) {
       }
     }
 
-    // 3. Skip campaigns already synced for this date range
-    const { rows: alreadySynced } = await pool.query(
-      `SELECT DISTINCT campaign_id FROM rt_campaign_stats
-       WHERE stat_date BETWEEN $1 AND $2`,
-      [dateFrom, dateTo]
-    );
-    const syncedIds = new Set(alreadySynced.map((r) => r.campaign_id));
-    const toSync = buyerCampaigns.filter((c) => !syncedIds.has(c.id));
-
-    sync.total = toSync.length;
-
-    // 4. Upsert campaign metadata
+    // 3. Upsert campaign metadata
     for (const c of buyerCampaigns) {
       await pool.query(
         `INSERT INTO rt_campaigns (id, title, buyer, created_at)
@@ -79,22 +71,38 @@ async function runSync(dateFrom, dateTo) {
       );
     }
 
-    // 5. Fetch & store daily stats per campaign (rate-limited)
-    let lastCall = 0;
-    for (let i = 0; i < toSync.length; i++) {
-      const c = toSync[i];
+    const ids = buyerCampaigns.map((c) => c.id);
 
+    // 4. Historical pass (dateFrom → yesterday): skip campaigns already in DB — past data never changes
+    const historicalTo = dateTo < today ? dateTo : yesterday;
+    let toSyncHistorical = [];
+    if (dateFrom <= historicalTo) {
+      const { rows: alreadySynced } = await pool.query(
+        `SELECT DISTINCT campaign_id FROM rt_campaign_stats
+         WHERE stat_date BETWEEN $1 AND $2`,
+        [dateFrom, historicalTo]
+      );
+      const syncedIds = new Set(alreadySynced.map((r) => r.campaign_id));
+      toSyncHistorical = buyerCampaigns.filter((c) => !syncedIds.has(c.id));
+    }
+
+    // 5. Today's pass: always refresh all campaigns (live data)
+    const todayInRange = dateTo >= today;
+    const toSyncToday = todayInRange ? buyerCampaigns : [];
+
+    sync.total = toSyncHistorical.length + toSyncToday.length;
+
+    let lastCall = 0;
+
+    async function fetchAndStore(c, from, to) {
       const wait = Math.max(0, CALL_INTERVAL_MS - (Date.now() - lastCall));
       if (wait > 0) await sleep(wait);
       lastCall = Date.now();
-
       try {
         const { data: report } = await redtrack.get('/report', {
-          params: { date_from: dateFrom, date_to: dateTo, campaign_id: c.id, per: 1000 },
+          params: { date_from: from, date_to: to, campaign_id: c.id, per: 1000 },
         });
-
         const rows = Array.isArray(report) ? report : (report?.items || []);
-
         for (const row of rows) {
           if (!row.date || (!row.clicks && !row.conversions && !row.revenue)) continue;
           await pool.query(
@@ -106,11 +114,19 @@ async function runSync(dateFrom, dateTo) {
             [c.id, row.date, row.clicks||0, row.conversions||0, row.cost||0, row.revenue||0, row.profit||0]
           );
         }
-      } catch {
-        // silently skip individual campaign failures
-      }
+      } catch { /* silently skip individual campaign failures */ }
+    }
 
+    // Historical sync
+    for (let i = 0; i < toSyncHistorical.length; i++) {
+      await fetchAndStore(toSyncHistorical[i], dateFrom, historicalTo);
       sync.processed = i + 1;
+    }
+
+    // Today sync
+    for (let i = 0; i < toSyncToday.length; i++) {
+      await fetchAndStore(toSyncToday[i], today, today);
+      sync.processed = toSyncHistorical.length + i + 1;
     }
 
     sync.status = 'complete';
