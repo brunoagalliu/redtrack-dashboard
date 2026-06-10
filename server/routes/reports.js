@@ -189,7 +189,6 @@ router.post('/cleanup', async (_req, res) => {
   }
 });
 
-module.exports.cleanupOldStats = cleanupOldStats;
 
 // Media buyer report — reads from DB
 router.get('/media-buyers', async (req, res) => {
@@ -247,3 +246,4 @@ router.get('/media-buyers', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.cleanupOldStats = cleanupOldStats;
