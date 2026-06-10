@@ -5,11 +5,11 @@ const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i };
 const CONCURRENCY = 25;
-const LOOKBACK_BUFFER_DAYS = 30; // extra days before date_from to catch still-running campaigns
+const LOOKBACK_BUFFER_DAYS = 90; // extra days before date_from to catch still-running campaigns
 
 function defaultDateRange() {
   const to = new Date();
-  const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   return {
     date_from: from.toISOString().slice(0, 10),
     date_to: to.toISOString().slice(0, 10),

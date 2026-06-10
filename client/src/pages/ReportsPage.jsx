@@ -116,11 +116,11 @@ function BuyerTable({ buyer, data }) {
 
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
+  const [dateFrom, setDateFrom] = useState(sevenDaysAgo);
   const [dateTo, setDateTo] = useState(today);
-  const [applied, setApplied] = useState({ date_from: thirtyDaysAgo, date_to: today });
+  const [applied, setApplied] = useState({ date_from: sevenDaysAgo, date_to: today });
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['reports', 'media-buyers', applied.date_from, applied.date_to],
