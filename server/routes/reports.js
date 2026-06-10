@@ -23,12 +23,17 @@ const sync = {
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 // Parse "TK - Ranhog - PAYDAY_LMP_..." → { buyer:'TK', platform:'Ranhog', vertical:'PAYDAY' }
-function parseCampaignTitle(rawTitle) {
+// Vertical is found by scanning all tokens against the known verticals list from the DB.
+function parseCampaignTitle(rawTitle, knownVerticals) {
   const title = rawTitle.trim();
   const parts = title.split(/\s+-\s+/);
   const buyer    = parts[0]?.trim().toUpperCase() || null;
   const platform = parts[1]?.trim() || null;
-  const vertical = parts[2]?.split('_')[0]?.trim().toUpperCase() || null;
+
+  // Scan the full title for any known vertical keyword (split by spaces, underscores, hyphens)
+  const tokens = title.toUpperCase().split(/[\s_]+/);
+  const vertical = tokens.find((t) => knownVerticals.has(t)) || null;
+
   return { buyer, platform, vertical };
 }
 
@@ -82,11 +87,15 @@ async function runSync(dateFrom, dateTo) {
     const earliest = new Date(Date.now() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
     if (dateFrom < earliest) dateFrom = earliest;
 
-    // 1. Fetch all campaigns from RedTrack
+    // 1. Load known verticals from DB
+    const { rows: vRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'vertical'`);
+    const knownVerticals = new Set(vRows.map((r) => r.value.toUpperCase()));
+
+    // 2. Fetch all campaigns from RedTrack
     const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
     const campaigns = data.items || [];
 
-    // 2. Filter to buyer campaigns created in last 90 days (active set)
+    // 3. Filter to buyer campaigns created in last 90 days (active set)
     const cutoff = new Date(new Date(dateFrom).getTime() - 90 * 86400000).toISOString().slice(0, 10);
     const buyerCampaigns = [];
     for (const c of campaigns) {
@@ -95,14 +104,14 @@ async function runSync(dateFrom, dateTo) {
       if (createdAt < cutoff) continue;
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
         if (pattern.test(title)) {
-          const parsed = parseCampaignTitle(title);
+          const parsed = parseCampaignTitle(title, knownVerticals);
           buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, created_at: createdAt });
           break;
         }
       }
     }
 
-    // 3. Upsert campaign metadata
+    // 4. Upsert campaign metadata
     for (const c of buyerCampaigns) {
       await pool.query(
         `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, created_at)

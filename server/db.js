@@ -94,6 +94,8 @@ async function init() {
       ['vertical', 'AV'],
       ['vertical', 'DEBT'],
       ['vertical', 'CLINICAL'],
+      ['vertical', 'PAYDAY'],
+      ['vertical', 'GLP1'],
     ];
     for (const [list, value] of defaults) {
       await pool.query(
@@ -101,6 +103,14 @@ async function init() {
         [list, value]
       );
     }
+  }
+
+  // Always ensure new verticals exist (runs on every startup, safe to re-run)
+  for (const v of ['PAYDAY', 'GLP1']) {
+    await pool.query(
+      `INSERT INTO list_items (list, value) VALUES ('vertical', $1) ON CONFLICT DO NOTHING`,
+      [v]
+    );
   }
 
   const { rows: existingPartners } = await pool.query(`SELECT COUNT(*) FROM partners`);
