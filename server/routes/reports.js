@@ -22,6 +22,16 @@ const sync = {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// Parse "TK - Ranhog - PAYDAY_LMP_..." → { buyer:'TK', platform:'Ranhog', vertical:'PAYDAY' }
+function parseCampaignTitle(rawTitle) {
+  const title = rawTitle.trim();
+  const parts = title.split(/\s+-\s+/);
+  const buyer    = parts[0]?.trim().toUpperCase() || null;
+  const platform = parts[1]?.trim() || null;
+  const vertical = parts[2]?.split('_')[0]?.trim().toUpperCase() || null;
+  return { buyer, platform, vertical };
+}
+
 function defaultDateRange() {
   const to = new Date();
   const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -85,7 +95,8 @@ async function runSync(dateFrom, dateTo) {
       if (createdAt < cutoff) continue;
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
         if (pattern.test(title)) {
-          buyerCampaigns.push({ id: c.id, title, buyer, created_at: createdAt });
+          const parsed = parseCampaignTitle(title);
+          buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, created_at: createdAt });
           break;
         }
       }
@@ -94,10 +105,10 @@ async function runSync(dateFrom, dateTo) {
     // 3. Upsert campaign metadata
     for (const c of buyerCampaigns) {
       await pool.query(
-        `INSERT INTO rt_campaigns (id, title, buyer, created_at)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, synced_at=NOW()`,
-        [c.id, c.title, c.buyer, c.created_at || null]
+        `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, vertical=$4, platform=$5, synced_at=NOW()`,
+        [c.id, c.title, c.buyer, c.vertical || null, c.platform || null, c.created_at || null]
       );
     }
 
@@ -263,6 +274,60 @@ router.get('/media-buyers', async (req, res) => {
     });
   } catch (err) {
     console.error('Report query error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Verticals report — reads from DB
+router.get('/verticals', async (req, res) => {
+  try {
+    const defaults = defaultDateRange();
+    const dateFrom = req.query.date_from || defaults.date_from;
+    const dateTo   = req.query.date_to   || defaults.date_to;
+
+    const { rows } = await pool.query(
+      `SELECT
+         c.vertical,
+         c.id,
+         c.title,
+         c.buyer,
+         COALESCE(SUM(s.clicks),0)::int       AS clicks,
+         COALESCE(SUM(s.conversions),0)::int  AS conversions,
+         COALESCE(SUM(s.cost),0)              AS cost,
+         COALESCE(SUM(s.revenue),0)           AS revenue,
+         COALESCE(SUM(s.profit),0)            AS profit
+       FROM rt_campaigns c
+       JOIN rt_campaign_stats s ON s.campaign_id = c.id
+       WHERE c.vertical IS NOT NULL
+         AND s.stat_date BETWEEN $1 AND $2
+       GROUP BY c.vertical, c.id, c.title, c.buyer
+       ORDER BY c.vertical, clicks DESC`,
+      [dateFrom, dateTo]
+    );
+
+    // Group by vertical
+    const verticals = {};
+    for (const r of rows) {
+      if (!verticals[r.vertical]) verticals[r.vertical] = { campaigns: [], totals: { clicks:0, conversions:0, cost:0, revenue:0, profit:0 } };
+      const stats = {
+        id: r.id, title: r.title, buyer: r.buyer,
+        clicks: Number(r.clicks), conversions: Number(r.conversions),
+        cost: Number(r.cost), revenue: Number(r.revenue), profit: Number(r.profit),
+      };
+      verticals[r.vertical].campaigns.push(stats);
+      verticals[r.vertical].totals.clicks      += stats.clicks;
+      verticals[r.vertical].totals.conversions += stats.conversions;
+      verticals[r.vertical].totals.cost        += stats.cost;
+      verticals[r.vertical].totals.revenue     += stats.revenue;
+      verticals[r.vertical].totals.profit      += stats.profit;
+    }
+
+    // Also return distinct vertical names for the filter dropdown
+    const verticalNames = Object.keys(verticals).sort();
+
+    res.json({ date_from: dateFrom, date_to: dateTo, synced_at: sync.lastSyncedAt, verticals, verticalNames });
+  } catch (err) {
+    console.error('Verticals query error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

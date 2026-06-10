@@ -21,6 +21,8 @@ async function init() {
       id         TEXT PRIMARY KEY,
       title      TEXT NOT NULL,
       buyer      TEXT,
+      vertical   TEXT,
+      platform   TEXT,
       created_at TEXT,
       synced_at  TIMESTAMP DEFAULT NOW()
     );
@@ -38,7 +40,16 @@ async function init() {
 
     CREATE INDEX IF NOT EXISTS rt_campaign_stats_date ON rt_campaign_stats(stat_date);
     CREATE INDEX IF NOT EXISTS rt_campaigns_buyer     ON rt_campaigns(buyer);
+    CREATE INDEX IF NOT EXISTS rt_campaigns_vertical  ON rt_campaigns(vertical);
+  `);
 
+  // Migrate existing DBs that pre-date the vertical/platform columns
+  await pool.query(`
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS vertical TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS platform TEXT;
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS list_items (
       id   SERIAL PRIMARY KEY,
       list TEXT NOT NULL,

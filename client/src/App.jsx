@@ -1,9 +1,10 @@
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useMatch } from 'react-router-dom';
 import CampaignListPage from './pages/CampaignListPage';
 import CampaignCreatePage from './pages/CampaignCreatePage';
 import CampaignEditPage from './pages/CampaignEditPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import ReportsPage from './pages/ReportsPage';
+import VerticalsPage from './pages/VerticalsPage';
 import LoginPage from './pages/LoginPage';
 import { getToken, clearToken } from './lib/api';
 
@@ -12,11 +13,20 @@ function RequireAuth({ children }) {
 }
 
 function Sidebar() {
+  const inReports = useMatch('/reports/*');
+
   const linkClass = ({ isActive }) =>
     `flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
       isActive
         ? 'bg-blue-600 text-white'
         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+    }`;
+
+  const subLinkClass = ({ isActive }) =>
+    `flex items-center gap-2 pl-9 pr-3 py-1.5 rounded-md text-sm transition-colors ${
+      isActive
+        ? 'text-blue-600 font-medium'
+        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
     }`;
 
   function handleLogout() {
@@ -38,13 +48,27 @@ function Sidebar() {
           </svg>
           Campaigns
         </NavLink>
-        <NavLink to="/reports" className={linkClass}>
+
+        {/* Reports parent link */}
+        <NavLink to="/reports/media-buyers" className={({ isActive }) =>
+          `flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+            inReports ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          }`
+        }>
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           Reports
         </NavLink>
+
+        {/* Sub-nav shown when inside /reports */}
+        {inReports && (
+          <div className="space-y-0.5">
+            <NavLink to="/reports/media-buyers" className={subLinkClass}>Media Buyers</NavLink>
+            <NavLink to="/reports/verticals" className={subLinkClass}>Verticals</NavLink>
+          </div>
+        )}
       </nav>
       <button
         onClick={handleLogout}
@@ -71,7 +95,9 @@ function AppLayout() {
           <Route path="/campaigns/new" element={<CampaignCreatePage />} />
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
           <Route path="/campaigns/:id/edit" element={<CampaignEditPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/reports" element={<Navigate to="/reports/media-buyers" replace />} />
+          <Route path="/reports/media-buyers" element={<ReportsPage />} />
+          <Route path="/reports/verticals" element={<VerticalsPage />} />
         </Routes>
       </main>
     </div>
