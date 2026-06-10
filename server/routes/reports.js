@@ -1,102 +1,199 @@
 const express = require('express');
 const redtrack = require('../redtrack');
+const { pool } = require('../db');
 
 const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i };
-const SCAN_BATCH = 50;
-const CALL_INTERVAL_MS = 3100; // 20 calls/min = 1 every 3s; 3.1s gives a small safety margin
+const CALL_INTERVAL_MS = 3200; // 20 calls/min limit → ~3s between calls
 
-// In-memory cache: key → { data, expires }
-const cache = new Map();
+// ── Sync state (in-memory; reset on server restart) ─────────────────────────
+const sync = {
+  running: false,
+  status: 'idle',       // idle | running | complete | error
+  processed: 0,
+  total: 0,
+  startedAt: null,
+  completedAt: null,
+  lastSyncedAt: null,
+  error: null,
+};
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 function defaultDateRange() {
   const to = new Date();
   const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  return {
-    date_from: from.toISOString().slice(0, 10),
-    date_to: to.toISOString().slice(0, 10),
-  };
+  return { date_from: from.toISOString().slice(0, 10), date_to: to.toISOString().slice(0, 10) };
 }
 
-async function fetchAllCampaigns() {
-  const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
-  return data.items || [];
-}
+// ── Background sync ──────────────────────────────────────────────────────────
+async function runSync(dateFrom, dateTo) {
+  if (sync.running) return;
+  sync.running  = true;
+  sync.status   = 'running';
+  sync.processed = 0;
+  sync.total    = 0;
+  sync.startedAt = new Date();
+  sync.completedAt = null;
+  sync.error    = null;
 
-// Rate-limited single report call — returns the `total` aggregate for provided campaign IDs
-let lastCallTime = 0;
-async function rateLimitedBatchTotal(ids, dateFrom, dateTo) {
-  const wait = Math.max(0, CALL_INTERVAL_MS - (Date.now() - lastCallTime));
-  if (wait > 0) await sleep(wait);
-  lastCallTime = Date.now();
   try {
-    const { data } = await redtrack.get('/report', {
-      params: { date_from: dateFrom, date_to: dateTo, campaign_id: ids.join(','), total: 1, per: 1 },
-    });
-    return data?.total || {};
-  } catch {
-    return {};
+    // 1. Fetch all campaigns from RedTrack
+    const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
+    const campaigns = data.items || [];
+
+    // 2. Filter to buyer campaigns created in last 90 days (active set)
+    const cutoff = new Date(new Date(dateFrom).getTime() - 90 * 86400000).toISOString().slice(0, 10);
+    const buyerCampaigns = [];
+    for (const c of campaigns) {
+      const title = c.title.trim();
+      const createdAt = (c.created_at || '').slice(0, 10);
+      if (createdAt < cutoff) continue;
+      for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
+        if (pattern.test(title)) {
+          buyerCampaigns.push({ id: c.id, title, buyer, created_at: createdAt });
+          break;
+        }
+      }
+    }
+
+    // 3. Skip campaigns already synced for this date range
+    const { rows: alreadySynced } = await pool.query(
+      `SELECT DISTINCT campaign_id FROM rt_campaign_stats
+       WHERE stat_date BETWEEN $1 AND $2`,
+      [dateFrom, dateTo]
+    );
+    const syncedIds = new Set(alreadySynced.map((r) => r.campaign_id));
+    const toSync = buyerCampaigns.filter((c) => !syncedIds.has(c.id));
+
+    sync.total = toSync.length;
+
+    // 4. Upsert campaign metadata
+    for (const c of buyerCampaigns) {
+      await pool.query(
+        `INSERT INTO rt_campaigns (id, title, buyer, created_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, synced_at=NOW()`,
+        [c.id, c.title, c.buyer, c.created_at || null]
+      );
+    }
+
+    // 5. Fetch & store daily stats per campaign (rate-limited)
+    let lastCall = 0;
+    for (let i = 0; i < toSync.length; i++) {
+      const c = toSync[i];
+
+      const wait = Math.max(0, CALL_INTERVAL_MS - (Date.now() - lastCall));
+      if (wait > 0) await sleep(wait);
+      lastCall = Date.now();
+
+      try {
+        const { data: report } = await redtrack.get('/report', {
+          params: { date_from: dateFrom, date_to: dateTo, campaign_id: c.id, per: 1000 },
+        });
+
+        const rows = Array.isArray(report) ? report : (report?.items || []);
+
+        for (const row of rows) {
+          if (!row.date || (!row.clicks && !row.conversions && !row.revenue)) continue;
+          await pool.query(
+            `INSERT INTO rt_campaign_stats
+               (campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT (campaign_id, stat_date) DO UPDATE SET
+               clicks=$3, conversions=$4, cost=$5, revenue=$6, profit=$7`,
+            [c.id, row.date, row.clicks||0, row.conversions||0, row.cost||0, row.revenue||0, row.profit||0]
+          );
+        }
+      } catch {
+        // silently skip individual campaign failures
+      }
+
+      sync.processed = i + 1;
+    }
+
+    sync.status = 'complete';
+    sync.completedAt = new Date();
+    sync.lastSyncedAt = new Date();
+  } catch (err) {
+    sync.status = 'error';
+    sync.error  = err.message;
+  } finally {
+    sync.running = false;
   }
 }
 
-async function getBuyerStats(campaignIds, dateFrom, dateTo) {
-  const acc = { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 };
-  for (let i = 0; i < campaignIds.length; i += SCAN_BATCH) {
-    const t = await rateLimitedBatchTotal(campaignIds.slice(i, i + SCAN_BATCH), dateFrom, dateTo);
-    acc.clicks      += t.clicks      || 0;
-    acc.conversions += t.conversions || 0;
-    acc.cost        += t.cost        || 0;
-    acc.revenue     += t.revenue     || 0;
-    acc.profit      += t.profit      || 0;
-  }
-  return acc;
-}
+// ── Routes ───────────────────────────────────────────────────────────────────
 
+// Trigger sync
+router.post('/sync', (req, res) => {
+  const defaults = defaultDateRange();
+  const dateFrom = req.body?.date_from || defaults.date_from;
+  const dateTo   = req.body?.date_to   || defaults.date_to;
+
+  if (sync.running) return res.json({ status: 'already_running', ...sync });
+
+  // Fire-and-forget
+  runSync(dateFrom, dateTo).catch((err) => console.error('Sync error:', err.message));
+
+  res.status(202).json({ status: 'started', dateFrom, dateTo });
+});
+
+// Sync status
+router.get('/sync/status', (_req, res) => res.json(sync));
+
+// Media buyer report — reads from DB
 router.get('/media-buyers', async (req, res) => {
   try {
     const defaults = defaultDateRange();
     const dateFrom = req.query.date_from || defaults.date_from;
     const dateTo   = req.query.date_to   || defaults.date_to;
 
-    const cacheKey = `mb:${dateFrom}:${dateTo}`;
-    const hit = cache.get(cacheKey);
-    if (hit && hit.expires > Date.now()) return res.json(hit.data);
+    const { rows } = await pool.query(
+      `SELECT
+         c.buyer,
+         c.id,
+         c.title,
+         COALESCE(SUM(s.clicks),0)::int       AS clicks,
+         COALESCE(SUM(s.conversions),0)::int  AS conversions,
+         COALESCE(SUM(s.cost),0)              AS cost,
+         COALESCE(SUM(s.revenue),0)           AS revenue,
+         COALESCE(SUM(s.profit),0)            AS profit
+       FROM rt_campaigns c
+       JOIN rt_campaign_stats s ON s.campaign_id = c.id
+       WHERE c.buyer IS NOT NULL
+         AND s.stat_date BETWEEN $1 AND $2
+       GROUP BY c.buyer, c.id, c.title
+       ORDER BY c.buyer, clicks DESC`,
+      [dateFrom, dateTo]
+    );
 
-    const campaigns = await fetchAllCampaigns();
-
-    const grouped = { TK: [], MA: [], DS: [] };
-    for (const c of campaigns) {
-      const title = c.title.trim();
-      for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
-        if (pattern.test(title)) {
-          grouped[buyer].push({ id: c.id, title });
-          break;
-        }
-      }
+    // Group by buyer
+    const buyers = {};
+    for (const r of rows) {
+      if (!buyers[r.buyer]) buyers[r.buyer] = { campaigns: [], totals: { clicks:0, conversions:0, cost:0, revenue:0, profit:0 } };
+      const stats = {
+        id: r.id, title: r.title,
+        clicks: Number(r.clicks), conversions: Number(r.conversions),
+        cost: Number(r.cost), revenue: Number(r.revenue), profit: Number(r.profit),
+      };
+      buyers[r.buyer].campaigns.push(stats);
+      buyers[r.buyer].totals.clicks      += stats.clicks;
+      buyers[r.buyer].totals.conversions += stats.conversions;
+      buyers[r.buyer].totals.cost        += stats.cost;
+      buyers[r.buyer].totals.revenue     += stats.revenue;
+      buyers[r.buyer].totals.profit      += stats.profit;
     }
 
-    // Sequential rate-limited calls — all three buyers share the same rate-limit token
-    const tkStats = await getBuyerStats(grouped.TK.map((c) => c.id), dateFrom, dateTo);
-    const maStats = await getBuyerStats(grouped.MA.map((c) => c.id), dateFrom, dateTo);
-    const dsStats = await getBuyerStats(grouped.DS.map((c) => c.id), dateFrom, dateTo);
-
-    const result = {
+    res.json({
       date_from: dateFrom,
       date_to:   dateTo,
-      buyers: {
-        TK: { ...tkStats, campaign_count: grouped.TK.length },
-        MA: { ...maStats, campaign_count: grouped.MA.length },
-        DS: { ...dsStats, campaign_count: grouped.DS.length },
-      },
-    };
-
-    cache.set(cacheKey, { data: result, expires: Date.now() + 10 * 60 * 1000 });
-    res.json(result);
+      synced_at: sync.lastSyncedAt,
+      buyers,
+    });
   } catch (err) {
-    console.error('Media buyer report error:', err.message);
+    console.error('Report query error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

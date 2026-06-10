@@ -7,6 +7,28 @@ const pool = new Pool({
 
 async function init() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS rt_campaigns (
+      id         TEXT PRIMARY KEY,
+      title      TEXT NOT NULL,
+      buyer      TEXT,
+      created_at TEXT,
+      synced_at  TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS rt_campaign_stats (
+      campaign_id  TEXT    NOT NULL REFERENCES rt_campaigns(id) ON DELETE CASCADE,
+      stat_date    DATE    NOT NULL,
+      clicks       INTEGER NOT NULL DEFAULT 0,
+      conversions  INTEGER NOT NULL DEFAULT 0,
+      cost         NUMERIC(14,4) NOT NULL DEFAULT 0,
+      revenue      NUMERIC(14,4) NOT NULL DEFAULT 0,
+      profit       NUMERIC(14,4) NOT NULL DEFAULT 0,
+      PRIMARY KEY (campaign_id, stat_date)
+    );
+
+    CREATE INDEX IF NOT EXISTS rt_campaign_stats_date ON rt_campaign_stats(stat_date);
+    CREATE INDEX IF NOT EXISTS rt_campaigns_buyer     ON rt_campaigns(buyer);
+
     CREATE TABLE IF NOT EXISTS list_items (
       id   SERIAL PRIMARY KEY,
       list TEXT NOT NULL,

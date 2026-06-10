@@ -77,6 +77,8 @@ export const api = {
     const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
     return request(`/reports/media-buyers${qs ? `?${qs}` : ''}`);
   },
+  getSyncStatus: () => request('/reports/sync/status'),
+  triggerSync: (params = {}) => request('/reports/sync', { method: 'POST', body: JSON.stringify(params) }),
 
       searchDataSources: async (searchKey, page = 0, size = 10, sort = 'email,asc', searchField = 'email') => {
     try {
