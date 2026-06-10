@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
@@ -33,7 +33,13 @@ function SortIcon({ col, sortKey, sortDir }) {
 
 function SyncButton({ dateFrom, dateTo, onSynced }) {
   const [state, setState] = useState(null);
-  const [polling, setPolling] = useState(false);
+  const pollRef = useRef(null);
+
+  function stopPolling() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }
+
+  useEffect(() => () => stopPolling(), []);
 
   async function startSync() {
     try {
@@ -43,27 +49,22 @@ function SyncButton({ dateFrom, dateTo, onSynced }) {
         body: JSON.stringify({ date_from: dateFrom, date_to: dateTo }),
       });
       setState(await res.json());
-      setPolling(true);
+      pollRef.current = setInterval(async () => {
+        try {
+          const r = await fetch('/api/reports/sync/status', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` },
+          });
+          const data = await r.json();
+          setState(data);
+          if (data.status === 'complete' || data.status === 'error') {
+            stopPolling();
+            if (data.status === 'complete') onSynced();
+          }
+        } catch { stopPolling(); }
+      }, 2000);
     } catch {
       setState({ status: 'error', error: 'Failed to start sync' });
     }
-  }
-
-  // Poll via React Query-style effect
-  if (polling && state?.status === 'running') {
-    setTimeout(async () => {
-      try {
-        const res = await fetch('/api/reports/sync/status', {
-          headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` },
-        });
-        const data = await res.json();
-        setState(data);
-        if (data.status === 'complete' || data.status === 'error') {
-          setPolling(false);
-          if (data.status === 'complete') onSynced();
-        }
-      } catch { setPolling(false); }
-    }, 2000);
   }
 
   const running = state?.status === 'running';
@@ -125,6 +126,7 @@ export default function ReportsPage() {
 
   function applyRange() {
     setApplied({ date_from: dateFrom, date_to: dateTo });
+    setPage(0);
   }
 
   function onSynced() {
