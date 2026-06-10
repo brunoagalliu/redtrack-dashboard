@@ -72,6 +72,12 @@ export const api = {
   // Filter options
   getFilterOptions: (type, params) => request(`/filter-options/${type}${params ? '?' + new URLSearchParams(params).toString() : ''}`),
 
+  // Reports
+  getMediaBuyerReport: (params = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
+    return request(`/reports/media-buyers${qs ? `?${qs}` : ''}`);
+  },
+
       searchDataSources: async (searchKey, page = 0, size = 10, sort = 'email,asc', searchField = 'email') => {
     try {
       const params = new URLSearchParams();
