@@ -102,6 +102,8 @@ export default function ReportsPage() {
   const [buyerFilter, setBuyerFilter] = useState('ALL');
   const [sortKey, setSortKey] = useState('clicks');
   const [sortDir, setSortDir] = useState('desc');
+  const [page, setPage] = useState(0);
+  const [perPage, setPerPage] = useState(50);
 
   const queryClient = useQueryClient();
 
@@ -137,6 +139,12 @@ export default function ReportsPage() {
       setSortKey(col);
       setSortDir('desc');
     }
+    setPage(0);
+  }
+
+  function handleBuyerFilter(val) {
+    setBuyerFilter(val);
+    setPage(0);
   }
 
   // Flatten all campaigns into one list
@@ -167,6 +175,9 @@ export default function ReportsPage() {
     }),
     { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }
   ), [filtered]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const paged = filtered.slice(page * perPage, page * perPage + perPage);
 
   function Th({ col, label, right }) {
     return (
@@ -202,7 +213,7 @@ export default function ReportsPage() {
         </div>
         <div>
           <label className="label">Buyer</label>
-          <select value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)} className="input">
+          <select value={buyerFilter} onChange={(e) => handleBuyerFilter(e.target.value)} className="input">
             <option value="ALL">All buyers</option>
             {BUYERS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
@@ -258,7 +269,7 @@ export default function ReportsPage() {
               return (
                 <button
                   key={b}
-                  onClick={() => setBuyerFilter(buyerFilter === b ? 'ALL' : b)}
+                  onClick={() => handleBuyerFilter(buyerFilter === b ? 'ALL' : b)}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
                     buyerFilter === b || buyerFilter === 'ALL'
                       ? BUYER_COLORS[b] + ' border-transparent'
@@ -287,7 +298,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((c) => (
+                {paged.map((c) => (
                   <tr key={`${c.buyer}-${c.id}`} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${BUYER_COLORS[c.buyer]}`}>
@@ -323,8 +334,49 @@ export default function ReportsPage() {
             </table>
           </div>
 
-          <div className="px-4 py-2 border-t border-gray-100 text-xs text-gray-400">
-            {applied.date_from} → {applied.date_to}
+          <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span>{applied.date_from} → {applied.date_to}</span>
+              <span>·</span>
+              <span>{filtered.length} campaigns</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                <span>Rows</span>
+                <select
+                  value={perPage}
+                  onChange={(e) => { setPerPage(Number(e.target.value)); setPage(0); }}
+                  className="border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-700 bg-white"
+                >
+                  {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(0)}
+                  disabled={page === 0}
+                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                >«</button>
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                >‹</button>
+                <span className="px-3 py-1 text-xs text-gray-600">
+                  {page + 1} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                >›</button>
+                <button
+                  onClick={() => setPage(totalPages - 1)}
+                  disabled={page >= totalPages - 1}
+                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                >»</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
