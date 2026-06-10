@@ -4,45 +4,108 @@ import { api } from '../lib/api';
 
 const BUYERS = ['TK', 'MA', 'DS'];
 
-function fmt(n, decimals = 0) {
-  if (n == null) return '—';
-  return Number(n).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+const BUYER_COLORS = {
+  TK: 'bg-blue-100 text-blue-700',
+  MA: 'bg-purple-100 text-purple-700',
+  DS: 'bg-orange-100 text-orange-700',
+};
+
+function fmt(n) {
+  if (n == null || n === '') return '—';
+  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 function fmtMoney(n) {
-  if (n == null) return '—';
+  if (n == null || n === '') return '—';
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function StatCell({ value, money }) {
-  return (
-    <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-800">
-      {money ? fmtMoney(value) : fmt(value)}
-    </td>
-  );
-}
+function BuyerTable({ buyer, data }) {
+  const { campaigns = [], totals = {}, checked = 0 } = data || {};
 
-function CampaignList({ campaigns, buyer }) {
-  const [open, setOpen] = useState(false);
-  if (!campaigns?.length) return null;
   return (
-    <div className="mt-2">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="text-xs text-blue-600 hover:underline"
-      >
-        {open ? 'Hide' : 'Show'} {campaigns.length} campaigns
-      </button>
-      {open && (
-        <div className="mt-2 max-h-64 overflow-y-auto border border-gray-200 rounded-md">
-          <table className="w-full text-xs">
-            <tbody>
+    <div className="card overflow-hidden">
+      {/* Buyer header */}
+      <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold ${BUYER_COLORS[buyer]}`}>
+            {buyer}
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">{buyer}</p>
+            <p className="text-xs text-gray-400">
+              {campaigns.length} active campaign{campaigns.length !== 1 ? 's' : ''}
+              {checked > 0 && <span className="ml-1">· {checked} checked</span>}
+            </p>
+          </div>
+        </div>
+        {/* Buyer aggregate summary */}
+        <div className="hidden sm:flex items-center gap-6 text-right">
+          <div>
+            <p className="text-xs text-gray-400">Clicks</p>
+            <p className="text-sm font-semibold text-gray-800 tabular-nums">{fmt(totals.clicks)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Conversions</p>
+            <p className="text-sm font-semibold text-gray-800 tabular-nums">{fmt(totals.conversions)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Revenue</p>
+            <p className="text-sm font-semibold text-gray-800 tabular-nums">{fmtMoney(totals.revenue)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Profit</p>
+            <p className={`text-sm font-semibold tabular-nums ${(totals.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {fmtMoney(totals.profit)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {campaigns.length === 0 ? (
+        <div className="px-5 py-6 text-center text-sm text-gray-400">
+          No active campaigns in this period
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Campaign</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Clicks</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Conversions</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Spend</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Revenue</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Profit</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
               {campaigns.map((c) => (
-                <tr key={c.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                  <td className="px-3 py-1.5 font-mono text-gray-700 break-all">{c.title}</td>
+                <tr key={c.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5 text-xs font-mono text-gray-700 max-w-xs truncate" title={c.title}>
+                    {c.title}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.clicks)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.conversions)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.cost)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.revenue)}</td>
+                  <td className={`px-4 py-2.5 text-right tabular-nums text-sm font-medium ${(c.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {fmtMoney(c.profit)}
+                  </td>
                 </tr>
               ))}
+
+              {/* Totals row */}
+              <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
+                <td className="px-4 py-2.5 text-sm text-gray-900">Total</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.revenue)}</td>
+                <td className={`px-4 py-2.5 text-right tabular-nums text-sm font-bold ${(totals.profit || 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  {fmtMoney(totals.profit)}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -71,25 +134,25 @@ export default function ReportsPage() {
 
   const buyers = data?.buyers || {};
 
-  const totals = BUYERS.reduce(
+  const grandTotals = BUYERS.reduce(
     (acc, b) => {
-      const s = buyers[b] || {};
+      const t = buyers[b]?.totals || {};
       return {
-        clicks: acc.clicks + (s.clicks || 0),
-        conversions: acc.conversions + (s.conversions || 0),
-        cost: acc.cost + (s.cost || 0),
-        revenue: acc.revenue + (s.revenue || 0),
-        profit: acc.profit + (s.profit || 0),
+        clicks: acc.clicks + (t.clicks || 0),
+        conversions: acc.conversions + (t.conversions || 0),
+        cost: acc.cost + (t.cost || 0),
+        revenue: acc.revenue + (t.revenue || 0),
+        profit: acc.profit + (t.profit || 0),
       };
     },
     { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }
   );
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-7xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-        <p className="text-sm text-gray-500 mt-1">Media buyer performance report</p>
+        <p className="text-sm text-gray-500 mt-1">Active campaigns by media buyer · filters: &gt;10 clicks or ≥1 conversion or revenue &gt; 0</p>
       </div>
 
       {/* Date range picker */}
@@ -134,91 +197,46 @@ export default function ReportsPage() {
 
       {/* Loading skeleton */}
       {isLoading && (
-        <div className="card p-6">
-          <div className="animate-pulse space-y-3">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-10 bg-gray-100 rounded" />
-            ))}
-          </div>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="card p-6">
+              <div className="animate-pulse space-y-3">
+                <div className="h-8 bg-gray-100 rounded w-32" />
+                <div className="h-6 bg-gray-100 rounded" />
+                <div className="h-6 bg-gray-100 rounded" />
+                <div className="h-6 bg-gray-100 rounded" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Report table */}
+      {/* Buyer tables */}
       {!isLoading && data && (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Media Buyer
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Campaigns
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Clicks
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Conversions
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Spend
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Revenue
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Profit
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {BUYERS.map((buyer) => {
-                  const s = buyers[buyer] || {};
-                  return (
-                    <tr key={buyer} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div>
-                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-bold">
-                            {buyer}
-                          </span>
-                          <CampaignList campaigns={s.campaigns} buyer={buyer} />
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-500">
-                        {fmt(s.campaign_count)}
-                      </td>
-                      <StatCell value={s.clicks} />
-                      <StatCell value={s.conversions} />
-                      <StatCell value={s.cost} money />
-                      <StatCell value={s.revenue} money />
-                      <td className={`px-4 py-3 text-right tabular-nums text-sm font-medium ${(s.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {fmtMoney(s.profit)}
-                      </td>
-                    </tr>
-                  );
-                })}
+        <div className="space-y-6">
+          {BUYERS.map((buyer) => (
+            <BuyerTable key={buyer} buyer={buyer} data={buyers[buyer]} />
+          ))}
 
-                {/* Totals row */}
-                <tr className="bg-gray-50 font-semibold border-t-2 border-gray-300">
-                  <td className="px-4 py-3 text-sm text-gray-900">Total</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-500">
-                    {fmt(BUYERS.reduce((acc, b) => acc + (buyers[b]?.campaign_count || 0), 0))}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.revenue)}</td>
-                  <td className={`px-4 py-3 text-right tabular-nums text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                    {fmtMoney(totals.profit)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="px-4 py-2 border-t border-gray-100 text-xs text-gray-400">
-            Date range: {applied.date_from} → {applied.date_to}
+          {/* Grand totals card */}
+          <div className="card p-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">All Buyers · Grand Total</p>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              {[
+                { label: 'Clicks', value: fmt(grandTotals.clicks) },
+                { label: 'Conversions', value: fmt(grandTotals.conversions) },
+                { label: 'Spend', value: fmtMoney(grandTotals.cost) },
+                { label: 'Revenue', value: fmtMoney(grandTotals.revenue) },
+                { label: 'Profit', value: fmtMoney(grandTotals.profit), profit: true },
+              ].map(({ label, value, profit }) => (
+                <div key={label}>
+                  <p className="text-xs text-gray-400">{label}</p>
+                  <p className={`text-lg font-bold tabular-nums ${profit ? (grandTotals.profit >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-900'}`}>
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
