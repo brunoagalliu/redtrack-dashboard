@@ -73,8 +73,6 @@ function scheduleDailyCleanup() {
   }, 24 * 60 * 60 * 1000);
 }
 
-const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
-
 function scheduleAutoSync() {
   function triggerSync() {
     const today = new Date().toISOString().slice(0, 10);
@@ -83,11 +81,20 @@ function scheduleAutoSync() {
     runSync(earliest, today).catch((err) => console.error('[auto-sync] Failed:', err.message));
   }
 
-  // Delay first auto-sync by 2 min so startup tasks settle before kicking off a long job
+  function msUntilNext8am() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(8, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return next - now;
+  }
+
+  const delay = msUntilNext8am();
+  console.log(`[auto-sync] First sync scheduled in ${Math.round(delay / 60000)} min (8:00 AM)`);
   setTimeout(() => {
     triggerSync();
-    setInterval(triggerSync, SYNC_INTERVAL_MS);
-  }, 2 * 60 * 1000);
+    setInterval(triggerSync, 24 * 60 * 60 * 1000);
+  }, delay);
 }
 
 initDb()
