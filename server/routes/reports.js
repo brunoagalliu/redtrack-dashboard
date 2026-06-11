@@ -635,6 +635,44 @@ Keep it concise and practical — the team needs to act on this Monday morning.`
   }
 });
 
+// ── Offer API probe (temp — find correct grouping params) ────────────────────
+router.get('/probe/offers', async (req, res) => {
+  try {
+    // Pick a recent campaign from DB to test with
+    const { rows } = await pool.query(
+      `SELECT id, title FROM rt_campaigns WHERE buyer IS NOT NULL LIMIT 1`
+    );
+    if (!rows.length) return res.status(404).json({ error: 'No campaigns in DB yet' });
+    const campaign = rows[0];
+
+    const dateFrom = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const dateTo   = new Date().toISOString().slice(0, 10);
+
+    // Try four different offer-grouping param shapes RedTrack might support
+    const attempts = [
+      { label: 'group_by=offer',             params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 5, group_by: 'offer' } },
+      { label: 'group[]=offer',              params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 5, 'group[]': 'offer' } },
+      { label: 'group_by[]=offer_id',        params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 5, 'group_by[]': 'offer_id' } },
+      { label: 'type=offer',                 params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 5, type: 'offer' } },
+    ];
+
+    const results = [];
+    for (const attempt of attempts) {
+      try {
+        const { data } = await redtrack.get('/report', { params: attempt.params });
+        const sample = Array.isArray(data) ? data[0] : (data?.items?.[0] ?? data);
+        results.push({ label: attempt.label, status: 'ok', keys: sample ? Object.keys(sample) : [], sample });
+      } catch (err) {
+        results.push({ label: attempt.label, status: 'error', error: err.response?.data || err.message });
+      }
+    }
+
+    res.json({ campaign, dateFrom, dateTo, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.cleanupOldStats = cleanupOldStats;
 module.exports.runSync = runSync;
