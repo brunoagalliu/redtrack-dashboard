@@ -46,11 +46,26 @@ async function init() {
   await pool.query(`
     ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS vertical TEXT;
     ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS platform TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS route    TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS carrier  TEXT;
   `);
 
-  // Index after column is guaranteed to exist
+  // Indexes after columns are guaranteed to exist
   await pool.query(`
     CREATE INDEX IF NOT EXISTS rt_campaigns_vertical ON rt_campaigns(vertical);
+    CREATE INDEX IF NOT EXISTS rt_campaigns_route    ON rt_campaigns(route);
+    CREATE INDEX IF NOT EXISTS rt_campaigns_carrier  ON rt_campaigns(carrier);
+  `);
+
+  // AI recommendations cache
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rt_ai_report (
+      id           INT PRIMARY KEY DEFAULT 1,
+      generated_at TIMESTAMP,
+      period_days  INT,
+      content      TEXT,
+      data_json    JSONB
+    );
   `);
 
   await pool.query(`

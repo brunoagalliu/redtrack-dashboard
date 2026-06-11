@@ -1,6 +1,7 @@
 const express = require('express');
 const redtrack = require('../redtrack');
 const { pool } = require('../db');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const router = express.Router();
 
@@ -22,19 +23,49 @@ const sync = {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-// Parse "TK - Ranhog - PAYDAY_LMP_..." → { buyer:'TK', platform:'Ranhog', vertical:'PAYDAY' }
-// Vertical is found by scanning all tokens against the known verticals list from the DB.
+const KNOWN_ROUTES = new Map([
+  ['USMS', 'USMS'], ['UPM', 'USMS'], // UPM = USMS
+  ['RANHOG', 'Ranhog'],
+  ['INTERNAL', 'Internal'],
+  ['TECHSTAR', 'TechStar'],
+]);
+
+const CARRIER_MAP = new Map([
+  ['VZ', 'Verizon'],
+  ['ATT', 'AT&T'],
+  ['TMOB', 'T-Mobile'],
+]);
+
+// Tokenize a title using any combination of spaces, underscores, or hyphens as delimiters
+function tokenize(title) {
+  return title.toUpperCase().split(/[\s_\-]+/).filter(Boolean);
+}
+
+// Parse campaign title extracting buyer, vertical, route, and carrier.
+// Delimiters can be spaces, underscores, or hyphens — we scan tokens for known values.
 function parseCampaignTitle(rawTitle, knownVerticals) {
-  const title = rawTitle.trim();
-  const parts = title.split(/\s+-\s+/);
-  const buyer    = parts[0]?.trim().toUpperCase() || null;
-  const platform = parts[1]?.trim() || null;
+  const title  = rawTitle.trim();
+  const tokens = tokenize(title);
 
-  // Scan the full title for any known vertical keyword (split by spaces, underscores, hyphens)
-  const tokens = title.toUpperCase().split(/[\s_]+/);
-  const vertical = tokens.find((t) => knownVerticals.has(t)) || null;
+  // Buyer is the first token
+  const buyer = tokens[0] || null;
 
-  return { buyer, platform, vertical };
+  // Scan all tokens for known values
+  let vertical = null;
+  let route    = null;
+  let carrier  = null;
+
+  for (const t of tokens) {
+    if (!vertical && knownVerticals.has(t))    vertical = t;
+    if (!route    && KNOWN_ROUTES.has(t))      route    = KNOWN_ROUTES.get(t);
+    if (!carrier  && CARRIER_MAP.has(t))       carrier  = CARRIER_MAP.get(t);
+  }
+
+  // platform kept for backwards compat (second ` - ` segment if present)
+  const dashParts = title.split(/\s+-\s+/);
+  const platform  = dashParts.length >= 3 ? dashParts[1].trim() : null;
+
+  return { buyer, platform, vertical, route, carrier };
 }
 
 function defaultDateRange() {
@@ -105,7 +136,7 @@ async function runSync(dateFrom, dateTo) {
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
         if (pattern.test(title)) {
           const parsed = parseCampaignTitle(title, knownVerticals);
-          buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, created_at: createdAt });
+          buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, route: parsed.route, carrier: parsed.carrier, created_at: createdAt });
           break;
         }
       }
@@ -114,10 +145,10 @@ async function runSync(dateFrom, dateTo) {
     // 4. Upsert campaign metadata
     for (const c of buyerCampaigns) {
       await pool.query(
-        `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, vertical=$4, platform=$5, synced_at=NOW()`,
-        [c.id, c.title, c.buyer, c.vertical || null, c.platform || null, c.created_at || null]
+        `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, route, carrier, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, vertical=$4, platform=$5, route=$6, carrier=$7, synced_at=NOW()`,
+        [c.id, c.title, c.buyer, c.vertical || null, c.platform || null, c.route || null, c.carrier || null, c.created_at || null]
       );
     }
 
@@ -478,6 +509,126 @@ router.get('/insights', async (req, res) => {
     });
   } catch (err) {
     console.error('Insights error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET cached AI report
+router.get('/ai-recommendations', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM rt_ai_report WHERE id = 1`);
+    if (rows.length) return res.json(rows[0]);
+    res.json(null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST generate new AI report
+router.post('/ai-recommendations/generate', async (req, res) => {
+  try {
+    const days = parseInt(req.body?.days) || 14;
+    const today    = new Date().toISOString().slice(0, 10);
+    const dateFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+    // Aggregate: vertical × carrier × route combinations with stats
+    const { rows: combos } = await pool.query(`
+      SELECT
+        COALESCE(c.vertical, 'Unknown')                                 AS vertical,
+        COALESCE(c.carrier,  'All carriers')                            AS carrier,
+        COALESCE(c.route,    'Unknown')                                 AS route,
+        COUNT(DISTINCT c.id)::int                                       AS campaigns,
+        COALESCE(SUM(s.clicks),0)::int                                  AS clicks,
+        COALESCE(SUM(s.conversions),0)::int                             AS conversions,
+        COALESCE(SUM(s.cost),0)::numeric(14,2)                         AS cost,
+        COALESCE(SUM(s.revenue),0)::numeric(14,2)                      AS revenue,
+        COALESCE(SUM(s.profit),0)::numeric(14,2)                       AS profit,
+        CASE WHEN SUM(s.clicks) > 0
+             THEN ROUND((SUM(s.conversions)::numeric/SUM(s.clicks))*100,2)
+             ELSE 0 END                                                  AS cvr,
+        CASE WHEN SUM(s.cost) > 0
+             THEN ROUND(((SUM(s.revenue)-SUM(s.cost))/SUM(s.cost))*100,1)
+             ELSE 0 END                                                  AS roi
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats s ON s.campaign_id = c.id
+      WHERE c.buyer IS NOT NULL
+        AND s.stat_date BETWEEN $1 AND $2
+      GROUP BY c.vertical, c.carrier, c.route
+      HAVING SUM(s.clicks) > 50
+      ORDER BY profit DESC
+      LIMIT 60
+    `, [dateFrom, today]);
+
+    // Also pull per-buyer summary
+    const { rows: buyerRows } = await pool.query(`
+      SELECT
+        c.buyer,
+        COALESCE(SUM(s.clicks),0)::int       AS clicks,
+        COALESCE(SUM(s.conversions),0)::int  AS conversions,
+        COALESCE(SUM(s.cost),0)::numeric(14,2) AS cost,
+        COALESCE(SUM(s.revenue),0)::numeric(14,2) AS revenue,
+        COALESCE(SUM(s.profit),0)::numeric(14,2) AS profit
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats s ON s.campaign_id = c.id
+      WHERE c.buyer IS NOT NULL AND s.stat_date BETWEEN $1 AND $2
+      GROUP BY c.buyer ORDER BY profit DESC
+    `, [dateFrom, today]);
+
+    const dataJson = { period_days: days, date_from: dateFrom, date_to: today, combinations: combos, buyers: buyerRows };
+
+    // Build prompt
+    const comboTable = combos.slice(0, 40).map((r, i) =>
+      `${i+1}. Vertical:${r.vertical} | Carrier:${r.carrier} | Route:${r.route} | Campaigns:${r.campaigns} | Clicks:${r.clicks} | Conv:${r.conversions} | CVR:${r.cvr}% | Spend:$${r.cost} | Revenue:$${r.revenue} | Profit:$${r.profit} | ROI:${r.roi}%`
+    ).join('\n');
+
+    const buyerTable = buyerRows.map((r) =>
+      `${r.buyer}: Clicks:${r.clicks} | Conv:${r.conversions} | Spend:$${r.cost} | Revenue:$${r.revenue} | Profit:$${r.profit}`
+    ).join('\n');
+
+    const prompt = `You are analyzing SMS marketing campaign performance data for a media buying team. The team sends SMS campaigns across different verticals (GLP1, CLOUD, AUTO, PAYDAY, etc.), carriers (Verizon, AT&T, T-Mobile, All carriers), and routes (USMS, Ranhog, Internal, TechStar).
+
+Here is performance data for the last ${days} days (${dateFrom} to ${today}):
+
+MEDIA BUYER SUMMARY:
+${buyerTable}
+
+TOP COMBINATIONS (Vertical × Carrier × Route), sorted by profit:
+${comboTable}
+
+Based on this data, provide a clear weekly action plan for the team. Structure your response as:
+
+## 🏆 Top Combinations to Scale
+List the 3-5 highest-performing combinations with specific reasons why (high ROI, strong CVR, etc.)
+
+## ⚠️ Underperforming — Reduce or Pause
+List combinations with negative profit or very low ROI that should be reduced.
+
+## 💡 Opportunities to Test
+Based on patterns in the data, suggest 2-3 new combinations worth testing (e.g. a vertical doing well on Verizon might be worth testing on AT&T).
+
+## 📋 Action Items for This Week
+Specific, numbered action items each media buyer should take. Be direct and actionable.
+
+Keep it concise and practical — the team needs to act on this Monday morning.`;
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = message.content[0].text;
+
+    await pool.query(`
+      INSERT INTO rt_ai_report (id, generated_at, period_days, content, data_json)
+      VALUES (1, NOW(), $1, $2, $3)
+      ON CONFLICT (id) DO UPDATE SET generated_at=NOW(), period_days=$1, content=$2, data_json=$3
+    `, [days, content, JSON.stringify(dataJson)]);
+
+    res.json({ generated_at: new Date(), period_days: days, content, data_json: dataJson });
+  } catch (err) {
+    console.error('AI report error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
