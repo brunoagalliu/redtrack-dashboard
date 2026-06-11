@@ -5,6 +5,7 @@ import CampaignEditPage from './pages/CampaignEditPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import ReportsPage from './pages/ReportsPage';
 import VerticalsPage from './pages/VerticalsPage';
+import InsightsPage from './pages/InsightsPage';
 import CostUpdaterPage from './pages/CostUpdaterPage';
 import RevenueUpdaterPage from './pages/RevenueUpdaterPage';
 import LoginPage from './pages/LoginPage';
@@ -67,6 +68,7 @@ function Sidebar() {
         {/* Sub-nav shown when inside /reports */}
         {inReports && (
           <div className="space-y-0.5">
+            <NavLink to="/reports/insights" className={subLinkClass}>Insights</NavLink>
             <NavLink to="/reports/media-buyers" className={subLinkClass}>Media Buyers</NavLink>
             <NavLink to="/reports/verticals" className={subLinkClass}>Verticals</NavLink>
           </div>
@@ -116,7 +118,8 @@ function AppLayout() {
           <Route path="/campaigns/new" element={<CampaignCreatePage />} />
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
           <Route path="/campaigns/:id/edit" element={<CampaignEditPage />} />
-          <Route path="/reports" element={<Navigate to="/reports/media-buyers" replace />} />
+          <Route path="/reports" element={<Navigate to="/reports/insights" replace />} />
+          <Route path="/reports/insights" element={<InsightsPage />} />
           <Route path="/reports/media-buyers" element={<ReportsPage />} />
           <Route path="/reports/verticals" element={<VerticalsPage />} />
           <Route path="/tools/cost-updater" element={<CostUpdaterPage />} />

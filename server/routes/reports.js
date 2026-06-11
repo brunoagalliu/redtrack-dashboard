@@ -352,6 +352,136 @@ router.get('/verticals', async (req, res) => {
   }
 });
 
+// Insights — new campaigns, vertical performance, opportunity gaps
+router.get('/insights', async (req, res) => {
+  try {
+    const statsDays = parseInt(req.query.days) || 30;
+    const today     = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const weekAgo   = new Date(Date.now() - 7  * 86400000).toISOString().slice(0, 10);
+    const statsFrom = new Date(Date.now() - statsDays * 86400000).toISOString().slice(0, 10);
+
+    // 1. New campaigns per buyer — daily counts for last 30 days
+    const { rows: newCampaignRows } = await pool.query(`
+      SELECT
+        buyer,
+        LEFT(created_at, 10) AS date,
+        COUNT(*)::int          AS count
+      FROM rt_campaigns
+      WHERE buyer IS NOT NULL
+        AND LEFT(created_at, 10) >= $1
+      GROUP BY buyer, LEFT(created_at, 10)
+      ORDER BY date DESC, buyer
+    `, [statsFrom]);
+
+    // Summarise into per-buyer today / yesterday / last 7 days / last 30 days
+    const BUYERS = ['TK', 'MA', 'DS'];
+    const newCampaigns = {};
+    for (const buyer of BUYERS) {
+      const rows = newCampaignRows.filter((r) => r.buyer === buyer);
+      const sum  = (from) => rows.filter((r) => r.date >= from).reduce((a, r) => a + r.count, 0);
+      newCampaigns[buyer] = {
+        today:      rows.find((r) => r.date === today)?.count || 0,
+        yesterday:  rows.find((r) => r.date === yesterday)?.count || 0,
+        last_7:     sum(weekAgo),
+        last_30:    sum(statsFrom),
+        daily:      rows.slice(0, 14), // last 14 days for sparkline
+      };
+    }
+
+    // 2. Vertical performance — profit, ROI, CVR, profit per campaign
+    const { rows: vertPerf } = await pool.query(`
+      SELECT
+        c.vertical,
+        COUNT(DISTINCT c.id)::int                                                     AS campaigns,
+        COALESCE(SUM(s.clicks),0)::int                                                AS clicks,
+        COALESCE(SUM(s.conversions),0)::int                                           AS conversions,
+        COALESCE(SUM(s.cost),0)                                                       AS cost,
+        COALESCE(SUM(s.revenue),0)                                                    AS revenue,
+        COALESCE(SUM(s.profit),0)                                                     AS profit,
+        CASE WHEN SUM(s.clicks) > 0
+             THEN ROUND((SUM(s.conversions)::numeric / SUM(s.clicks)) * 100, 2)
+             ELSE 0 END                                                               AS cvr,
+        CASE WHEN COUNT(DISTINCT c.id) > 0
+             THEN ROUND(SUM(s.profit) / COUNT(DISTINCT c.id), 2)
+             ELSE 0 END                                                               AS profit_per_campaign,
+        CASE WHEN SUM(s.cost) > 0
+             THEN ROUND(((SUM(s.revenue) - SUM(s.cost)) / SUM(s.cost)) * 100, 1)
+             ELSE 0 END                                                               AS roi
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats s ON s.campaign_id = c.id
+      WHERE c.vertical IS NOT NULL
+        AND s.stat_date BETWEEN $1 AND $2
+      GROUP BY c.vertical
+      ORDER BY profit DESC
+    `, [statsFrom, today]);
+
+    // 3. Buyer × Vertical matrix — campaign counts
+    const { rows: matrixRows } = await pool.query(`
+      SELECT buyer, vertical, COUNT(*)::int AS campaigns
+      FROM rt_campaigns
+      WHERE buyer IS NOT NULL AND vertical IS NOT NULL
+      GROUP BY buyer, vertical
+    `);
+
+    const matrix = {};
+    for (const buyer of BUYERS) {
+      matrix[buyer] = {};
+      for (const r of matrixRows.filter((r) => r.buyer === buyer)) {
+        matrix[buyer][r.vertical] = r.campaigns;
+      }
+    }
+
+    // 4. Opportunity gaps — high profit/campaign verticals a buyer isn't running
+    const medianPPC = vertPerf.length
+      ? Number(vertPerf[Math.floor(vertPerf.length / 2)]?.profit_per_campaign || 0)
+      : 0;
+
+    const opportunities = [];
+    for (const v of vertPerf) {
+      if (Number(v.profit_per_campaign) <= 0) continue;
+      for (const buyer of BUYERS) {
+        const buyerCount = matrix[buyer]?.[v.vertical] || 0;
+        const totalCount = v.campaigns;
+        // Flag if this buyer has <25% of total campaigns in a profitable vertical
+        if (buyerCount < Math.max(3, totalCount * 0.25) && Number(v.profit_per_campaign) > medianPPC) {
+          opportunities.push({
+            vertical: v.vertical,
+            buyer,
+            buyer_campaigns: buyerCount,
+            total_campaigns: totalCount,
+            profit_per_campaign: Number(v.profit_per_campaign),
+          });
+        }
+      }
+    }
+    // Sort by profit/campaign desc
+    opportunities.sort((a, b) => b.profit_per_campaign - a.profit_per_campaign);
+
+    res.json({
+      period_days: statsDays,
+      new_campaigns: newCampaigns,
+      vertical_performance: vertPerf.map((v) => ({
+        ...v,
+        campaigns: Number(v.campaigns),
+        clicks: Number(v.clicks),
+        conversions: Number(v.conversions),
+        cost: Number(v.cost),
+        revenue: Number(v.revenue),
+        profit: Number(v.profit),
+        cvr: Number(v.cvr),
+        profit_per_campaign: Number(v.profit_per_campaign),
+        roi: Number(v.roi),
+      })),
+      buyer_vertical_matrix: matrix,
+      opportunities,
+    });
+  } catch (err) {
+    console.error('Insights error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.cleanupOldStats = cleanupOldStats;
 module.exports.runSync = runSync;
