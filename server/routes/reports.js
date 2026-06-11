@@ -23,12 +23,8 @@ const sync = {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-const KNOWN_ROUTES = new Map([
-  ['USMS', 'USMS'], ['UPM', 'USMS'], // UPM = USMS
-  ['RANHOG', 'Ranhog'],
-  ['INTERNAL', 'Internal'],
-  ['TECHSTAR', 'TechStar'],
-]);
+// UPM is the legacy RedTrack channel name for USMS — keep as a permanent alias
+const ROUTE_ALIASES = new Map([['UPM', 'USMS']]);
 
 const CARRIER_MAP = new Map([
   ['VZ', 'Verizon'],
@@ -43,7 +39,8 @@ function tokenize(title) {
 
 // Parse campaign title extracting buyer, vertical, route, and carrier.
 // Delimiters can be spaces, underscores, or hyphens — we scan tokens for known values.
-function parseCampaignTitle(rawTitle, knownVerticals) {
+// knownRoutes is a Map<UPPERCASE_TOKEN, canonicalName> built from list_items at sync time.
+function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes) {
   const title  = rawTitle.trim();
   const tokens = tokenize(title);
 
@@ -56,9 +53,10 @@ function parseCampaignTitle(rawTitle, knownVerticals) {
   let carrier  = null;
 
   for (const t of tokens) {
-    if (!vertical && knownVerticals.has(t))    vertical = t;
-    if (!route    && KNOWN_ROUTES.has(t))      route    = KNOWN_ROUTES.get(t);
-    if (!carrier  && CARRIER_MAP.has(t))       carrier  = CARRIER_MAP.get(t);
+    if (!vertical && knownVerticals.has(t))  vertical = t;
+    if (!route    && ROUTE_ALIASES.has(t))   route    = ROUTE_ALIASES.get(t);
+    if (!route    && knownRoutes.has(t))     route    = knownRoutes.get(t);
+    if (!carrier  && CARRIER_MAP.has(t))     carrier  = CARRIER_MAP.get(t);
   }
 
   // platform kept for backwards compat (second ` - ` segment if present)
@@ -118,9 +116,13 @@ async function runSync(dateFrom, dateTo) {
     const earliest = new Date(Date.now() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
     if (dateFrom < earliest) dateFrom = earliest;
 
-    // 1. Load known verticals from DB
+    // 1. Load known verticals and routes from DB (campaign creator is the source of truth)
     const { rows: vRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'vertical'`);
     const knownVerticals = new Set(vRows.map((r) => r.value.toUpperCase()));
+
+    const { rows: rRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'route'`);
+    // Map UPPERCASE token → canonical name for case-insensitive matching in campaign titles
+    const knownRoutes = new Map(rRows.map((r) => [r.value.toUpperCase(), r.value]));
 
     // 2. Fetch all campaigns from RedTrack
     const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
@@ -135,7 +137,7 @@ async function runSync(dateFrom, dateTo) {
       if (createdAt < cutoff) continue;
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
         if (pattern.test(title)) {
-          const parsed = parseCampaignTitle(title, knownVerticals);
+          const parsed = parseCampaignTitle(title, knownVerticals, knownRoutes);
           buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, route: parsed.route, carrier: parsed.carrier, created_at: createdAt });
           break;
         }

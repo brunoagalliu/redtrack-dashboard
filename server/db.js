@@ -120,11 +120,17 @@ async function init() {
     }
   }
 
-  // Always ensure new verticals exist (runs on every startup, safe to re-run)
+  // Always ensure these items exist (runs on every startup, safe to re-run)
   for (const v of ['PAYDAY', 'GLP1']) {
     await pool.query(
       `INSERT INTO list_items (list, value) VALUES ('vertical', $1) ON CONFLICT DO NOTHING`,
       [v]
+    );
+  }
+  for (const r of ['USMS', 'Ranhog', 'TechStar', 'Internal']) {
+    await pool.query(
+      `INSERT INTO list_items (list, value) VALUES ('route', $1) ON CONFLICT DO NOTHING`,
+      [r]
     );
   }
 
