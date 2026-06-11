@@ -210,14 +210,25 @@ router.post('/sync', (req, res) => {
   res.status(202).json({ status: 'started', dateFrom, dateTo });
 });
 
-// Sync status — live from memory, falls back to DB if server restarted
+// Sync status — always returns snake_case regardless of source
 router.get('/sync/status', async (_req, res) => {
-  if (sync.status !== 'idle') return res.json(sync);
+  function normalize(s) {
+    return {
+      status:       s.status,
+      running:      s.running || false,
+      processed:    s.processed,
+      total:        s.total,
+      started_at:   s.started_at  ?? s.startedAt  ?? null,
+      completed_at: s.completed_at ?? s.completedAt ?? null,
+      error:        s.error || null,
+    };
+  }
+  if (sync.status !== 'idle') return res.json(normalize(sync));
   try {
     const { rows } = await pool.query(`SELECT * FROM rt_sync_status WHERE id = 1`);
-    if (rows.length) return res.json({ ...rows[0], running: false });
+    if (rows.length) return res.json(normalize(rows[0]));
   } catch { /* ignore */ }
-  res.json(sync);
+  res.json(normalize(sync));
 });
 
 // Manual cleanup trigger (also called by scheduled job in index.js)
