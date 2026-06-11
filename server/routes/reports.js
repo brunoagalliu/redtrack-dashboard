@@ -654,47 +654,37 @@ router.get('/probe/offers', async (req, res) => {
     const dateTo   = new Date().toISOString().slice(0, 10);
     const results  = {};
 
-    // 1. Campaign streams — offers are attached here
+    // 1. Get campaign detail → extract offers from streams
+    let offerIds = [];
     try {
       const { data } = await redtrack.get(`/campaigns/${campaign.id}`);
-      const streams  = data?.streams || [];
-      const offerIds = [];
-      for (const s of streams) {
-        for (const dest of (s.destinations || [])) {
-          if (dest.offer_id) offerIds.push(dest.offer_id);
-          if (dest.offer?.id) offerIds.push(dest.offer.id);
+      for (const sw of (data?.streams || [])) {
+        for (const o of (sw.stream?.offers || [])) {
+          if (o.id) offerIds.push({ id: o.id, name: o.name });
         }
-        if (s.offer_id) offerIds.push(s.offer_id);
       }
-      results.streams_count   = streams.length;
-      results.stream_keys     = streams[0] ? Object.keys(streams[0]) : [];
-      results.offer_ids_found = [...new Set(offerIds)];
-      results.first_stream    = streams[0];
-    } catch (e) { results.streams = { error: e.response?.data || e.message }; }
+      results.offers_in_campaign = offerIds;
+    } catch (e) { results.streams_error = e.response?.data || e.message; }
 
     await new Promise(r => setTimeout(r, 3200));
 
-    // 2. Report filtered by offer_id (first offer from /offers list)
-    try {
-      const { data: offersData } = await redtrack.get('/offers', { params: { per: 1 } });
-      const offers = Array.isArray(offersData) ? offersData : (offersData?.items || []);
-      const firstOffer = offers[0];
-      if (firstOffer) {
-        await new Promise(r => setTimeout(r, 3200));
+    // 2. For each offer in this campaign, try /report?campaign_id=X&offer_id=Y
+    results.per_offer_report = [];
+    for (const offer of offerIds) {
+      try {
         const { data } = await redtrack.get('/report', {
-          params: { offer_id: firstOffer.id, date_from: dateFrom, date_to: dateTo, per: 5 },
+          params: { campaign_id: campaign.id, offer_id: offer.id, date_from: dateFrom, date_to: dateTo, per: 100 },
         });
         const items = Array.isArray(data) ? data : (data?.items || []);
-        results.report_by_offer_id = {
-          offer: { id: firstOffer.id, title: firstOffer.title },
-          row_count: items.length,
-          offer_keys: items[0] ? Object.keys(items[0]).filter(k => /offer|id|name|title/.test(k)) : [],
-          sample: items[0] ? { clicks: items[0].clicks, conversions: items[0].conversions, revenue: items[0].revenue, date: items[0].date } : null,
-        };
+        const total = items.reduce((a, r) => ({ clicks: a.clicks + (r.clicks||0), revenue: a.revenue + (r.revenue||0), conversions: a.conversions + (r.conversions||0) }), { clicks: 0, revenue: 0, conversions: 0 });
+        results.per_offer_report.push({ offer_id: offer.id, offer_name: offer.name, row_count: items.length, totals: total, sample_row: items[0] ? { date: items[0].date, clicks: items[0].clicks, revenue: items[0].revenue } : null });
+      } catch (e) {
+        results.per_offer_report.push({ offer_id: offer.id, offer_name: offer.name, error: e.response?.data || e.message });
       }
-    } catch (e) { results.report_by_offer_id = { error: e.response?.data || e.message }; }
+      await new Promise(r => setTimeout(r, 3200));
+    }
 
-    res.json({ campaign, results });
+    res.json({ campaign, dateFrom, dateTo, results });
   } catch (err) {
     res.status(500).json({ error: err.response?.data || err.message });
   }
