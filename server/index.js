@@ -16,6 +16,7 @@ const networksRouter = require('./routes/networks');
 const filterOptionsRouter = require('./routes/filter-options');
 const reportsRouter = require('./routes/reports');
 const { cleanupOldStats, runSync } = require('./routes/reports');
+const costUpdaterRouter = require('./routes/cost-updater');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -57,6 +58,7 @@ app.use('/api/sources', sourcesRouter);
 app.use('/api/networks', networksRouter);
 app.use('/api/filter-options', filterOptionsRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api/cost-updater', costUpdaterRouter);
 
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {

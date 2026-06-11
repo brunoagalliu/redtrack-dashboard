@@ -77,6 +77,12 @@ export const api = {
     const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
     return request(`/reports/media-buyers${qs ? `?${qs}` : ''}`);
   },
+  // Cost updater
+  getCampaignSubs: (campaignId) => request(`/cost-updater/subs/${campaignId}`),
+  getClicks: (body) => request('/cost-updater/clicks', { method: 'POST', body: JSON.stringify(body) }),
+  updateCost: (body) => request('/cost-updater/cost', { method: 'POST', body: JSON.stringify(body) }),
+  updateRevenue: (body) => request('/cost-updater/revenue', { method: 'POST', body: JSON.stringify(body) }),
+
   getSyncStatus: () => request('/reports/sync/status'),
   triggerSync: (params = {}) => request('/reports/sync', { method: 'POST', body: JSON.stringify(params) }),
   getVerticalsReport: (params = {}) => {
