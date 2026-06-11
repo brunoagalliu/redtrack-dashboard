@@ -15,7 +15,7 @@ const sourcesRouter = require('./routes/sources');
 const networksRouter = require('./routes/networks');
 const filterOptionsRouter = require('./routes/filter-options');
 const reportsRouter = require('./routes/reports');
-const { cleanupOldStats } = require('./routes/reports');
+const { cleanupOldStats, runSync } = require('./routes/reports');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -67,16 +67,33 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 function scheduleDailyCleanup() {
-  // Run once at startup to catch any overdue rows, then every 24 hours
   cleanupOldStats().catch((err) => console.error('Startup cleanup failed:', err.message));
   setInterval(() => {
     cleanupOldStats().catch((err) => console.error('Scheduled cleanup failed:', err.message));
   }, 24 * 60 * 60 * 1000);
 }
 
+const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // every 6 hours
+
+function scheduleAutoSync() {
+  function triggerSync() {
+    const today = new Date().toISOString().slice(0, 10);
+    const earliest = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    console.log('[auto-sync] Starting scheduled sync…');
+    runSync(earliest, today).catch((err) => console.error('[auto-sync] Failed:', err.message));
+  }
+
+  // Delay first auto-sync by 2 min so startup tasks settle before kicking off a long job
+  setTimeout(() => {
+    triggerSync();
+    setInterval(triggerSync, SYNC_INTERVAL_MS);
+  }, 2 * 60 * 1000);
+}
+
 initDb()
   .then(() => {
     scheduleDailyCleanup();
+    scheduleAutoSync();
     app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
   })
   .catch((err) => {

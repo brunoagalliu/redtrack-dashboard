@@ -354,3 +354,4 @@ router.get('/verticals', async (req, res) => {
 
 module.exports = router;
 module.exports.cleanupOldStats = cleanupOldStats;
+module.exports.runSync = runSync;
