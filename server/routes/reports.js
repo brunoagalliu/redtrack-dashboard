@@ -638,7 +638,6 @@ Keep it concise and practical — the team needs to act on this Monday morning.`
 // ── Offer API probe (temp) ────────────────────────────────────────────────────
 router.get('/probe/offers', async (req, res) => {
   try {
-    // Pick a campaign that actually has clicks in the last 7 days
     const { rows } = await pool.query(`
       SELECT c.id, c.title, SUM(s.clicks) AS clicks
       FROM rt_campaigns c
@@ -654,12 +653,36 @@ router.get('/probe/offers', async (req, res) => {
     const dateFrom = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
     const dateTo   = new Date().toISOString().slice(0, 10);
 
-    const { data } = await redtrack.get('/report', {
-      params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 100, group_by: 'offer' },
-    });
+    const results = {};
 
-    const rows2 = Array.isArray(data) ? data : (data?.items || []);
-    res.json({ campaign, dateFrom, dateTo, row_count: rows2.length, rows: rows2.slice(0, 5), all_keys: rows2[0] ? Object.keys(rows2[0]) : [] });
+    // 1. Full campaign object — does it contain offers?
+    try {
+      const { data } = await redtrack.get(`/campaigns/${campaign.id}`);
+      results.campaign_detail_keys = Object.keys(data || {});
+      results.campaign_offers_field = data?.offers ?? data?.offer_ids ?? data?.offer ?? 'NOT_FOUND';
+    } catch (e) { results.campaign_detail = { error: e.response?.data || e.message }; }
+
+    await new Promise(r => setTimeout(r, 3200));
+
+    // 2. Dedicated offers list endpoint
+    try {
+      const { data } = await redtrack.get('/offers', { params: { per: 5 } });
+      const items = Array.isArray(data) ? data : (data?.items || []);
+      results.offers_endpoint = { count: items.length, sample_keys: items[0] ? Object.keys(items[0]) : [], sample: items[0] };
+    } catch (e) { results.offers_endpoint = { error: e.response?.data || e.message }; }
+
+    await new Promise(r => setTimeout(r, 3200));
+
+    // 3. Report with offer_id grouping (different param name)
+    try {
+      const { data } = await redtrack.get('/report', {
+        params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 10, group_by: 'offer_id' },
+      });
+      const items = Array.isArray(data) ? data : (data?.items || []);
+      results.report_group_offer_id = { count: items.length, keys: items[0] ? Object.keys(items[0]).filter(k => k.includes('offer') || k === 'id' || k === 'name') : [] };
+    } catch (e) { results.report_group_offer_id = { error: e.response?.data || e.message }; }
+
+    res.json({ campaign, results });
   } catch (err) {
     res.status(500).json({ error: err.response?.data || err.message });
   }
