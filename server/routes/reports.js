@@ -635,41 +635,33 @@ Keep it concise and practical — the team needs to act on this Monday morning.`
   }
 });
 
-// ── Offer API probe (temp — find correct grouping params) ────────────────────
+// ── Offer API probe (temp) ────────────────────────────────────────────────────
 router.get('/probe/offers', async (req, res) => {
   try {
-    // Pick a recent campaign from DB to test with
-    const { rows } = await pool.query(
-      `SELECT id, title FROM rt_campaigns WHERE buyer IS NOT NULL LIMIT 1`
-    );
-    if (!rows.length) return res.status(404).json({ error: 'No campaigns in DB yet' });
+    // Pick a campaign that actually has clicks in the last 7 days
+    const { rows } = await pool.query(`
+      SELECT c.id, c.title, SUM(s.clicks) AS clicks
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats s ON s.campaign_id = c.id
+      WHERE s.stat_date >= NOW() - INTERVAL '7 days'
+      GROUP BY c.id, c.title
+      ORDER BY clicks DESC
+      LIMIT 1
+    `);
+    if (!rows.length) return res.status(404).json({ error: 'No active campaigns in last 7 days' });
     const campaign = rows[0];
 
     const dateFrom = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
     const dateTo   = new Date().toISOString().slice(0, 10);
 
-    // Try four different offer-grouping param shapes RedTrack might support
-    const attempts = [
-      { label: 'group_by=offer',             params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 5, group_by: 'offer' } },
-      { label: 'group[]=offer',              params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 5, 'group[]': 'offer' } },
-      { label: 'group_by[]=offer_id',        params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 5, 'group_by[]': 'offer_id' } },
-      { label: 'type=offer',                 params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 5, type: 'offer' } },
-    ];
+    const { data } = await redtrack.get('/report', {
+      params: { campaign_id: campaign.id, date_from: dateFrom, date_to: dateTo, per: 100, group_by: 'offer' },
+    });
 
-    const results = [];
-    for (const attempt of attempts) {
-      try {
-        const { data } = await redtrack.get('/report', { params: attempt.params });
-        const sample = Array.isArray(data) ? data[0] : (data?.items?.[0] ?? data);
-        results.push({ label: attempt.label, status: 'ok', keys: sample ? Object.keys(sample) : [], sample });
-      } catch (err) {
-        results.push({ label: attempt.label, status: 'error', error: err.response?.data || err.message });
-      }
-    }
-
-    res.json({ campaign, dateFrom, dateTo, results });
+    const rows2 = Array.isArray(data) ? data : (data?.items || []);
+    res.json({ campaign, dateFrom, dateTo, row_count: rows2.length, rows: rows2.slice(0, 5), all_keys: rows2[0] ? Object.keys(rows2[0]) : [] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.response?.data || err.message });
   }
 });
 
