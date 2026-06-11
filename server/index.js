@@ -73,7 +73,7 @@ function scheduleDailyCleanup() {
   }, 24 * 60 * 60 * 1000);
 }
 
-const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // every 6 hours
+const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
 
 function scheduleAutoSync() {
   function triggerSync() {
