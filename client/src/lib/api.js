@@ -85,6 +85,12 @@ export const api = {
 
   getSyncStatus: () => request('/reports/sync/status'),
   triggerSync: (params = {}) => request('/reports/sync', { method: 'POST', body: JSON.stringify(params) }),
+  getOfferSyncStatus: () => request('/reports/sync/offers/status'),
+  triggerOfferSync: (params = {}) => request('/reports/sync/offers', { method: 'POST', body: JSON.stringify(params) }),
+  getOffersReport: (params = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
+    return request(`/reports/offers${qs ? `?${qs}` : ''}`);
+  },
   getInsights: (days = 30) => request(`/reports/insights?days=${days}`),
   getAIReport: () => request('/reports/ai-recommendations'),
   generateAIReport: (days = 14) => request('/reports/ai-recommendations/generate', { method: 'POST', body: JSON.stringify({ days }) }),

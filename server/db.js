@@ -57,6 +57,38 @@ async function init() {
     CREATE INDEX IF NOT EXISTS rt_campaigns_carrier  ON rt_campaigns(carrier);
   `);
 
+  // Offer analytics tables
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rt_offers (
+      id   TEXT PRIMARY KEY,
+      name TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS rt_campaign_offers (
+      campaign_id TEXT NOT NULL REFERENCES rt_campaigns(id) ON DELETE CASCADE,
+      offer_id    TEXT NOT NULL REFERENCES rt_offers(id)    ON DELETE CASCADE,
+      PRIMARY KEY (campaign_id, offer_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS rt_offer_stats (
+      offer_id    TEXT         NOT NULL REFERENCES rt_offers(id)    ON DELETE CASCADE,
+      campaign_id TEXT         NOT NULL REFERENCES rt_campaigns(id) ON DELETE CASCADE,
+      stat_date   DATE         NOT NULL,
+      clicks      INTEGER      NOT NULL DEFAULT 0,
+      conversions INTEGER      NOT NULL DEFAULT 0,
+      cost        NUMERIC(14,4) NOT NULL DEFAULT 0,
+      revenue     NUMERIC(14,4) NOT NULL DEFAULT 0,
+      profit      NUMERIC(14,4) NOT NULL DEFAULT 0,
+      PRIMARY KEY (offer_id, campaign_id, stat_date)
+    );
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS rt_offer_stats_date     ON rt_offer_stats(stat_date);
+    CREATE INDEX IF NOT EXISTS rt_offer_stats_offer    ON rt_offer_stats(offer_id);
+    CREATE INDEX IF NOT EXISTS rt_offer_stats_campaign ON rt_offer_stats(campaign_id);
+  `);
+
   // AI recommendations cache
   await pool.query(`
     CREATE TABLE IF NOT EXISTS rt_ai_report (
