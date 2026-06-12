@@ -456,7 +456,30 @@ router.get('/insights', async (req, res) => {
       };
     }
 
-    // 2. Vertical performance — profit, ROI, CVR, profit per campaign
+    // 2. Media buyer financial performance
+    const { rows: buyerPerf } = await pool.query(`
+      SELECT
+        c.buyer,
+        COALESCE(SUM(s.clicks),0)::int                                                    AS clicks,
+        COALESCE(SUM(s.conversions),0)::int                                               AS conversions,
+        COALESCE(SUM(s.cost),0)::numeric(14,2)                                            AS cost,
+        COALESCE(SUM(s.revenue),0)::numeric(14,2)                                         AS revenue,
+        COALESCE(SUM(s.profit),0)::numeric(14,2)                                          AS profit,
+        COUNT(DISTINCT c.id)::int                                                          AS campaigns,
+        CASE WHEN SUM(s.clicks) > 0
+             THEN ROUND((SUM(s.conversions)::numeric / SUM(s.clicks)) * 100, 2)
+             ELSE 0 END                                                                    AS cvr,
+        CASE WHEN SUM(s.cost) > 0
+             THEN ROUND(((SUM(s.revenue) - SUM(s.cost)) / SUM(s.cost)) * 100, 1)
+             ELSE 0 END                                                                    AS roi
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats s ON s.campaign_id = c.id
+      WHERE c.buyer IS NOT NULL AND s.stat_date BETWEEN $1 AND $2
+      GROUP BY c.buyer
+      ORDER BY SUM(s.profit) DESC
+    `, [statsFrom, today]);
+
+    // 3. Vertical performance — profit, ROI, CVR, profit per campaign
     const { rows: vertPerf } = await pool.query(`
       SELECT
         c.vertical,
@@ -528,6 +551,17 @@ router.get('/insights', async (req, res) => {
     res.json({
       period_days: statsDays,
       new_campaigns: newCampaigns,
+      buyer_performance: buyerPerf.map((b) => ({
+        buyer:       b.buyer,
+        clicks:      Number(b.clicks),
+        conversions: Number(b.conversions),
+        cost:        Number(b.cost),
+        revenue:     Number(b.revenue),
+        profit:      Number(b.profit),
+        campaigns:   Number(b.campaigns),
+        cvr:         Number(b.cvr),
+        roi:         Number(b.roi),
+      })),
       vertical_performance: vertPerf.map((v) => ({
         ...v,
         campaigns: Number(v.campaigns),

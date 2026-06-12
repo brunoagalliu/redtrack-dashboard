@@ -52,6 +52,7 @@ export default function InsightsPage() {
   });
 
   const nc   = data?.new_campaigns || {};
+  const bp   = data?.buyer_performance || [];
   const vp   = data?.vertical_performance || [];
   const ops  = data?.opportunities || [];
   const mat  = data?.buyer_vertical_matrix || {};
@@ -132,6 +133,66 @@ export default function InsightsPage() {
               })}
             </div>
           </section>
+
+          {/* ── Media Buyer Performance ── */}
+          {bp.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Media Buyer Performance</h2>
+              <div className="grid grid-cols-3 gap-4">
+                {BUYERS.map((buyer) => {
+                  const b = bp.find((r) => r.buyer === buyer);
+                  const col = BUYER_COLORS[buyer];
+                  if (!b) return (
+                    <div key={buyer} className="card p-5 opacity-40">
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold ${col.badge}`}>{buyer}</span>
+                        <span className="text-sm text-gray-400">No data</span>
+                      </div>
+                    </div>
+                  );
+                  const profitColor = b.profit >= 0 ? 'text-green-600' : 'text-red-500';
+                  const roiColor    = b.roi    >= 0 ? 'text-green-600' : 'text-red-500';
+                  return (
+                    <div key={buyer} className="card p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold ${col.badge}`}>{buyer}</span>
+                        <div className="text-right">
+                          <div className={`text-2xl font-bold ${profitColor}`}>{fmtMoney(b.profit)}</div>
+                          <div className={`text-xs font-medium ${roiColor}`}>{fmtPct(b.roi)} ROI</div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-gray-500">
+                        <div className="flex justify-between">
+                          <span>Campaigns</span>
+                          <span className="font-semibold text-gray-700">{fmt(b.campaigns)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>CVR</span>
+                          <span className="font-semibold text-gray-700">{fmtPct(b.cvr)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Clicks</span>
+                          <span className="font-semibold text-gray-700">{fmt(b.clicks)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Conv</span>
+                          <span className="font-semibold text-gray-700">{fmt(b.conversions)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Spend</span>
+                          <span className="font-semibold text-gray-700">{fmtMoney(b.cost)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Revenue</span>
+                          <span className="font-semibold text-gray-700">{fmtMoney(b.revenue)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* ── Vertical Performance ── */}
           <section>
