@@ -93,6 +93,48 @@ function SyncButton({ dateFrom, dateTo, onSynced }) {
   );
 }
 
+function OfferRows({ campaignId, dateFrom, dateTo }) {
+  const { data: offers, isLoading } = useQuery({
+    queryKey: ['campaign-offers', campaignId, dateFrom, dateTo],
+    queryFn: () => api.getCampaignOffers(campaignId, { date_from: dateFrom, date_to: dateTo }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (isLoading) return (
+    <tr>
+      <td colSpan={8} className="px-4 py-2 text-xs text-gray-400 text-center bg-gray-50/50">
+        Loading offers…
+      </td>
+    </tr>
+  );
+
+  if (!offers?.length) return (
+    <tr>
+      <td colSpan={8} className="px-8 py-2 text-xs text-gray-400 bg-gray-50/50">
+        No offer data yet — run a sync first.
+      </td>
+    </tr>
+  );
+
+  return offers.map((o) => (
+    <tr key={o.offer_id} className="bg-indigo-50/30 border-l-2 border-indigo-200">
+      <td className="px-4 py-1.5" />
+      <td className="px-4 py-1.5 text-xs text-gray-700 max-w-xs">
+        <span className="text-indigo-300 mr-1.5 select-none">↳</span>
+        <span className="truncate" title={o.offer_name}>{o.offer_name}</span>
+      </td>
+      <td className="px-4 py-1.5" />
+      <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.clicks)}</td>
+      <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.conversions)}</td>
+      <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.cost)}</td>
+      <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.revenue)}</td>
+      <td className={`px-4 py-1.5 text-right tabular-nums text-xs font-medium ${Number(o.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        {fmtMoney(o.profit)}
+      </td>
+    </tr>
+  ));
+}
+
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -105,6 +147,7 @@ export default function ReportsPage() {
   const [sortDir, setSortDir] = useState('desc');
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(50);
+  const [expandedId, setExpandedId] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -304,14 +347,22 @@ export default function ReportsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {paged.map((c) => (
+                  <>
                   <tr key={`${c.buyer}-${c.id}`} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${BUYER_COLORS[c.buyer]}`}>
                         {c.buyer}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-sm text-gray-700 max-w-xs truncate" title={c.title}>
-                      {c.title}
+                    <td className="px-4 py-2.5 text-sm text-gray-700 max-w-xs">
+                      <button
+                        onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                        className="mr-1.5 text-gray-300 hover:text-indigo-500 transition-colors text-xs select-none"
+                        title="Show offers"
+                      >
+                        {expandedId === c.id ? '▼' : '▶'}
+                      </button>
+                      <span className="truncate" title={c.title}>{c.title}</span>
                     </td>
                     <td className="px-4 py-2.5 text-left">
                       {c.data_partner
@@ -326,6 +377,14 @@ export default function ReportsPage() {
                       {fmtMoney(c.profit)}
                     </td>
                   </tr>
+                  {expandedId === c.id && (
+                    <OfferRows
+                      campaignId={c.id}
+                      dateFrom={applied.date_from}
+                      dateTo={applied.date_to}
+                    />
+                  )}
+                  </>
                 ))}
 
                 {/* Totals */}

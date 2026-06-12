@@ -362,6 +362,48 @@ router.get('/media-buyers', async (req, res) => {
   }
 });
 
+// Offer breakdown for a single campaign
+router.get('/campaigns/:id/offers', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const today    = new Date().toISOString().slice(0, 10);
+    const dateFrom = req.query.date_from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const dateTo   = req.query.date_to   || today;
+
+    const { rows } = await pool.query(`
+      SELECT
+        o.id                                            AS offer_id,
+        o.name                                          AS offer_name,
+        COALESCE(SUM(os.clicks),0)::int                 AS clicks,
+        COALESCE(SUM(os.conversions),0)::int            AS conversions,
+        COALESCE(SUM(os.cost),0)::numeric(14,2)         AS cost,
+        COALESCE(SUM(os.revenue),0)::numeric(14,2)      AS revenue,
+        COALESCE(SUM(os.profit),0)::numeric(14,2)       AS profit
+      FROM rt_campaign_offers co
+      JOIN rt_offers o ON o.id = co.offer_id
+      LEFT JOIN rt_offer_stats os
+        ON os.offer_id    = co.offer_id
+       AND os.campaign_id = co.campaign_id
+       AND os.stat_date BETWEEN $1 AND $2
+      WHERE co.campaign_id = $3
+      GROUP BY o.id, o.name
+      ORDER BY SUM(os.clicks) DESC NULLS LAST
+    `, [dateFrom, dateTo, id]);
+
+    res.json(rows.map((r) => ({
+      offer_id:    r.offer_id,
+      offer_name:  r.offer_name,
+      clicks:      Number(r.clicks),
+      conversions: Number(r.conversions),
+      cost:        Number(r.cost),
+      revenue:     Number(r.revenue),
+      profit:      Number(r.profit),
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Verticals report — reads from DB
 router.get('/verticals', async (req, res) => {
   try {
