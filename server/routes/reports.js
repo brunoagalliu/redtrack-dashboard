@@ -72,20 +72,6 @@ function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes, knownPartners
     if (!dataPartner && knownPartners.has(t))   dataPartner = knownPartners.get(t);
   }
 
-  // Prefix fallback for vertical: "CloudStorage4U" → CLOUD, "GLP1Direct" → GLP1
-  // Require vertical name ≥ 4 chars so short names like "AV" don't match unrelated tokens.
-  if (!vertical) {
-    for (const t of tokens) {
-      for (const v of knownVerticals) {
-        if (v.length >= 4 && t.startsWith(v) && t.length > v.length) {
-          vertical = v;
-          break;
-        }
-      }
-      if (vertical) break;
-    }
-  }
-
   // platform kept for backwards compat (second ` - ` segment if present)
   const dashParts = title.split(/\s+-\s+/);
   const platform  = dashParts.length >= 3 ? dashParts[1].trim() : null;
