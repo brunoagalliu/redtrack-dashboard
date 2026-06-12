@@ -575,13 +575,13 @@ router.post('/ai-recommendations/generate', async (req, res) => {
       LIMIT 60
     `, [dateFrom, today]);
 
-    // Also pull per-buyer summary
+    // Per-buyer summary
     const { rows: buyerRows } = await pool.query(`
       SELECT
         c.buyer,
-        COALESCE(SUM(s.clicks),0)::int       AS clicks,
-        COALESCE(SUM(s.conversions),0)::int  AS conversions,
-        COALESCE(SUM(s.cost),0)::numeric(14,2) AS cost,
+        COALESCE(SUM(s.clicks),0)::int          AS clicks,
+        COALESCE(SUM(s.conversions),0)::int     AS conversions,
+        COALESCE(SUM(s.cost),0)::numeric(14,2)  AS cost,
         COALESCE(SUM(s.revenue),0)::numeric(14,2) AS revenue,
         COALESCE(SUM(s.profit),0)::numeric(14,2) AS profit
       FROM rt_campaigns c
@@ -590,42 +590,86 @@ router.post('/ai-recommendations/generate', async (req, res) => {
       GROUP BY c.buyer ORDER BY profit DESC
     `, [dateFrom, today]);
 
-    const dataJson = { period_days: days, date_from: dateFrom, date_to: today, combinations: combos, buyers: buyerRows };
+    // Offer × route × carrier × data_partner performance (only if offer sync has run)
+    const { rows: offerRows } = await pool.query(`
+      SELECT
+        o.name                                                              AS offer,
+        COALESCE(c.vertical,     'Unknown')                                AS vertical,
+        COALESCE(c.carrier,      'All carriers')                           AS carrier,
+        COALESCE(c.route,        'Unknown')                                AS route,
+        COALESCE(c.data_partner, 'Unknown')                                AS data_partner,
+        c.buyer,
+        COUNT(DISTINCT os.campaign_id)::int                                AS campaigns,
+        COALESCE(SUM(os.clicks),0)::int                                    AS clicks,
+        COALESCE(SUM(os.conversions),0)::int                               AS conversions,
+        COALESCE(SUM(os.cost),0)::numeric(14,2)                            AS cost,
+        COALESCE(SUM(os.revenue),0)::numeric(14,2)                         AS revenue,
+        COALESCE(SUM(os.profit),0)::numeric(14,2)                          AS profit,
+        CASE WHEN SUM(os.clicks) > 0
+             THEN ROUND((SUM(os.conversions)::numeric/SUM(os.clicks))*100,2)
+             ELSE 0 END                                                    AS cvr,
+        CASE WHEN SUM(os.cost) > 0
+             THEN ROUND(((SUM(os.revenue)-SUM(os.cost))/SUM(os.cost))*100,1)
+             ELSE 0 END                                                    AS roi
+      FROM rt_offer_stats os
+      JOIN rt_offers o    ON o.id = os.offer_id
+      JOIN rt_campaigns c ON c.id = os.campaign_id
+      WHERE os.stat_date BETWEEN $1 AND $2
+        AND c.buyer IS NOT NULL
+      GROUP BY o.name, c.vertical, c.carrier, c.route, c.data_partner, c.buyer
+      HAVING SUM(os.clicks) > 50
+      ORDER BY SUM(os.profit) DESC
+      LIMIT 50
+    `, [dateFrom, today]);
+
+    const hasOfferData = offerRows.length > 0;
+
+    const dataJson = {
+      period_days: days, date_from: dateFrom, date_to: today,
+      combinations: combos, buyers: buyerRows, offer_combinations: offerRows,
+    };
 
     // Build prompt
-    const comboTable = combos.slice(0, 40).map((r, i) =>
-      `${i+1}. Vertical:${r.vertical} | Carrier:${r.carrier} | Route:${r.route} | Campaigns:${r.campaigns} | Clicks:${r.clicks} | Conv:${r.conversions} | CVR:${r.cvr}% | Spend:$${r.cost} | Revenue:$${r.revenue} | Profit:$${r.profit} | ROI:${r.roi}%`
+    const comboTable = combos.slice(0, 30).map((r, i) =>
+      `${i+1}. ${r.vertical} | ${r.carrier} | ${r.route} | Campaigns:${r.campaigns} | Clicks:${r.clicks} | CVR:${r.cvr}% | Profit:$${r.profit} | ROI:${r.roi}%`
     ).join('\n');
 
     const buyerTable = buyerRows.map((r) =>
-      `${r.buyer}: Clicks:${r.clicks} | Conv:${r.conversions} | Spend:$${r.cost} | Revenue:$${r.revenue} | Profit:$${r.profit}`
+      `${r.buyer}: Clicks:${r.clicks} | Spend:$${r.cost} | Revenue:$${r.revenue} | Profit:$${r.profit}`
     ).join('\n');
 
-    const prompt = `You are analyzing SMS marketing campaign performance data for a media buying team. The team sends SMS campaigns across different verticals (GLP1, CLOUD, AUTO, PAYDAY, etc.), carriers (Verizon, AT&T, T-Mobile, All carriers), and routes (USMS, Ranhog, Internal, TechStar).
+    const offerTable = offerRows.slice(0, 40).map((r, i) =>
+      `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Campaigns:${r.campaigns} | Clicks:${r.clicks} | CVR:${r.cvr}% | Profit:$${r.profit} | ROI:${r.roi}%`
+    ).join('\n');
 
-Here is performance data for the last ${days} days (${dateFrom} to ${today}):
+    const prompt = `You are analyzing SMS marketing campaign performance data for a media buying team. The team promotes offers via SMS across different routes (USMS, Ranhog, Internal, TechStar), carriers (Verizon, AT&T, T-Mobile), verticals (GLP1, CLOUD, AUTO, PAYDAY, DEBT, AV, CLINICAL), and data partners who supply the recipient lists.
+
+Performance data for the last ${days} days (${dateFrom} to ${today}):
 
 MEDIA BUYER SUMMARY:
 ${buyerTable}
 
-TOP COMBINATIONS (Vertical × Carrier × Route), sorted by profit:
+ROUTE × VERTICAL × CARRIER COMBINATIONS (sorted by profit):
 ${comboTable}
+${hasOfferData ? `
+OFFER PERFORMANCE BY ROUTE × CARRIER × DATA PARTNER (sorted by profit):
+${offerTable}
+` : '\n(No offer-level data yet — run Offer Sync to unlock this dimension.)\n'}
+Based on this data, provide a clear weekly action plan. Structure your response as:
 
-Based on this data, provide a clear weekly action plan for the team. Structure your response as:
-
-## 🏆 Top Combinations to Scale
-List the 3-5 highest-performing combinations with specific reasons why (high ROI, strong CVR, etc.)
+## 🏆 Top Combinations to Scale${hasOfferData ? ' (with specific offers)' : ''}
+List the 3-5 highest-performing combinations. ${hasOfferData ? 'Name the specific offer, route, and carrier. Include which data partner is working.' : 'Name vertical, route, and carrier.'}
 
 ## ⚠️ Underperforming — Reduce or Pause
-List combinations with negative profit or very low ROI that should be reduced.
+${hasOfferData ? 'Name specific offers or combinations' : 'Combinations'} with negative profit or very low ROI.
 
 ## 💡 Opportunities to Test
-Based on patterns in the data, suggest 2-3 new combinations worth testing (e.g. a vertical doing well on Verizon might be worth testing on AT&T).
+Based on patterns in the data, suggest 2-3 untested combinations worth trying. ${hasOfferData ? 'E.g. an offer doing well on Verizon/USMS might be worth testing on AT&T or Ranhog.' : 'E.g. a vertical doing well on Verizon might be worth testing on AT&T.'}
 
 ## 📋 Action Items for This Week
-Specific, numbered action items each media buyer should take. Be direct and actionable.
+Specific, numbered action items per media buyer (TK, MA, DS). ${hasOfferData ? 'Name the exact offer to push, on which route and carrier.' : 'Be specific about vertical, route, and carrier.'} Be direct — this is read Monday morning.
 
-Keep it concise and practical — the team needs to act on this Monday morning.`;
+Keep it concise and practical.`;
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const message = await anthropic.messages.create({

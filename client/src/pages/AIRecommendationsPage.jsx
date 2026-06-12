@@ -78,7 +78,7 @@ export default function AIRecommendationsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AI Recommendations</h1>
           <p className="text-sm text-gray-500 mt-1">
-            AI analysis of your campaign data — best combinations of vertical, carrier, and route to focus on
+            AI analysis of your campaign data — specific offers to push and best route, carrier, and vertical combinations
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -139,7 +139,7 @@ export default function AIRecommendationsPage() {
         <div className="card p-10 text-center">
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
           <p className="text-sm font-medium text-gray-700">Analyzing your campaign data…</p>
-          <p className="text-xs text-gray-400 mt-1">Claude is reviewing your vertical, carrier, and route combinations.</p>
+          <p className="text-xs text-gray-400 mt-1">Claude is reviewing your offer, vertical, carrier, and route performance data.</p>
         </div>
       )}
 
@@ -153,7 +153,13 @@ export default function AIRecommendationsPage() {
             {report.data_json?.combinations && (
               <>
                 <span>·</span>
-                <span>{report.data_json.combinations.length} combinations analyzed</span>
+                <span>{report.data_json.combinations.length} route combinations</span>
+              </>
+            )}
+            {report.data_json?.offer_combinations?.length > 0 && (
+              <>
+                <span>·</span>
+                <span>{report.data_json.offer_combinations.length} offer combinations</span>
               </>
             )}
           </div>
@@ -163,47 +169,96 @@ export default function AIRecommendationsPage() {
             <MarkdownBlock content={report.content} />
           </div>
 
-          {/* Raw data table */}
-          {report.data_json?.combinations?.length > 0 && (
-            <div className="mt-6">
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                Data Used in Analysis
-              </h2>
-              <div className="card overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50">
-                        {['Vertical', 'Carrier', 'Route', 'Campaigns', 'Clicks', 'CVR', 'Profit', 'ROI'].map((h) => (
-                          <th key={h} className={`px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Vertical' ? 'text-left' : 'text-right'}`}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {report.data_json.combinations.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 text-xs">
-                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">{r.vertical}</span>
-                          </td>
-                          <td className="px-4 py-2 text-right text-xs text-gray-600">{r.carrier}</td>
-                          <td className="px-4 py-2 text-right text-xs text-gray-600">{r.route}</td>
-                          <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{r.campaigns}</td>
-                          <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
-                          <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{r.cvr}%</td>
-                          <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {r.roi}%
-                          </td>
+          {/* Raw data tables */}
+          <div className="mt-6 space-y-6">
+            {report.data_json?.offer_combinations?.length > 0 && (
+              <div>
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Offer Performance Data
+                </h2>
+                <div className="card overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-200 bg-gray-50">
+                          {['Offer', 'Route', 'Carrier', 'Vertical', 'Partner', 'Buyer', 'Clicks', 'CVR', 'Profit', 'ROI'].map((h) => (
+                            <th key={h} className={`px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Offer' ? 'text-left' : 'text-right'}`}>{h}</th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {report.data_json.offer_combinations.map((r, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-xs text-gray-800 max-w-xs truncate" title={r.offer}>{r.offer}</td>
+                            <td className="px-3 py-2 text-right text-xs text-gray-600">{r.route}</td>
+                            <td className="px-3 py-2 text-right text-xs text-gray-600">{r.carrier}</td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">{r.vertical}</span>
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              {r.data_partner && r.data_partner !== 'Unknown'
+                                ? <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-xs font-medium">{r.data_partner}</span>
+                                : <span className="text-gray-400">—</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs text-gray-600">{r.buyer}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{r.cvr}%</td>
+                            <td className={`px-3 py-2 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className={`px-3 py-2 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              {r.roi}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {report.data_json?.combinations?.length > 0 && (
+              <div>
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Route × Vertical × Carrier Combinations
+                </h2>
+                <div className="card overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-200 bg-gray-50">
+                          {['Vertical', 'Carrier', 'Route', 'Campaigns', 'Clicks', 'CVR', 'Profit', 'ROI'].map((h) => (
+                            <th key={h} className={`px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Vertical' ? 'text-left' : 'text-right'}`}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {report.data_json.combinations.map((r, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 text-xs">
+                              <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">{r.vertical}</span>
+                            </td>
+                            <td className="px-4 py-2 text-right text-xs text-gray-600">{r.carrier}</td>
+                            <td className="px-4 py-2 text-right text-xs text-gray-600">{r.route}</td>
+                            <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{r.campaigns}</td>
+                            <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{r.cvr}%</td>
+                            <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              {r.roi}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
