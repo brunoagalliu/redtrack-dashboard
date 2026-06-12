@@ -738,39 +738,43 @@ router.post('/ai-recommendations/generate', async (req, res) => {
       `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Campaigns:${r.campaigns} | Clicks:${r.clicks} | CVR:${r.cvr}% | Profit:$${r.profit} | ROI:${r.roi}%`
     ).join('\n');
 
-    const prompt = `You are analyzing SMS marketing campaign performance data for a media buying team. The team promotes offers via SMS across different routes (USMS, Ranhog, Internal, TechStar), carriers (Verizon, AT&T, T-Mobile), verticals (GLP1, CLOUD, AUTO, PAYDAY, DEBT, AV, CLINICAL), and data partners who supply the recipient lists.
+    const prompt = `You are a performance marketing analyst for an SMS media buying team. Your ONLY goal is to maximize profit and ROI. Be brutally honest — if something is losing money, say so plainly. If something is printing money, say scale it hard.
 
-Performance data for the last ${days} days (${dateFrom} to ${today}):
+The team controls: which OFFERS to run, which ROUTES to use (USMS, Ranhog, Internal, TechStar), which CARRIERS to target (Verizon, AT&T, T-Mobile), which DATA PARTNERS supply the lists (LM, JC, AVANTO, UPSTART, KOINO), and how many campaigns to put behind each combination. Budget follows performance.
 
-MEDIA BUYER SUMMARY:
+Data for the last ${days} days (${dateFrom} to ${today}):
+
+BUYER TOTALS:
 ${buyerTable}
 
-ROUTE × VERTICAL × CARRIER COMBINATIONS (sorted by profit):
+ROUTE × VERTICAL × CARRIER (sorted by profit):
 ${comboTable}
 ${hasOfferData ? `
-OFFER PERFORMANCE BY ROUTE × CARRIER × DATA PARTNER (sorted by profit):
+OFFER × ROUTE × CARRIER × DATA PARTNER (sorted by profit):
 ${offerTable}
-` : '\n(No offer-level data yet — run Offer Sync to unlock this dimension.)\n'}
-Based on this data, provide a clear weekly action plan. Structure your response as:
+` : '\n(No offer-level data yet — run a sync to unlock offer-level insights.)\n'}
+Analyze this data and give a profit-maximization plan. Be specific with numbers — quote actual profit figures and ROI percentages from the data. Structure:
 
-## 🏆 Top Combinations to Scale${hasOfferData ? ' (with specific offers)' : ''}
-List the 3-5 highest-performing combinations. ${hasOfferData ? 'Name the specific offer, route, and carrier. Include which data partner is working.' : 'Name vertical, route, and carrier.'}
+## 💰 Scale These Now
+The highest-ROI combinations worth putting more volume behind. ${hasOfferData ? 'Name the exact offer, route, carrier, and data partner.' : 'Name vertical, route, and carrier.'} Explain WHY (ROI%, profit, volume potential).
 
-## ⚠️ Underperforming — Reduce or Pause
-${hasOfferData ? 'Name specific offers or combinations' : 'Combinations'} with negative profit or very low ROI.
+## 🔴 Kill or Pause Immediately
+Combinations burning money or with ROI below breakeven. Name them explicitly with their loss figures. Every dollar saved here funds the winners above.
 
-## 💡 Opportunities to Test
-Based on patterns in the data, suggest 2-3 untested combinations worth trying. ${hasOfferData ? 'E.g. an offer doing well on Verizon/USMS might be worth testing on AT&T or Ranhog.' : 'E.g. a vertical doing well on Verizon might be worth testing on AT&T.'}
+## 🔁 Reallocation Moves
+Specific shifts: take budget FROM losing combination X and move it TO winning combination Y. ${hasOfferData ? 'E.g. "Move TK budget from [losing offer] on Ranhog to [winning offer] on USMS/Verizon."' : 'E.g. "Move budget from [vertical/carrier] to [vertical/carrier]."'}
 
-## 📋 Action Items for This Week
-Specific, numbered action items per media buyer (TK, MA, DS). ${hasOfferData ? 'Name the exact offer to push, on which route and carrier.' : 'Be specific about vertical, route, and carrier.'} Be direct — this is read Monday morning.
+## 🧪 Highest-Potential Tests
+1-3 untested combinations that the data suggests could be profitable. Base it on patterns — if offer X crushes on Verizon, testing it on AT&T is logical. Rank by expected impact.
 
-Keep it concise and practical.`;
+## 📋 This Week — Per Buyer
+Numbered list per buyer (TK, MA, DS). Concrete actions: what to launch, what to pause, what to scale. ${hasOfferData ? 'Include offer names.' : ''} No vague advice — specific moves only.`;
+
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
+      max_tokens: 2000,
       messages: [{ role: 'user', content: prompt }],
     });
 
