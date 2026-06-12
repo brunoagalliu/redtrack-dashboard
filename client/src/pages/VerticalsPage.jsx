@@ -95,6 +95,7 @@ export default function VerticalsPage() {
   const [applied, setApplied] = useState({ date_from: ninetyDaysAgo, date_to: today });
   const [verticalFilter, setVerticalFilter] = useState('ALL');
   const [buyerFilter, setBuyerFilter] = useState('ALL');
+  const [partnerFilter, setPartnerFilter] = useState('ALL');
   const [sortKey, setSortKey] = useState('clicks');
   const [sortDir, setSortDir] = useState('desc');
   const [page, setPage] = useState(0);
@@ -144,10 +145,16 @@ export default function VerticalsPage() {
 
   const verticalNames = data?.verticalNames || [];
 
+  const allPartners = useMemo(() => {
+    const set = new Set(allCampaigns.map(c => c.data_partner).filter(Boolean));
+    return [...set].sort();
+  }, [allCampaigns]);
+
   const filtered = useMemo(() => {
     let list = allCampaigns;
     if (verticalFilter !== 'ALL') list = list.filter((c) => c.vertical === verticalFilter);
     if (buyerFilter !== 'ALL') list = list.filter((c) => c.buyer === buyerFilter);
+    if (partnerFilter !== 'ALL') list = list.filter((c) => c.data_partner === partnerFilter);
     return [...list].sort((a, b) => {
       const av = a[sortKey] ?? 0;
       const bv = b[sortKey] ?? 0;
@@ -212,6 +219,13 @@ export default function VerticalsPage() {
           <select value={buyerFilter} onChange={(e) => { setBuyerFilter(e.target.value); setPage(0); }} className="input">
             <option value="ALL">All buyers</option>
             {['TK', 'MA', 'DS'].map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Data Partner</label>
+          <select value={partnerFilter} onChange={(e) => { setPartnerFilter(e.target.value); setPage(0); }} className="input">
+            <option value="ALL">All partners</option>
+            {allPartners.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
         <button type="button" onClick={applyRange} disabled={isFetching} className="btn-primary">

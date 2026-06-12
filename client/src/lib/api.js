@@ -88,7 +88,7 @@ export const api = {
   getOfferSyncStatus: () => request('/reports/sync/offers/status'),
   triggerOfferSync: (params = {}) => request('/reports/sync/offers', { method: 'POST', body: JSON.stringify(params) }),
   getOffersReport: (params = {}) => {
-    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))).toString();
     return request(`/reports/offers${qs ? `?${qs}` : ''}`);
   },
   getInsights: (days = 30) => request(`/reports/insights?days=${days}`),

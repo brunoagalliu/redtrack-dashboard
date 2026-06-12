@@ -43,10 +43,11 @@ export default function OffersPage() {
 
   const [dateFrom, setDateFrom] = useState(weekAgo);
   const [dateTo,   setDateTo]   = useState(today);
-  const [buyer,    setBuyer]    = useState('');
-  const [vertical, setVertical] = useState('');
-  const [route,    setRoute]    = useState('');
-  const [carrier,  setCarrier]  = useState('');
+  const [buyer,       setBuyer]       = useState('');
+  const [vertical,   setVertical]   = useState('');
+  const [route,      setRoute]      = useState('');
+  const [carrier,    setCarrier]    = useState('');
+  const [dataPartner, setDataPartner] = useState('');
   const [sortCol,  setSortCol]  = useState('profit');
   const [sortDir,  setSortDir]  = useState('desc');
   const [page,     setPage]     = useState(1);
@@ -57,8 +58,8 @@ export default function OffersPage() {
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports', 'offers', dateFrom, dateTo, buyer, vertical, route, carrier],
-    queryFn: () => api.getOffersReport({ date_from: dateFrom, date_to: dateTo, buyer, vertical, route, carrier }),
+    queryKey: ['reports', 'offers', dateFrom, dateTo, buyer, vertical, route, carrier, dataPartner],
+    queryFn: () => api.getOffersReport({ date_from: dateFrom, date_to: dateTo, buyer, vertical, route, carrier, data_partner: dataPartner }),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
@@ -112,11 +113,12 @@ export default function OffersPage() {
   const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   const cols = [
-    { key: 'offer_name',   label: 'Offer',       align: 'left',  sortable: false },
+    { key: 'offer_name',   label: 'Offer',        align: 'left',  sortable: false },
     { key: 'buyer',        label: 'Buyer',        align: 'left',  sortable: false },
     { key: 'vertical',     label: 'Vertical',     align: 'left',  sortable: false },
     { key: 'route',        label: 'Route',        align: 'left',  sortable: false },
     { key: 'carrier',      label: 'Carrier',      align: 'left',  sortable: false },
+    { key: 'data_partner', label: 'Data Partner', align: 'left',  sortable: false },
     { key: 'campaigns',    label: 'Campaigns',    align: 'right', sortable: true  },
     { key: 'clicks',       label: 'Clicks',       align: 'right', sortable: true  },
     { key: 'conversions',  label: 'Conv',         align: 'right', sortable: true  },
@@ -182,6 +184,14 @@ export default function OffersPage() {
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
             <option value="">All</option>
             {(data?.carriers || []).map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium">Data Partner</label>
+          <select value={dataPartner} onChange={e => { setDataPartner(e.target.value); setPage(1); }}
+            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
+            <option value="">All</option>
+            {(data?.dataPartners || []).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
         <div className="flex flex-col gap-1 ml-auto">
@@ -279,6 +289,11 @@ export default function OffersPage() {
                       </td>
                       <td className="px-3 py-2 text-xs text-gray-600">{row.route || '—'}</td>
                       <td className="px-3 py-2 text-xs text-gray-600">{row.carrier || 'All'}</td>
+                      <td className="px-3 py-2">
+                        {row.data_partner
+                          ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700">{row.data_partner}</span>
+                          : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{row.campaigns}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{fmt(row.clicks)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{fmt(row.conversions)}</td>

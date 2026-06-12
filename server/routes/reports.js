@@ -37,10 +37,11 @@ function tokenize(title) {
   return title.toUpperCase().split(/[\s_\-]+/).filter(Boolean);
 }
 
-// Parse campaign title extracting buyer, vertical, route, and carrier.
+// Parse campaign title extracting buyer, vertical, route, carrier, and data partner.
 // Delimiters can be spaces, underscores, or hyphens — we scan tokens for known values.
-// knownRoutes is a Map<UPPERCASE_TOKEN, canonicalName> built from list_items at sync time.
-function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes) {
+// knownRoutes   is a Map<UPPERCASE_TOKEN, canonicalName> built from list_items at sync time.
+// knownPartners is a Map<UPPERCASE_TOKEN, alias>        built from partners table at sync time.
+function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes, knownPartners) {
   const title  = rawTitle.trim();
   const tokens = tokenize(title);
 
@@ -48,22 +49,24 @@ function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes) {
   const buyer = tokens[0] || null;
 
   // Scan all tokens for known values
-  let vertical = null;
-  let route    = null;
-  let carrier  = null;
+  let vertical    = null;
+  let route       = null;
+  let carrier     = null;
+  let dataPartner = null;
 
   for (const t of tokens) {
-    if (!vertical && knownVerticals.has(t))  vertical = t;
-    if (!route    && ROUTE_ALIASES.has(t))   route    = ROUTE_ALIASES.get(t);
-    if (!route    && knownRoutes.has(t))     route    = knownRoutes.get(t);
-    if (!carrier  && CARRIER_MAP.has(t))     carrier  = CARRIER_MAP.get(t);
+    if (!vertical    && knownVerticals.has(t))  vertical    = t;
+    if (!route       && ROUTE_ALIASES.has(t))   route       = ROUTE_ALIASES.get(t);
+    if (!route       && knownRoutes.has(t))     route       = knownRoutes.get(t);
+    if (!carrier     && CARRIER_MAP.has(t))     carrier     = CARRIER_MAP.get(t);
+    if (!dataPartner && knownPartners.has(t))   dataPartner = knownPartners.get(t);
   }
 
   // platform kept for backwards compat (second ` - ` segment if present)
   const dashParts = title.split(/\s+-\s+/);
   const platform  = dashParts.length >= 3 ? dashParts[1].trim() : null;
 
-  return { buyer, platform, vertical, route, carrier };
+  return { buyer, platform, vertical, route, carrier, dataPartner };
 }
 
 function defaultDateRange() {
@@ -116,13 +119,16 @@ async function runSync(dateFrom, dateTo) {
     const earliest = new Date(Date.now() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
     if (dateFrom < earliest) dateFrom = earliest;
 
-    // 1. Load known verticals and routes from DB (campaign creator is the source of truth)
+    // 1. Load known verticals, routes, and data partners from DB
     const { rows: vRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'vertical'`);
     const knownVerticals = new Set(vRows.map((r) => r.value.toUpperCase()));
 
     const { rows: rRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'route'`);
-    // Map UPPERCASE token → canonical name for case-insensitive matching in campaign titles
     const knownRoutes = new Map(rRows.map((r) => [r.value.toUpperCase(), r.value]));
+
+    const { rows: pRows } = await pool.query(`SELECT alias FROM partners`);
+    // Map UPPERCASE alias → canonical alias for case-insensitive token matching
+    const knownPartners = new Map(pRows.map((r) => [r.alias.toUpperCase(), r.alias]));
 
     // 2. Fetch all campaigns from RedTrack
     const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
@@ -137,8 +143,8 @@ async function runSync(dateFrom, dateTo) {
       if (createdAt < cutoff) continue;
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
         if (pattern.test(title)) {
-          const parsed = parseCampaignTitle(title, knownVerticals, knownRoutes);
-          buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, route: parsed.route, carrier: parsed.carrier, created_at: createdAt });
+          const parsed = parseCampaignTitle(title, knownVerticals, knownRoutes, knownPartners);
+          buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, route: parsed.route, carrier: parsed.carrier, dataPartner: parsed.dataPartner, created_at: createdAt });
           break;
         }
       }
@@ -147,10 +153,10 @@ async function runSync(dateFrom, dateTo) {
     // 4. Upsert campaign metadata
     for (const c of buyerCampaigns) {
       await pool.query(
-        `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, route, carrier, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, vertical=$4, platform=$5, route=$6, carrier=$7, synced_at=NOW()`,
-        [c.id, c.title, c.buyer, c.vertical || null, c.platform || null, c.route || null, c.carrier || null, c.created_at || null]
+        `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, route, carrier, data_partner, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, vertical=$4, platform=$5, route=$6, carrier=$7, data_partner=$8, synced_at=NOW()`,
+        [c.id, c.title, c.buyer, c.vertical || null, c.platform || null, c.route || null, c.carrier || null, c.dataPartner || null, c.created_at || null]
       );
     }
 
@@ -288,6 +294,10 @@ router.get('/media-buyers', async (req, res) => {
          c.buyer,
          c.id,
          c.title,
+         c.vertical,
+         c.route,
+         c.carrier,
+         c.data_partner,
          COALESCE(SUM(s.clicks),0)::int       AS clicks,
          COALESCE(SUM(s.conversions),0)::int  AS conversions,
          COALESCE(SUM(s.cost),0)              AS cost,
@@ -297,7 +307,7 @@ router.get('/media-buyers', async (req, res) => {
        JOIN rt_campaign_stats s ON s.campaign_id = c.id
        WHERE c.buyer IS NOT NULL
          AND s.stat_date BETWEEN $1 AND $2
-       GROUP BY c.buyer, c.id, c.title
+       GROUP BY c.buyer, c.id, c.title, c.vertical, c.route, c.carrier, c.data_partner
        ORDER BY c.buyer, clicks DESC`,
       [dateFrom, dateTo]
     );
@@ -308,6 +318,7 @@ router.get('/media-buyers', async (req, res) => {
       if (!buyers[r.buyer]) buyers[r.buyer] = { campaigns: [], totals: { clicks:0, conversions:0, cost:0, revenue:0, profit:0 } };
       const stats = {
         id: r.id, title: r.title,
+        vertical: r.vertical, route: r.route, carrier: r.carrier, data_partner: r.data_partner,
         clicks: Number(r.clicks), conversions: Number(r.conversions),
         cost: Number(r.cost), revenue: Number(r.revenue), profit: Number(r.profit),
       };
@@ -344,6 +355,9 @@ router.get('/verticals', async (req, res) => {
          c.id,
          c.title,
          c.buyer,
+         c.route,
+         c.carrier,
+         c.data_partner,
          COALESCE(SUM(s.clicks),0)::int       AS clicks,
          COALESCE(SUM(s.conversions),0)::int  AS conversions,
          COALESCE(SUM(s.cost),0)              AS cost,
@@ -353,7 +367,7 @@ router.get('/verticals', async (req, res) => {
        JOIN rt_campaign_stats s ON s.campaign_id = c.id
        WHERE c.vertical IS NOT NULL
          AND s.stat_date BETWEEN $1 AND $2
-       GROUP BY c.vertical, c.id, c.title, c.buyer
+       GROUP BY c.vertical, c.id, c.title, c.buyer, c.route, c.carrier, c.data_partner
        ORDER BY c.vertical, clicks DESC`,
       [dateFrom, dateTo]
     );
@@ -815,18 +829,20 @@ router.get('/offers', async (req, res) => {
     const defaults = defaultDateRange();
     const dateFrom = req.query.date_from || defaults.date_from;
     const dateTo   = req.query.date_to   || defaults.date_to;
-    const buyer    = req.query.buyer    || null;
-    const vertical = req.query.vertical || null;
-    const route    = req.query.route    || null;
-    const carrier  = req.query.carrier  || null;
+    const buyer       = req.query.buyer        || null;
+    const vertical    = req.query.vertical     || null;
+    const route       = req.query.route        || null;
+    const carrier     = req.query.carrier      || null;
+    const dataPartner = req.query.data_partner || null;
 
     const conditions = [`os.stat_date BETWEEN $1 AND $2`];
     const params     = [dateFrom, dateTo];
     let   p          = 3;
-    if (buyer)    { conditions.push(`c.buyer = $${p++}`);    params.push(buyer); }
-    if (vertical) { conditions.push(`c.vertical = $${p++}`); params.push(vertical); }
-    if (route)    { conditions.push(`c.route = $${p++}`);    params.push(route); }
-    if (carrier)  { conditions.push(`c.carrier = $${p++}`);  params.push(carrier); }
+    if (buyer)       { conditions.push(`c.buyer = $${p++}`);        params.push(buyer); }
+    if (vertical)    { conditions.push(`c.vertical = $${p++}`);     params.push(vertical); }
+    if (route)       { conditions.push(`c.route = $${p++}`);        params.push(route); }
+    if (carrier)     { conditions.push(`c.carrier = $${p++}`);      params.push(carrier); }
+    if (dataPartner) { conditions.push(`c.data_partner = $${p++}`); params.push(dataPartner); }
 
     const { rows } = await pool.query(`
       SELECT
@@ -836,6 +852,7 @@ router.get('/offers', async (req, res) => {
         c.route,
         c.carrier,
         c.buyer,
+        c.data_partner,
         COUNT(DISTINCT os.campaign_id)::int                                AS campaigns,
         COALESCE(SUM(os.clicks),0)::int                                    AS clicks,
         COALESCE(SUM(os.conversions),0)::int                               AS conversions,
@@ -852,23 +869,24 @@ router.get('/offers', async (req, res) => {
       JOIN rt_offers o     ON o.id  = os.offer_id
       JOIN rt_campaigns c  ON c.id  = os.campaign_id
       WHERE ${conditions.join(' AND ')}
-      GROUP BY o.id, o.name, c.vertical, c.route, c.carrier, c.buyer
+      GROUP BY o.id, o.name, c.vertical, c.route, c.carrier, c.buyer, c.data_partner
       ORDER BY SUM(os.profit) DESC
     `, params);
 
     // Distinct filter options for dropdowns
     const { rows: filterRows } = await pool.query(`
-      SELECT DISTINCT c.vertical, c.route, c.carrier, c.buyer
+      SELECT DISTINCT c.vertical, c.route, c.carrier, c.buyer, c.data_partner
       FROM rt_offer_stats os
       JOIN rt_campaigns c ON c.id = os.campaign_id
       WHERE os.stat_date BETWEEN $1 AND $2
     `, [dateFrom, dateTo]);
 
-    const verticals = [...new Set(filterRows.map(r => r.vertical).filter(Boolean))].sort();
-    const routes    = [...new Set(filterRows.map(r => r.route).filter(Boolean))].sort();
-    const carriers  = [...new Set(filterRows.map(r => r.carrier).filter(Boolean))].sort();
+    const verticals    = [...new Set(filterRows.map(r => r.vertical).filter(Boolean))].sort();
+    const routes       = [...new Set(filterRows.map(r => r.route).filter(Boolean))].sort();
+    const carriers     = [...new Set(filterRows.map(r => r.carrier).filter(Boolean))].sort();
+    const dataPartners = [...new Set(filterRows.map(r => r.data_partner).filter(Boolean))].sort();
 
-    res.json({ rows, verticals, routes, carriers, sync: { status: offerSync.status, processed: offerSync.processed, total: offerSync.total } });
+    res.json({ rows, verticals, routes, carriers, dataPartners, sync: { status: offerSync.status, processed: offerSync.processed, total: offerSync.total } });
   } catch (err) {
     console.error('Offers report error:', err.message);
     res.status(500).json({ error: err.message });

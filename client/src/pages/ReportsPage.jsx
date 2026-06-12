@@ -292,6 +292,7 @@ export default function ReportsPage() {
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Buyer</th>
                   <Th col="title" label="Campaign" />
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Partner</th>
                   <Th col="clicks" label="Clicks" right />
                   <Th col="conversions" label="Conv." right />
                   <Th col="cost" label="Spend" right />
@@ -310,6 +311,11 @@ export default function ReportsPage() {
                     <td className="px-4 py-2.5 text-sm text-gray-700 max-w-xs truncate" title={c.title}>
                       {c.title}
                     </td>
+                    <td className="px-4 py-2.5 text-left">
+                      {c.data_partner
+                        ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700">{c.data_partner}</span>
+                        : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.clicks)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.conversions)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.cost)}</td>
@@ -324,6 +330,7 @@ export default function ReportsPage() {
                 <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
                   <td className="px-4 py-3" />
                   <td className="px-4 py-3 text-sm text-gray-700">Total</td>
+                  <td className="px-4 py-3" />
                   <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>
