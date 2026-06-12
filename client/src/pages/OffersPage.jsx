@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
 const BUYERS = ['TK', 'MA', 'DS'];
@@ -11,30 +11,6 @@ function fmtPct(n)   { return Number(n).toFixed(2) + '%'; }
 function SortIcon({ col, sortCol, sortDir }) {
   if (sortCol !== col) return <span className="text-gray-300 ml-1">↕</span>;
   return <span className="text-blue-500 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
-}
-
-function SyncButton({ onSync, syncing, status }) {
-  return (
-    <button
-      onClick={onSync}
-      disabled={syncing}
-      className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-    >
-      {syncing ? (
-        <>
-          <span className="inline-block w-3 h-3 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
-          Syncing offers… {status?.processed > 0 ? `${status.processed}/${status.total}` : ''}
-        </>
-      ) : (
-        <>
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Sync Offers
-        </>
-      )}
-    </button>
-  );
 }
 
 export default function OffersPage() {
@@ -52,10 +28,6 @@ export default function OffersPage() {
   const [sortDir,  setSortDir]  = useState('desc');
   const [page,     setPage]     = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [syncing,  setSyncing]  = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
-  const pollRef = useRef(null);
-  const queryClient = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['reports', 'offers', dateFrom, dateTo, buyer, vertical, route, carrier, dataPartner],
@@ -64,34 +36,14 @@ export default function OffersPage() {
     retry: false,
   });
 
-  // Poll offer sync status while running
-  useEffect(() => {
-    if (syncing) {
-      pollRef.current = setInterval(async () => {
-        try {
-          const s = await api.getOfferSyncStatus();
-          setSyncStatus(s);
-          if (s.status !== 'running') {
-            setSyncing(false);
-            clearInterval(pollRef.current);
-            queryClient.invalidateQueries({ queryKey: ['reports', 'offers'] });
-          }
-        } catch { /* ignore */ }
-      }, 3000);
-    }
-    return () => clearInterval(pollRef.current);
-  }, [syncing, queryClient]);
+  const { data: mainSync } = useQuery({
+    queryKey: ['sync', 'status'],
+    queryFn: () => api.getSyncStatus(),
+    refetchInterval: (query) => query.state.data?.status === 'running' ? 3000 : false,
+  });
 
-  async function handleSync() {
-    setSyncing(true);
-    setSyncStatus(null);
-    try {
-      await api.triggerOfferSync({ date_from: dateFrom, date_to: dateTo });
-    } catch (err) {
-      setSyncing(false);
-      alert(err.message);
-    }
-  }
+  const syncRunning = mainSync?.status === 'running';
+  const syncPhase   = mainSync?.phase;
 
   function toggleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -139,7 +91,12 @@ export default function OffersPage() {
             Which offers perform best by route, vertical, carrier, and buyer
           </p>
         </div>
-        <SyncButton onSync={handleSync} syncing={syncing} status={syncStatus} />
+        {syncRunning && (
+          <span className="text-xs text-blue-500 font-medium flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+            {syncPhase === 'offers' ? `Syncing offers ${mainSync?.offer_sync?.processed ?? 0}/${mainSync?.offer_sync?.total ?? '?'}…` : 'Syncing campaigns…'}
+          </span>
+        )}
       </div>
 
       {/* Filters */}
@@ -204,7 +161,7 @@ export default function OffersPage() {
       </div>
 
       {/* Empty state — no data synced yet */}
-      {!isLoading && !isError && rows.length === 0 && !syncing && (
+      {!isLoading && !isError && rows.length === 0 && !syncRunning && (
         <div className="card p-10 text-center">
           <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-blue-50 flex items-center justify-center">
             <svg className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,9 +170,8 @@ export default function OffersPage() {
             </svg>
           </div>
           <p className="text-sm font-medium text-gray-700 mb-1">No offer data yet</p>
-          <p className="text-xs text-gray-400 mb-4">
-            Click "Sync Offers" to extract offer assignments from your campaigns and pull per-offer stats.
-            Make sure the main campaign sync has run first.
+          <p className="text-xs text-gray-400">
+            Use the Sync button on the Reports or Verticals page — it now syncs campaigns and offers together.
           </p>
         </div>
       )}

@@ -13,6 +13,7 @@ const MAX_HISTORY_DAYS = 90;
 const sync = {
   running: false,
   status: 'idle',       // idle | running | complete | error
+  phase: 'idle',        // idle | campaigns | offers
   processed: 0,
   total: 0,
   startedAt: null,
@@ -104,6 +105,7 @@ async function runSync(dateFrom, dateTo) {
   if (sync.running) return;
   sync.running  = true;
   sync.status   = 'running';
+  sync.phase    = 'campaigns';
   sync.processed = 0;
   sync.total    = 0;
   sync.startedAt = new Date();
@@ -220,12 +222,19 @@ async function runSync(dateFrom, dateTo) {
       if (sync.processed % 50 === 0) await persistSyncStatus();
     }
 
+    // Chain offer sync automatically
+    sync.phase = 'offers';
+    await persistSyncStatus();
+    await runOfferSync(dateFrom, dateTo);
+
     sync.status = 'complete';
+    sync.phase  = 'idle';
     sync.completedAt = new Date();
     sync.lastSyncedAt = new Date();
     await persistSyncStatus();
   } catch (err) {
     sync.status = 'error';
+    sync.phase  = 'idle';
     sync.error  = err.message;
     await persistSyncStatus().catch(() => {});
   } finally {
@@ -254,12 +263,18 @@ router.get('/sync/status', async (_req, res) => {
   function normalize(s) {
     return {
       status:       s.status,
+      phase:        s.phase || 'idle',
       running:      s.running || false,
       processed:    s.processed,
       total:        s.total,
       started_at:   s.started_at  ?? s.startedAt  ?? null,
       completed_at: s.completed_at ?? s.completedAt ?? null,
       error:        s.error || null,
+      offer_sync:   {
+        status:    offerSync.status,
+        processed: offerSync.processed,
+        total:     offerSync.total,
+      },
     };
   }
   if (sync.status !== 'idle') return res.json(normalize(sync));

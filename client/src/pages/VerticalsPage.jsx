@@ -239,7 +239,9 @@ export default function VerticalsPage() {
           )}
           {syncStatus?.status === 'running' && (
             <span className="text-xs text-blue-500 font-medium">
-              Syncing {syncStatus.processed} / {syncStatus.total}…
+              {syncStatus.phase === 'offers'
+                ? `Syncing offers ${syncStatus.offer_sync?.processed ?? 0} / ${syncStatus.offer_sync?.total ?? '?'}…`
+                : `Syncing campaigns ${syncStatus.processed} / ${syncStatus.total}…`}
             </span>
           )}
           <SyncButton dateFrom={applied.date_from} dateTo={applied.date_to} onSynced={onSynced} />
