@@ -205,7 +205,7 @@ async function runSync(dateFrom, dateTo) {
             [c.id, row.date, row.clicks||0, row.conversions||0, row.cost||0, row.revenue||0, row.profit||0]
           );
         }
-      } catch { /* silently skip individual campaign failures */ }
+      } catch (err) { console.warn(`[sync] campaign ${c.id} skipped: ${err.message}`); }
     }
 
     // Historical sync
@@ -840,7 +840,7 @@ async function runOfferSync(dateFrom, dateTo) {
             }
           }
         }
-      } catch { /* skip individual campaign failures */ }
+      } catch (err) { console.warn(`[offer-sync] campaign ${c.campaign_id} skipped: ${err.message}`); }
 
       offerSync.processed = i + 1;
     }
