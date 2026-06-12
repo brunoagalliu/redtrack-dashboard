@@ -24,6 +24,15 @@ const sync = {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// Shared rate-limit clock — both campaign sync and offer sync use the same throttle
+// so the pacing is preserved when they run back-to-back in one sync session.
+let lastApiCall = 0;
+async function throttleRedtrack() {
+  const wait = Math.max(0, CALL_INTERVAL_MS - (Date.now() - lastApiCall));
+  if (wait > 0) await sleep(wait);
+  lastApiCall = Date.now();
+}
+
 // UPM is the legacy RedTrack channel name for USMS — keep as a permanent alias
 const ROUTE_ALIASES = new Map([['UPM', 'USMS']]);
 
@@ -183,12 +192,8 @@ async function runSync(dateFrom, dateTo) {
 
     sync.total = toSyncHistorical.length + toSyncToday.length;
 
-    let lastCall = 0;
-
     async function fetchAndStore(c, from, to) {
-      const wait = Math.max(0, CALL_INTERVAL_MS - (Date.now() - lastCall));
-      if (wait > 0) await sleep(wait);
-      lastCall = Date.now();
+      await throttleRedtrack();
       try {
         const { data: report } = await redtrack.get('/report', {
           params: { date_from: from, date_to: to, campaign_id: c.id, per: 1000 },
@@ -746,18 +751,10 @@ async function runOfferSync(dateFrom, dateTo) {
     );
     offerSync.total = campaignRows.length;
 
-    let lastCall = 0;
-    async function throttle() {
-      const wait = Math.max(0, CALL_INTERVAL_MS - (Date.now() - lastCall));
-      if (wait > 0) await sleep(wait);
-      lastCall = Date.now();
-    }
-
     for (let i = 0; i < campaignRows.length; i++) {
       const c = campaignRows[i];
       try {
-        // Fetch campaign detail to extract offers from streams
-        await throttle();
+        await throttleRedtrack();
         const { data } = await redtrack.get(`/campaigns/${c.id}`);
         const offers = [];
         for (const sw of (data?.streams || [])) {
@@ -803,7 +800,7 @@ async function runOfferSync(dateFrom, dateTo) {
                 [offer.id, c.id, dateFrom, historicalTo]
               );
               if (!existing.length) {
-                await throttle();
+                await throttleRedtrack();
                 const { data: report } = await redtrack.get('/report', {
                   params: { campaign_id: c.id, offer_id: offer.id, date_from: dateFrom, date_to: historicalTo, per: 1000 },
                 });
@@ -822,7 +819,7 @@ async function runOfferSync(dateFrom, dateTo) {
             }
             // Today — always refresh
             if (dateTo >= today) {
-              await throttle();
+              await throttleRedtrack();
               const { data: report } = await redtrack.get('/report', {
                 params: { campaign_id: c.id, offer_id: offer.id, date_from: today, date_to: today, per: 1000 },
               });
