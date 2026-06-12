@@ -184,6 +184,13 @@ async function init() {
       );
     }
   }
+
+  // If the server restarted mid-sync the DB row will be stuck at status='running'.
+  // Clear it so the UI doesn't show a phantom running sync on next page load.
+  await pool.query(`
+    UPDATE rt_sync_status SET status = 'interrupted', error = 'Server restarted during sync'
+    WHERE id = 1 AND status = 'running'
+  `);
 }
 
 module.exports = { pool, init };
