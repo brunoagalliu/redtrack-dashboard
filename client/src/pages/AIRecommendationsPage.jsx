@@ -198,16 +198,6 @@ export default function AIRecommendationsPage() {
             )}
           </div>
 
-          {/* Overall analysis */}
-          {overall && (
-            <div>
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Overall Analysis</h2>
-              <div className="card p-6">
-                <MarkdownBlock content={overall} />
-              </div>
-            </div>
-          )}
-
           {/* Per-buyer cards */}
           {Object.keys(buyers).length === 0 && overall && (
             <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
@@ -236,6 +226,16 @@ export default function AIRecommendationsPage() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Overall analysis */}
+          {overall && (
+            <div>
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Overall Analysis</h2>
+              <div className="card p-6">
+                <MarkdownBlock content={overall} />
               </div>
             </div>
           )}
