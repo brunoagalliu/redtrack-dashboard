@@ -793,7 +793,7 @@ ${offerTable}
 PER-BUYER BREAKDOWN:
 ${buyerComboSections}
 
-Write a profit-maximization report. Quote actual numbers from the data. Structure:
+Write a profit-maximization report. Quote actual numbers from the data. Use bullet points only — NO markdown tables. Structure:
 
 ## 💰 Best Combinations to Scale
 Top 3-5 highest-profit combinations across the team. ${hasOfferData ? 'Name the offer, route, carrier, and data partner.' : 'Name vertical, route, and carrier.'} Why they work and how to put more volume behind them.
@@ -825,7 +825,7 @@ Same structure.`;
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4000,
+      max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }],
     });
 
