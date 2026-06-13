@@ -2,48 +2,63 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
+const BUYER_STYLES = {
+  TK: { badge: 'bg-blue-100 text-blue-700',   border: 'border-blue-200',   header: 'bg-blue-50' },
+  MA: { badge: 'bg-purple-100 text-purple-700', border: 'border-purple-200', header: 'bg-purple-50' },
+  DS: { badge: 'bg-orange-100 text-orange-700', border: 'border-orange-200', header: 'bg-orange-50' },
+};
+
+function boldify(text) {
+  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
 function MarkdownBlock({ content }) {
-  // Simple markdown renderer — headings, bullets, bold, paragraphs
   const lines = content.split('\n');
   const elements = [];
   let i = 0;
-
   while (i < lines.length) {
     const line = lines[i];
-
     if (line.startsWith('## ')) {
       elements.push(
-        <h2 key={i} className="text-base font-bold text-gray-900 mt-6 mb-2 flex items-center gap-2">
+        <h2 key={i} className="text-sm font-bold text-gray-900 mt-5 mb-2 first:mt-0">
           {line.replace('## ', '')}
         </h2>
       );
     } else if (line.startsWith('### ')) {
       elements.push(
-        <h3 key={i} className="text-sm font-semibold text-gray-800 mt-4 mb-1">{line.replace('### ', '')}</h3>
+        <h3 key={i} className="text-xs font-semibold text-gray-700 mt-3 mb-1">{line.replace('### ', '')}</h3>
       );
     } else if (line.startsWith('- ') || line.match(/^\d+\.\s/)) {
-      const text = line.replace(/^[-\d]+[.]\s/, '').replace(/^-\s/, '');
+      const text = line.replace(/^-\s/, '').replace(/^\d+\.\s/, '');
       elements.push(
-        <li key={i} className="text-sm text-gray-700 ml-4 mb-1 leading-relaxed"
+        <li key={i} className="text-xs text-gray-700 ml-3 mb-1 leading-relaxed"
           dangerouslySetInnerHTML={{ __html: boldify(text) }} />
-      );
-    } else if (line.startsWith('**') && line.endsWith('**')) {
-      elements.push(
-        <p key={i} className="text-sm font-semibold text-gray-800 mt-2">{line.replace(/\*\*/g, '')}</p>
       );
     } else if (line.trim()) {
       elements.push(
-        <p key={i} className="text-sm text-gray-700 mb-2 leading-relaxed"
+        <p key={i} className="text-xs text-gray-700 mb-1.5 leading-relaxed"
           dangerouslySetInnerHTML={{ __html: boldify(line) }} />
       );
     }
     i++;
   }
-  return <div className="space-y-0.5">{elements}</div>;
+  return <div>{elements}</div>;
 }
 
-function boldify(text) {
-  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+// Split report content into overall section + per-buyer sections
+function parseContent(content) {
+  if (!content) return { overall: '', buyers: {} };
+  const parts = content.split(/(?=^## 👤 (?:TK|MA|DS)\b)/m);
+  const overall = parts[0].trim();
+  const buyers = {};
+  for (const part of parts.slice(1)) {
+    const match = part.match(/^## 👤 (TK|MA|DS)\b/);
+    if (match) {
+      // Strip the heading line itself — we render the buyer name as the card header
+      buyers[match[1]] = part.replace(/^## 👤 \w+\n?/, '').trim();
+    }
+  }
+  return { overall, buyers };
 }
 
 export default function AIRecommendationsPage() {
@@ -72,13 +87,16 @@ export default function AIRecommendationsPage() {
     }
   }
 
+  const { overall, buyers } = parseContent(report?.content);
+
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-8 max-w-7xl">
+      {/* Header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AI Recommendations</h1>
           <p className="text-sm text-gray-500 mt-1">
-            AI analysis of your campaign data — specific offers to push and best route, carrier, and vertical combinations
+            Profit-maximization analysis with dedicated actions per media buyer
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -130,136 +148,175 @@ export default function AIRecommendationsPage() {
             </svg>
           </div>
           <p className="text-sm font-medium text-gray-700 mb-1">No report generated yet</p>
-          <p className="text-xs text-gray-400 mb-4">Click "Generate Report" to have AI analyze your campaign data and surface the best opportunities for this week.</p>
-          <p className="text-xs text-gray-400">Make sure a sync has been run first so there's data to analyze.</p>
+          <p className="text-xs text-gray-400 mb-2">Run a sync first, then click Generate Report.</p>
         </div>
       )}
 
       {generating && (
         <div className="card p-10 text-center">
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
-          <p className="text-sm font-medium text-gray-700">Analyzing your campaign data…</p>
-          <p className="text-xs text-gray-400 mt-1">Claude is reviewing your offer, vertical, carrier, and route performance data.</p>
+          <p className="text-sm font-medium text-gray-700">Analyzing campaign data…</p>
+          <p className="text-xs text-gray-400 mt-1">Reviewing offers, routes, carriers, and per-buyer performance.</p>
         </div>
       )}
 
       {report && !generating && (
-        <>
+        <div className="space-y-6">
           {/* Meta */}
-          <div className="flex items-center gap-4 mb-4 text-xs text-gray-400">
+          <div className="flex items-center gap-4 text-xs text-gray-400">
             <span>Generated: {new Date(report.generated_at).toLocaleString()}</span>
             <span>·</span>
-            <span>Based on last {report.period_days} days</span>
-            {report.data_json?.combinations && (
-              <>
-                <span>·</span>
-                <span>{report.data_json.combinations.length} route combinations</span>
-              </>
-            )}
-            {report.data_json?.offer_combinations?.length > 0 && (
-              <>
-                <span>·</span>
-                <span>{report.data_json.offer_combinations.length} offer combinations</span>
-              </>
-            )}
-          </div>
-
-          {/* AI Content */}
-          <div className="card p-6">
-            <MarkdownBlock content={report.content} />
-          </div>
-
-          {/* Raw data tables */}
-          <div className="mt-6 space-y-6">
-            {report.data_json?.offer_combinations?.length > 0 && (
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  Offer Performance Data
-                </h2>
-                <div className="card overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-gray-200 bg-gray-50">
-                          {['Offer', 'Route', 'Carrier', 'Vertical', 'Partner', 'Buyer', 'Clicks', 'CVR', 'Profit', 'ROI'].map((h) => (
-                            <th key={h} className={`px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Offer' ? 'text-left' : 'text-right'}`}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {report.data_json.offer_combinations.map((r, i) => (
-                          <tr key={i} className="hover:bg-gray-50">
-                            <td className="px-3 py-2 text-xs text-gray-800 max-w-xs truncate" title={r.offer}>{r.offer}</td>
-                            <td className="px-3 py-2 text-right text-xs text-gray-600">{r.route}</td>
-                            <td className="px-3 py-2 text-right text-xs text-gray-600">{r.carrier}</td>
-                            <td className="px-3 py-2 text-right text-xs">
-                              <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-medium">{r.vertical}</span>
-                            </td>
-                            <td className="px-3 py-2 text-right text-xs">
-                              {r.data_partner && r.data_partner !== 'Unknown'
-                                ? <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-xs font-medium">{r.data_partner}</span>
-                                : <span className="text-gray-400">—</span>}
-                            </td>
-                            <td className="px-3 py-2 text-right text-xs text-gray-600">{r.buyer}</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{r.cvr}%</td>
-                            <td className={`px-3 py-2 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className={`px-3 py-2 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              {r.roi}%
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
+            <span>Last {report.period_days} days</span>
             {report.data_json?.combinations?.length > 0 && (
-              <div>
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  Route × Vertical × Carrier Combinations
-                </h2>
-                <div className="card overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-gray-200 bg-gray-50">
-                          {['Vertical', 'Carrier', 'Route', 'Campaigns', 'Clicks', 'CVR', 'Profit', 'ROI'].map((h) => (
-                            <th key={h} className={`px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Vertical' ? 'text-left' : 'text-right'}`}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {report.data_json.combinations.map((r, i) => (
-                          <tr key={i} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 text-xs">
-                              <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">{r.vertical}</span>
-                            </td>
-                            <td className="px-4 py-2 text-right text-xs text-gray-600">{r.carrier}</td>
-                            <td className="px-4 py-2 text-right text-xs text-gray-600">{r.route}</td>
-                            <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{r.campaigns}</td>
-                            <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
-                            <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-700">{r.cvr}%</td>
-                            <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              {r.roi}%
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
+              <><span>·</span><span>{report.data_json.combinations.length} route combinations</span></>
+            )}
+            {report.data_json?.offer_combinations?.length > 0 && (
+              <><span>·</span><span>{report.data_json.offer_combinations.length} offer combinations</span></>
             )}
           </div>
-        </>
+
+          {/* Overall analysis */}
+          {overall && (
+            <div>
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Overall Analysis</h2>
+              <div className="card p-6">
+                <MarkdownBlock content={overall} />
+              </div>
+            </div>
+          )}
+
+          {/* Per-buyer cards */}
+          {Object.keys(buyers).length > 0 && (
+            <div>
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Per Buyer</h2>
+              <div className="grid grid-cols-3 gap-4">
+                {['TK', 'MA', 'DS'].map((buyer) => {
+                  const content = buyers[buyer];
+                  const style = BUYER_STYLES[buyer];
+                  if (!content) return null;
+                  return (
+                    <div key={buyer} className={`card overflow-hidden border ${style.border}`}>
+                      <div className={`px-4 py-3 ${style.header} border-b ${style.border} flex items-center gap-2`}>
+                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${style.badge}`}>
+                          {buyer}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-800">{buyer}</span>
+                      </div>
+                      <div className="p-4">
+                        <MarkdownBlock content={content} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Raw data tables (collapsed by default) */}
+          <RawDataSection dataJson={report.data_json} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RawDataSection({ dataJson }) {
+  const [open, setOpen] = useState(false);
+  const hasOffers = dataJson?.offer_combinations?.length > 0;
+  const hasCombos = dataJson?.combinations?.length > 0;
+  if (!hasOffers && !hasCombos) return null;
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+      >
+        <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        {open ? 'Hide' : 'Show'} raw data used in analysis
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-6">
+          {hasOffers && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Offer Performance</h3>
+              <div className="card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50">
+                        {['Offer', 'Route', 'Carrier', 'Vertical', 'Partner', 'Buyer', 'Clicks', 'Profit', 'ROI'].map((h) => (
+                          <th key={h} className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Offer' ? 'text-left' : 'text-right'}`}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {dataJson.offer_combinations.map((r, i) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-3 py-1.5 text-xs text-gray-800 max-w-[200px] truncate" title={r.offer}>{r.offer}</td>
+                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.route}</td>
+                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.carrier}</td>
+                          <td className="px-3 py-1.5 text-right text-xs"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">{r.vertical}</span></td>
+                          <td className="px-3 py-1.5 text-right text-xs">
+                            {r.data_partner && r.data_partner !== 'Unknown'
+                              ? <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">{r.data_partner}</span>
+                              : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.buyer}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
+                          <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {r.roi}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {hasCombos && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Route × Vertical × Carrier</h3>
+              <div className="card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50">
+                        {['Vertical', 'Carrier', 'Route', 'Clicks', 'Profit', 'ROI'].map((h) => (
+                          <th key={h} className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Vertical' ? 'text-left' : 'text-right'}`}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {dataJson.combinations.map((r, i) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-3 py-1.5 text-xs"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-medium">{r.vertical}</span></td>
+                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.carrier}</td>
+                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.route}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
+                          <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {r.roi}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
