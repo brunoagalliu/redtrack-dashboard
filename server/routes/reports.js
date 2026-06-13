@@ -720,14 +720,36 @@ router.post('/ai-recommendations/generate', async (req, res) => {
 
     const hasOfferData = offerRows.length > 0;
 
+    // Per-buyer top and bottom combos (vertical × route × carrier)
+    const { rows: buyerComboRows } = await pool.query(`
+      SELECT
+        c.buyer,
+        COALESCE(c.vertical, 'Unknown')      AS vertical,
+        COALESCE(c.carrier,  'All carriers') AS carrier,
+        COALESCE(c.route,    'Unknown')      AS route,
+        COALESCE(SUM(s.clicks),0)::int                                      AS clicks,
+        COALESCE(SUM(s.profit),0)::numeric(14,2)                            AS profit,
+        CASE WHEN SUM(s.cost) > 0
+             THEN ROUND(((SUM(s.revenue)-SUM(s.cost))/SUM(s.cost))*100,1)
+             ELSE 0 END                                                      AS roi
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats s ON s.campaign_id = c.id
+      WHERE c.buyer IS NOT NULL AND s.stat_date BETWEEN $1 AND $2
+      GROUP BY c.buyer, c.vertical, c.carrier, c.route
+      HAVING SUM(s.clicks) > 30
+      ORDER BY c.buyer, SUM(s.profit) DESC
+    `, [dateFrom, today]);
+
+    const BUYERS = ['TK', 'MA', 'DS'];
+
     const dataJson = {
       period_days: days, date_from: dateFrom, date_to: today,
       combinations: combos, buyers: buyerRows, offer_combinations: offerRows,
     };
 
-    // Build prompt
-    const comboTable = combos.slice(0, 30).map((r, i) =>
-      `${i+1}. ${r.vertical} | ${r.carrier} | ${r.route} | Campaigns:${r.campaigns} | Clicks:${r.clicks} | CVR:${r.cvr}% | Profit:$${r.profit} | ROI:${r.roi}%`
+    // Build prompt tables
+    const comboTable = combos.slice(0, 25).map((r, i) =>
+      `${i+1}. ${r.vertical} | ${r.carrier} | ${r.route} | Clicks:${r.clicks} | Profit:$${r.profit} | ROI:${r.roi}%`
     ).join('\n');
 
     const buyerTable = buyerRows.map((r) =>
@@ -735,46 +757,75 @@ router.post('/ai-recommendations/generate', async (req, res) => {
     ).join('\n');
 
     const offerTable = offerRows.slice(0, 40).map((r, i) =>
-      `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Campaigns:${r.campaigns} | Clicks:${r.clicks} | CVR:${r.cvr}% | Profit:$${r.profit} | ROI:${r.roi}%`
+      `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Clicks:${r.clicks} | Profit:$${r.profit} | ROI:${r.roi}%`
     ).join('\n');
 
-    const prompt = `You are a performance marketing analyst for an SMS media buying team. Your ONLY goal is to maximize profit and ROI. Be brutally honest — if something is losing money, say so plainly. If something is printing money, say scale it hard.
+    // Per-buyer combo summaries (top 5 + bottom 3 per buyer)
+    const buyerComboSections = BUYERS.map((buyer) => {
+      const rows = buyerComboRows.filter((r) => r.buyer === buyer);
+      if (!rows.length) return `${buyer}: no data`;
+      const top = rows.slice(0, 5).map((r) =>
+        `  + ${r.vertical} | ${r.route} | ${r.carrier} → Profit:$${r.profit} ROI:${r.roi}%`
+      ).join('\n');
+      const bottom = [...rows].reverse().slice(0, 3)
+        .filter((r) => Number(r.profit) < 0)
+        .map((r) => `  - ${r.vertical} | ${r.route} | ${r.carrier} → Profit:$${r.profit} ROI:${r.roi}%`)
+        .join('\n');
+      const buyerRow = buyerRows.find((b) => b.buyer === buyer);
+      const summary = buyerRow
+        ? `Clicks:${buyerRow.clicks} | Spend:$${buyerRow.cost} | Profit:$${buyerRow.profit}`
+        : '';
+      return `${buyer} (${summary})\nTop combos:\n${top}${bottom ? `\nLosing:\n${bottom}` : ''}`;
+    }).join('\n\n');
 
-The team controls: which OFFERS to run, which ROUTES to use (USMS, Ranhog, Internal, TechStar), which CARRIERS to target (Verizon, AT&T, T-Mobile), which DATA PARTNERS supply the lists (LM, JC, AVANTO, UPSTART, KOINO), and how many campaigns to put behind each combination. Budget follows performance.
+    const prompt = `You are a performance marketing analyst for an SMS media buying team. Your ONLY goal is to maximize profit and ROI. Be brutally honest — if something is losing money, say so. If something is printing money, say scale it.
+
+The team has 3 media buyers: TK, MA, DS. They control which OFFERS to run, which ROUTES (USMS, Ranhog, Internal, TechStar), CARRIERS (Verizon, AT&T, T-Mobile), and DATA PARTNERS (LM, JC, AVANTO, UPSTART, KOINO). Budget follows performance.
 
 Data for the last ${days} days (${dateFrom} to ${today}):
 
-BUYER TOTALS:
-${buyerTable}
-
-ROUTE × VERTICAL × CARRIER (sorted by profit):
+OVERALL COMBINATIONS — vertical × carrier × route (sorted by profit):
 ${comboTable}
 ${hasOfferData ? `
-OFFER × ROUTE × CARRIER × DATA PARTNER (sorted by profit):
+OFFER PERFORMANCE — offer × route × carrier × partner × buyer (sorted by profit):
 ${offerTable}
-` : '\n(No offer-level data yet — run a sync to unlock offer-level insights.)\n'}
-Analyze this data and give a profit-maximization plan. Be specific with numbers — quote actual profit figures and ROI percentages from the data. Structure:
+` : ''}
+PER-BUYER BREAKDOWN:
+${buyerComboSections}
 
-## 💰 Scale These Now
-The highest-ROI combinations worth putting more volume behind. ${hasOfferData ? 'Name the exact offer, route, carrier, and data partner.' : 'Name vertical, route, and carrier.'} Explain WHY (ROI%, profit, volume potential).
+Write a profit-maximization report. Quote actual numbers from the data. Structure:
 
-## 🔴 Kill or Pause Immediately
-Combinations burning money or with ROI below breakeven. Name them explicitly with their loss figures. Every dollar saved here funds the winners above.
+## 💰 Best Combinations to Scale
+Top 3-5 highest-profit combinations across the team. ${hasOfferData ? 'Name the offer, route, carrier, and data partner.' : 'Name vertical, route, and carrier.'} Why they work and how to put more volume behind them.
 
-## 🔁 Reallocation Moves
-Specific shifts: take budget FROM losing combination X and move it TO winning combination Y. ${hasOfferData ? 'E.g. "Move TK budget from [losing offer] on Ranhog to [winning offer] on USMS/Verizon."' : 'E.g. "Move budget from [vertical/carrier] to [vertical/carrier]."'}
+## 🔴 Cut These Now
+Losing combinations with actual loss figures. Every dollar freed up funds the winners.
 
-## 🧪 Highest-Potential Tests
-1-3 untested combinations that the data suggests could be profitable. Base it on patterns — if offer X crushes on Verizon, testing it on AT&T is logical. Rank by expected impact.
+## 🔁 Budget Reallocation
+Specific move: FROM [what] TO [what], and which buyer should make each move.
 
-## 📋 This Week — Per Buyer
-Numbered list per buyer (TK, MA, DS). Concrete actions: what to launch, what to pause, what to scale. ${hasOfferData ? 'Include offer names.' : ''} No vague advice — specific moves only.`;
+## 🧪 Highest-Upside Tests
+1-3 untested combos the data suggests could win. Ranked by expected impact.
+
+---
+
+Then a dedicated section for EACH buyer:
+
+## 👤 TK
+Performance summary, their best and worst combinations, and 3-5 specific actions to improve their profit this week. ${hasOfferData ? 'Name exact offers.' : ''}
+
+## 👤 MA
+Same structure.
+
+## 👤 DS
+Same structure.`;
+
 
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2000,
+      max_tokens: 2500,
       messages: [{ role: 'user', content: prompt }],
     });
 
