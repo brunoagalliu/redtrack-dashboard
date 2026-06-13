@@ -53,19 +53,34 @@ function MarkdownBlock({ content }) {
   return <div>{elements}</div>;
 }
 
-// Split report content into overall section + per-buyer sections
+// Split report content into overall section + per-buyer sections.
+// Handles several formats Claude may produce:
+//   ## 👤 TK  |  ## TK  |  ## 👤TK  |  ### TK  |  **TK**  (as a standalone line)
 function parseContent(content) {
   if (!content) return { overall: '', buyers: {} };
-  const parts = content.split(/(?=^## 👤 (?:TK|MA|DS)\b)/m);
+
+  // Regex: optional #+ heading prefix, optional emoji + space, then TK/MA/DS at word boundary
+  const splitRe = /(?=^#{1,3} ?(?:👤 ?)?(?:TK|MA|DS)\b)/m;
+  const matchRe =   /^#{1,3} ?(?:👤 ?)?(TK|MA|DS)\b/;
+
+  let parts = content.split(splitRe);
+
+  // Fallback: try matching **TK** style standalone bold lines
+  if (parts.length === 1) {
+    parts = content.split(/(?=^\*\*(?:TK|MA|DS)\*\*)/m);
+  }
+
   const overall = parts[0].trim();
   const buyers = {};
+
   for (const part of parts.slice(1)) {
-    const match = part.match(/^## 👤 (TK|MA|DS)\b/);
-    if (match) {
-      // Strip the heading line itself — we render the buyer name as the card header
-      buyers[match[1]] = part.replace(/^## 👤 \w+\n?/, '').trim();
+    const m = part.match(matchRe) || part.match(/^\*\*(TK|MA|DS)\*\*/);
+    if (m) {
+      const buyer = m[1];
+      buyers[buyer] = part.replace(/^.*\n/, '').trim(); // strip heading line
     }
   }
+
   return { overall, buyers };
 }
 
@@ -194,6 +209,11 @@ export default function AIRecommendationsPage() {
           )}
 
           {/* Per-buyer cards */}
+          {Object.keys(buyers).length === 0 && overall && (
+            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              Per-buyer sections not detected in this report — regenerate to get the new format.
+            </div>
+          )}
           {Object.keys(buyers).length > 0 && (
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Per Buyer</h2>
