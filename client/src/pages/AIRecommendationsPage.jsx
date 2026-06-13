@@ -18,15 +18,23 @@ function MarkdownBlock({ content }) {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
-    if (line.startsWith('## ')) {
+    if (line.match(/^---+$/) || line.match(/^\*\*\*+$/)) {
+      elements.push(<hr key={i} className="border-gray-100 my-3" />);
+    } else if (line.startsWith('# ')) {
+      elements.push(
+        <h1 key={i} className="text-sm font-bold text-gray-900 mt-4 mb-1 first:mt-0">
+          {line.replace(/^# /, '')}
+        </h1>
+      );
+    } else if (line.startsWith('## ')) {
       elements.push(
         <h2 key={i} className="text-sm font-bold text-gray-900 mt-5 mb-2 first:mt-0">
-          {line.replace('## ', '')}
+          {line.replace(/^## /, '')}
         </h2>
       );
     } else if (line.startsWith('### ')) {
       elements.push(
-        <h3 key={i} className="text-xs font-semibold text-gray-700 mt-3 mb-1">{line.replace('### ', '')}</h3>
+        <h3 key={i} className="text-xs font-semibold text-gray-700 mt-3 mb-1">{line.replace(/^### /, '')}</h3>
       );
     } else if (line.startsWith('- ') || line.match(/^\d+\.\s/)) {
       const text = line.replace(/^-\s/, '').replace(/^\d+\.\s/, '');
