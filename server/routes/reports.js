@@ -823,13 +823,28 @@ Same structure.`;
 
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+    const MODEL = 'claude-haiku-4-5-20251001';
+    const first = await anthropic.messages.create({
+      model: MODEL,
       max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const content = message.content[0].text;
+    let content = first.content[0].text;
+
+    if (first.stop_reason === 'max_tokens') {
+      console.warn('[ai] response hit max_tokens — continuing...');
+      const second = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 4000,
+        messages: [
+          { role: 'user', content: prompt },
+          { role: 'assistant', content },
+          { role: 'user', content: 'Continue exactly where you left off.' },
+        ],
+      });
+      content += second.content[0].text;
+    }
 
     await pool.query(`
       INSERT INTO rt_ai_report (id, generated_at, period_days, content, data_json)
