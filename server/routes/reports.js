@@ -981,26 +981,9 @@ async function runOfferSync(dateFrom, dateTo) {
     for (let i = 0; i < campaignRows.length; i++) {
       const c = campaignRows[i];
       try {
-        // Step 1: get offer list from campaign metadata
-        await throttleRedtrack();
-        const { data } = await redtrack.get(`/campaigns/${c.id}`);
-        const offers = [];
-        for (const sw of (data?.streams || [])) {
-          for (const o of (sw.stream?.offers || [])) {
-            if (o.id && o.name) offers.push({ id: o.id, name: o.name });
-          }
-        }
-
-        if (offers.length === 0) { offerSync.processed = i + 1; continue; }
-
-        for (const offer of offers) {
-          await pool.query(`INSERT INTO rt_offers (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name=$2`, [offer.id, offer.name]);
-          await pool.query(`INSERT INTO rt_campaign_offers (campaign_id, offer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [c.id, offer.id]);
-        }
-
         const historicalTo = dateTo < today ? dateTo : yesterday;
 
-        // Step 2: single grouped call — offer × OS × day — replaces per-offer calls
+        // Single grouped call — offer × OS × day; offers discovered from response, no metadata call needed
         async function fetchGrouped(from, to) {
           await throttleRedtrack();
           const { data: report } = await redtrack.get('/report', {
@@ -1020,6 +1003,16 @@ async function runOfferSync(dateFrom, dateTo) {
         if (dateTo >= today) rows.push(...await fetchGrouped(today, today));
 
         if (rows.length === 0) { offerSync.processed = i + 1; continue; }
+
+        // Register offers discovered in the response (satisfies FK constraint before stat inserts)
+        const seenOffers = new Set();
+        for (const row of rows) {
+          if (row.offer_id && row.offer && !seenOffers.has(row.offer_id)) {
+            seenOffers.add(row.offer_id);
+            await pool.query(`INSERT INTO rt_offers (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name=$2`, [row.offer_id, row.offer]);
+            await pool.query(`INSERT INTO rt_campaign_offers (campaign_id, offer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [c.id, row.offer_id]);
+          }
+        }
 
         // Load campaign cost per day (source of truth — cost lives at campaign level in RedTrack)
         const { rows: campCosts } = await pool.query(
