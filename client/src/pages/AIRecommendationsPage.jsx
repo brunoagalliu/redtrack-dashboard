@@ -249,6 +249,17 @@ export default function AIRecommendationsPage() {
   const offerCombos = dataJson.offer_combinations || [];
   const combinations = dataJson.combinations || [];
 
+  // OS comparison: group osRows by offer → { offer, buyer, iOS: {...}, Android: {...} }
+  const osRows = dataJson.os_combinations || [];
+  const osOfferMap = {};
+  for (const r of osRows) {
+    if (!osOfferMap[r.offer]) osOfferMap[r.offer] = { offer: r.offer, buyer: r.buyer };
+    osOfferMap[r.offer][r.os] = r;
+  }
+  const osOffers = Object.values(osOfferMap)
+    .filter((o) => o.iOS || o.Android)
+    .slice(0, 8);
+
   // Bar chart data
   const chartData = ['TK', 'MA', 'DS'].map((b) => {
     const row = buyerRows.find((r) => r.buyer === b) || {};
@@ -454,7 +465,82 @@ export default function AIRecommendationsPage() {
             </div>
           )}
 
-          {/* ── 3. Per-buyer action cards ── */}
+          {/* ── 3. OS Performance ── */}
+          {osOffers.length > 0 && (
+            <div>
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">iOS vs Android Performance</h2>
+              <div className="card overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Offer</th>
+                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Buyer</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-purple-500 uppercase tracking-wider"> iOS Profit</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-purple-500 uppercase tracking-wider">iOS ROI</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">iOS Clicks</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-green-600 uppercase tracking-wider">Android Profit</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-green-600 uppercase tracking-wider">Android ROI</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Android Clicks</th>
+                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Winner</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {osOffers.map((o, i) => {
+                      const ios = o.iOS;
+                      const and = o.Android;
+                      const iosRoi  = Number(ios?.roi  || 0);
+                      const andRoi  = Number(and?.roi  || 0);
+                      const iosPft  = Number(ios?.profit  || 0);
+                      const andPft  = Number(and?.profit  || 0);
+                      const winner  = ios && and
+                        ? (iosRoi > andRoi + 20 ? 'iOS' : andRoi > iosRoi + 20 ? 'Android' : 'Equal')
+                        : ios ? 'iOS' : 'Android';
+                      return (
+                        <tr key={i} className="hover:bg-gray-50/50">
+                          <td className="px-4 py-2 text-xs text-gray-800 max-w-[200px] truncate" title={o.offer}>{o.offer}</td>
+                          <td className="px-4 py-2 text-center">
+                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                              o.buyer === 'TK' ? 'bg-blue-100 text-blue-700' :
+                              o.buyer === 'MA' ? 'bg-purple-100 text-purple-700' :
+                              'bg-orange-100 text-orange-700'
+                            }`}>{o.buyer}</span>
+                          </td>
+                          {/* iOS */}
+                          <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${iosPft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {ios ? fmtMoney(iosPft) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className={`px-4 py-2 text-right tabular-nums text-xs ${iosRoi >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {ios ? `${iosRoi.toFixed(1)}%` : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-500">
+                            {ios ? fmtClicks(ios.clicks) : <span className="text-gray-300">—</span>}
+                          </td>
+                          {/* Android */}
+                          <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${andPft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {and ? fmtMoney(andPft) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className={`px-4 py-2 text-right tabular-nums text-xs ${andRoi >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {and ? `${andRoi.toFixed(1)}%` : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-500">
+                            {and ? fmtClicks(and.clicks) : <span className="text-gray-300">—</span>}
+                          </td>
+                          {/* Winner badge */}
+                          <td className="px-4 py-2 text-center">
+                            {winner === 'iOS'     && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">iOS</span>}
+                            {winner === 'Android' && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Android</span>}
+                            {winner === 'Equal'   && <span className="text-xs text-gray-400">—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ── 5. Per-buyer action cards ── */}
           {hasBuyerSections && (
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Actions Per Buyer</h2>
@@ -485,7 +571,7 @@ export default function AIRecommendationsPage() {
             </div>
           )}
 
-          {/* ── 4. Overall analysis → 2×2 color-coded cards ── */}
+          {/* ── 6. Overall analysis → 2×2 color-coded cards ── */}
           {sections.length > 0 && (
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Analysis</h2>

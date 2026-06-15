@@ -753,6 +753,33 @@ router.post('/ai-recommendations/generate', async (req, res) => {
 
     const hasOfferData = offerRows.length > 0;
 
+    // OS performance — offer × iOS/Android comparison (only if OS sync has run)
+    const { rows: osRows } = await pool.query(`
+      SELECT
+        o.name                                                              AS offer,
+        oos.os,
+        c.buyer,
+        COALESCE(SUM(oos.clicks),0)::int                                   AS clicks,
+        COALESCE(SUM(oos.conversions),0)::int                              AS conversions,
+        COALESCE(SUM(oos.cost),0)::numeric(14,2)                           AS cost,
+        COALESCE(SUM(oos.revenue),0)::numeric(14,2)                        AS revenue,
+        COALESCE(SUM(oos.profit),0)::numeric(14,2)                         AS profit,
+        CASE WHEN SUM(oos.cost) > 0
+             THEN ROUND(((SUM(oos.revenue)-SUM(oos.cost))/SUM(oos.cost))*100,1)
+             ELSE 0 END                                                    AS roi
+      FROM rt_offer_os_stats oos
+      JOIN rt_offers o    ON o.id = oos.offer_id
+      JOIN rt_campaigns c ON c.id = oos.campaign_id
+      WHERE oos.stat_date BETWEEN $1 AND $2
+        AND c.buyer IS NOT NULL
+        AND oos.os IN ('iOS', 'Android')
+      GROUP BY o.name, oos.os, c.buyer
+      HAVING SUM(oos.clicks) > 30
+      ORDER BY SUM(oos.profit) DESC
+      LIMIT 40
+    `, [dateFrom, today]);
+    const hasOsData = osRows.length > 0;
+
     // Per-buyer top and bottom combos (vertical × route × carrier)
     const { rows: buyerComboRows } = await pool.query(`
       SELECT
@@ -778,7 +805,26 @@ router.post('/ai-recommendations/generate', async (req, res) => {
     const dataJson = {
       period_days: days, date_from: dateFrom, date_to: today,
       combinations: combos, buyers: buyerRows, offer_combinations: offerRows,
+      os_combinations: osRows,
     };
+
+    // Build compact iOS vs Android comparison for prompt
+    const osPromptSection = (() => {
+      if (!hasOsData) return '';
+      const offerMap = {};
+      for (const r of osRows) {
+        if (!offerMap[r.offer]) offerMap[r.offer] = { buyer: r.buyer };
+        offerMap[r.offer][r.os] = r;
+      }
+      const lines = Object.entries(offerMap).map(([offer, v]) => {
+        const ios = v['iOS'];
+        const and = v['Android'];
+        const iosStr = ios ? `iOS: $${ios.profit} ROI:${ios.roi}% (${ios.clicks} clicks)` : 'iOS: no data';
+        const andStr = and ? `Android: $${and.profit} ROI:${and.roi}% (${and.clicks} clicks)` : 'Android: no data';
+        return `"${offer}" (${v.buyer}) → ${iosStr} | ${andStr}`;
+      });
+      return `\nOS BREAKDOWN — iOS vs Android per offer:\n${lines.join('\n')}`;
+    })();
 
     // Build prompt tables
     const comboTable = combos.slice(0, 25).map((r, i) =>
@@ -813,7 +859,7 @@ router.post('/ai-recommendations/generate', async (req, res) => {
 
     const prompt = `You are a performance marketing analyst for an SMS media buying team. Your ONLY goal is to maximize profit and ROI. Be brutally honest — if something is losing money, say so. If something is printing money, say scale it.
 
-The team has 3 media buyers: TK, MA, DS. They control which OFFERS to run, which ROUTES (USMS, Ranhog, Internal, TechStar), CARRIERS (Verizon, AT&T, T-Mobile), and DATA PARTNERS (LM, JC, AVANTO, UPSTART, KOINO). Budget follows performance.
+The team has 3 media buyers: TK, MA, DS. They control which OFFERS to run, which ROUTES (USMS, Ranhog, Internal, TechStar), CARRIERS (Verizon, AT&T, T-Mobile), DATA PARTNERS (LM, JC, AVANTO, UPSTART, KOINO), and OS TARGETING (iOS-only vs Android vs all). Budget follows performance.
 
 Data for the last ${days} days (${dateFrom} to ${today}):
 
@@ -822,30 +868,31 @@ ${comboTable}
 ${hasOfferData ? `
 OFFER PERFORMANCE — offer × route × carrier × partner × buyer (sorted by profit):
 ${offerTable}
-` : ''}
+` : ''}${osPromptSection}
+
 PER-BUYER BREAKDOWN:
 ${buyerComboSections}
 
 Write a profit-maximization report. Quote actual numbers from the data. Use bullet points only — NO markdown tables. Structure:
 
 ## 💰 Best Combinations to Scale
-Top 3-5 highest-profit combinations across the team. ${hasOfferData ? 'Name the offer, route, carrier, and data partner.' : 'Name vertical, route, and carrier.'} Why they work and how to put more volume behind them.
+Top 3-5 highest-profit combinations. ${hasOfferData ? 'Name the offer, route, carrier, and data partner.' : 'Name vertical, route, and carrier.'} ${hasOsData ? 'If iOS significantly outperforms Android on an offer, call it out — that means the buyer should push for iOS-only data.' : ''} Why they work and how to scale them.
 
 ## 🔴 Cut These Now
 Losing combinations with actual loss figures. Every dollar freed up funds the winners.
 
 ## 🔁 Budget Reallocation
-Specific move: FROM [what] TO [what], and which buyer should make each move.
+Specific move: FROM [what] TO [what], and which buyer should make each move. ${hasOsData ? 'Include OS-targeting shifts if the data supports it (e.g. move budget to iOS-only on offer X).' : ''}
 
 ## 🧪 Highest-Upside Tests
-1-3 untested combos the data suggests could win. Ranked by expected impact.
+1-3 untested combos the data suggests could win. ${hasOsData ? 'Include OS targeting tests — if an offer shows strong iOS ROI, recommend testing iOS-only data lists.' : ''} Ranked by expected impact.
 
 ---
 
 Then a dedicated section for EACH buyer:
 
 ## 👤 TK
-Performance summary, their best and worst combinations, and 3-5 specific actions to improve their profit this week. ${hasOfferData ? 'Name exact offers.' : ''}
+Performance summary, their best and worst combinations, and 3-5 specific actions to improve their profit this week. ${hasOfferData ? 'Name exact offers.' : ''} ${hasOsData ? 'Call out any OS targeting opportunities specific to their campaigns.' : ''}
 
 ## 👤 MA
 Same structure.
