@@ -29,29 +29,95 @@ function boldify(text) {
   return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 }
 
+// Extract only action bullets from AI text (skips summaries, wins/losses sub-sections)
+function extractActions(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const actionMarkers = /actions?\s*(this\s*week)?|this\s*week:|recommendations?:/i;
+  let inActions = false;
+  const actionLines = [];
+  const allBullets = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.match(/^---+$/)) continue;
+
+    const isHeading = trimmed.match(/^#{1,4}\s/) || trimmed.match(/^\*\*[^*]+:\*\*\s*$/) || trimmed.match(/^[*-]\s*\*\*[^*]+:\*\*\s*$/);
+    if (isHeading) {
+      inActions = actionMarkers.test(trimmed);
+      continue;
+    }
+    if (trimmed.match(/^\*?Summary:/i)) continue;
+
+    const clean = trimmed.replace(/^[-*•]\s*/, '').replace(/^\d+\.\s*/, '').trim();
+    if (!clean) continue;
+    // Skip sub-header remnants like "His Wins:**" or "3-5 Actions This Week:**"
+    if (clean.match(/:\*{0,2}$/) && clean.length < 60) continue;
+    if (inActions) actionLines.push(clean);
+    allBullets.push(clean);
+  }
+
+  const bullets = actionLines.length > 0 ? actionLines.slice(0, 5) : allBullets.slice(-5);
+  return bullets.map((b) => {
+    const m = b.match(/^(.+?[.!?])(?:\s|$)/);
+    return m ? m[1].trim() : (b.length > 120 ? b.slice(0, 117) + '…' : b);
+  }).join('\n');
+}
+
 // Render a body of AI text as clean bullet points, stripping headings
-function BulletBlock({ text }) {
+function BulletBlock({ text, limit = 0 }) {
   if (!text) return null;
   const lines = text.split('\n');
   const items = [];
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    if (trimmed.match(/^#{1,4}\s/)) continue; // skip sub-headings
+    if (trimmed.match(/^#{1,4}\s/)) continue;
     if (trimmed.match(/^---+$/)) continue;
+    if (trimmed.match(/^\*?Summary:/i)) continue;
+    if (trimmed.match(/^\*\*[^*]+:\*\*\s*$/) || trimmed.match(/^[*-]\s*\*\*[^*]+:\*\*\s*$/)) continue;
     const clean = trimmed.replace(/^[-*•]\s*/, '').replace(/^\d+\.\s*/, '').trim();
     if (!clean) continue;
     items.push(clean);
   }
+  const display = limit > 0 ? items.slice(0, limit) : items;
   return (
     <ul className="space-y-1.5">
-      {items.map((item, i) => (
+      {display.map((item, i) => (
         <li key={i} className="flex gap-2 text-xs text-gray-700 leading-relaxed">
           <span className="text-gray-300 mt-0.5 shrink-0">•</span>
           <span dangerouslySetInnerHTML={{ __html: boldify(item) }} />
         </li>
       ))}
     </ul>
+  );
+}
+
+// Visual horizontal profit bars for a list of combos
+function ProfitBars({ combos, color }) {
+  if (!combos.length) return null;
+  const maxAbs = Math.max(...combos.map((c) => Math.abs(c.profit)), 1);
+  return (
+    <div className="space-y-1.5">
+      {combos.map((c, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[11px] text-gray-700 truncate pr-2" title={c.label}>{c.label}</span>
+              <span className={`text-[11px] font-semibold shrink-0 ${color === 'green' ? 'text-emerald-600' : 'text-red-500'}`}>
+                {fmtMoney(c.profit)}
+              </span>
+            </div>
+            <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${color === 'green' ? 'bg-emerald-400' : 'bg-red-400'}`}
+                style={{ width: `${Math.max(4, (Math.abs(c.profit) / maxAbs) * 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -541,22 +607,50 @@ export default function AIRecommendationsPage() {
           )}
 
           {/* ── 5. Per-buyer action cards ── */}
-          {hasBuyerSections && (
+          {(hasBuyerSections || offerCombos.length > 0) && (
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Actions Per Buyer</h2>
               <div className="grid grid-cols-3 gap-4">
                 {['TK', 'MA', 'DS'].map((buyer) => {
-                  const content = buyers[buyer];
-                  const style   = BUYER_STYLES[buyer];
-                  if (!content) return null;
+                  const aiText = buyers[buyer];
+                  const style  = BUYER_STYLES[buyer];
+                  const buyerOffers = offerCombos.filter((r) => r.buyer === buyer);
+                  const sorted = [...buyerOffers].sort((a, b) => Number(b.profit) - Number(a.profit));
+                  const wins = sorted.filter((o) => Number(o.profit) > 0).slice(0, 3).map((o) => ({
+                    label: o.offer?.length > 30 ? o.offer.slice(0, 30) + '…' : o.offer,
+                    profit: Number(o.profit),
+                  }));
+                  const losses = sorted.filter((o) => Number(o.profit) < 0).slice(-2).map((o) => ({
+                    label: o.offer?.length > 30 ? o.offer.slice(0, 30) + '…' : o.offer,
+                    profit: Number(o.profit),
+                  }));
+                  const hasData = wins.length > 0 || losses.length > 0 || aiText;
+                  if (!hasData) return null;
                   return (
                     <div key={buyer} className={`card overflow-hidden border ${style.border}`}>
                       <div className={`px-4 py-3 ${style.header} border-b ${style.border} flex items-center gap-2`}>
                         <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${style.badge}`}>{buyer}</span>
                         <span className="text-sm font-semibold text-gray-800">{buyer}</span>
                       </div>
-                      <div className="p-4">
-                        <BulletBlock text={content} />
+                      <div className="p-4 space-y-3">
+                        {wins.length > 0 && (
+                          <div>
+                            <div className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider mb-2">Top Performers</div>
+                            <ProfitBars combos={wins} color="green" />
+                          </div>
+                        )}
+                        {losses.length > 0 && (
+                          <div>
+                            <div className="text-[10px] font-semibold text-red-500 uppercase tracking-wider mb-2">Cut These</div>
+                            <ProfitBars combos={losses} color="red" />
+                          </div>
+                        )}
+                        {aiText && (
+                          <div className={`${wins.length > 0 || losses.length > 0 ? 'border-t border-gray-100 pt-3' : ''}`}>
+                            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Actions This Week</div>
+                            <BulletBlock text={extractActions(aiText)} limit={5} />
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

@@ -873,32 +873,34 @@ ${offerTable}
 PER-BUYER BREAKDOWN:
 ${buyerComboSections}
 
-Write a profit-maximization report. Quote actual numbers from the data. Use bullet points only — NO markdown tables. Structure:
+STRICT FORMAT RULES:
+- Bullet points only. NO paragraphs. NO sub-headings inside sections.
+- Each bullet: ONE action or insight, max 20 words, include ONE key number.
+- Overall sections: max 4 bullets each.
+- Buyer sections: exactly 5 bullets each — no more.
 
 ## 💰 Best Combinations to Scale
-Top 3-5 highest-profit combinations. ${hasOfferData ? 'Name the offer, route, carrier, and data partner.' : 'Name vertical, route, and carrier.'} ${hasOsData ? 'If iOS significantly outperforms Android on an offer, call it out — that means the buyer should push for iOS-only data.' : ''} Why they work and how to scale them.
+4 bullets. ${hasOfferData ? 'Name offer + route + carrier.' : 'Name vertical + route + carrier.'} One number per bullet. ${hasOsData ? 'Flag iOS targeting if iOS ROI >> Android.' : ''}
 
 ## 🔴 Cut These Now
-Losing combinations with actual loss figures. Every dollar freed up funds the winners.
+4 bullets. Name what to kill and the loss amount.
 
 ## 🔁 Budget Reallocation
-Specific move: FROM [what] TO [what], and which buyer should make each move. ${hasOsData ? 'Include OS-targeting shifts if the data supports it (e.g. move budget to iOS-only on offer X).' : ''}
+4 bullets. Format: "Move $X from [A] to [B] — [buyer]." ${hasOsData ? 'Include OS shifts if data supports.' : ''}
 
 ## 🧪 Highest-Upside Tests
-1-3 untested combos the data suggests could win. ${hasOsData ? 'Include OS targeting tests — if an offer shows strong iOS ROI, recommend testing iOS-only data lists.' : ''} Ranked by expected impact.
+3 bullets. Specific untested combo + expected upside. ${hasOsData ? 'Include an iOS-only test if warranted.' : ''}
 
 ---
 
-Then a dedicated section for EACH buyer:
-
 ## 👤 TK
-Performance summary, their best and worst combinations, and 3-5 specific actions to improve their profit this week. ${hasOfferData ? 'Name exact offers.' : ''} ${hasOsData ? 'Call out any OS targeting opportunities specific to their campaigns.' : ''}
+Exactly 5 bullets. Each = one specific action with a number. ${hasOfferData ? 'Name exact offers.' : ''} ${hasOsData ? 'Include OS opportunity if applicable.' : ''} No summaries, no context, actions only.
 
 ## 👤 MA
-Same structure.
+Exactly 5 bullets. Same rules.
 
 ## 👤 DS
-Same structure.`;
+Exactly 5 bullets. Same rules.`;
 
 
 
