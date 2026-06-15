@@ -93,12 +93,59 @@ function SyncButton({ dateFrom, dateTo, onSynced }) {
   );
 }
 
+function OsRows({ campaignId, offerId, dateFrom, dateTo }) {
+  const { data: osStats, isLoading } = useQuery({
+    queryKey: ['offer-os', campaignId, offerId, dateFrom, dateTo],
+    queryFn: () => api.getOfferOsStats(campaignId, offerId, { date_from: dateFrom, date_to: dateTo }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (isLoading) return (
+    <tr>
+      <td colSpan={8} className="px-4 py-1 text-xs text-gray-400 text-center bg-violet-50/20">Loading OS…</td>
+    </tr>
+  );
+  if (!osStats?.length) return (
+    <tr>
+      <td colSpan={8} className="px-12 py-1 text-xs text-gray-400 bg-violet-50/20">No OS data yet — run a sync first.</td>
+    </tr>
+  );
+
+  return osStats.map((s) => (
+    <tr key={s.os} className="bg-violet-50/20 border-l-4 border-violet-100">
+      <td className="px-4 py-1" />
+      <td className="px-4 py-1 text-xs text-gray-600">
+        <span className="ml-5 text-violet-300 mr-1.5 select-none">↳</span>
+        <span className="font-medium">{s.os}</span>
+      </td>
+      <td className="px-4 py-1" />
+      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmt(s.clicks)}</td>
+      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmt(s.conversions)}</td>
+      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmtMoney(s.cost)}</td>
+      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmtMoney(s.revenue)}</td>
+      <td className={`px-4 py-1 text-right tabular-nums text-xs font-medium ${Number(s.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        {fmtMoney(s.profit)}
+      </td>
+    </tr>
+  ));
+}
+
 function OfferRows({ campaignId, dateFrom, dateTo }) {
+  const [expandedOfferIds, setExpandedOfferIds] = useState(new Set());
+
   const { data: offers, isLoading } = useQuery({
     queryKey: ['campaign-offers', campaignId, dateFrom, dateTo],
     queryFn: () => api.getCampaignOffers(campaignId, { date_from: dateFrom, date_to: dateTo }),
     staleTime: 5 * 60 * 1000,
   });
+
+  function toggleOffer(offerId) {
+    setExpandedOfferIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(offerId)) next.delete(offerId); else next.add(offerId);
+      return next;
+    });
+  }
 
   if (isLoading) return (
     <tr>
@@ -116,23 +163,39 @@ function OfferRows({ campaignId, dateFrom, dateTo }) {
     </tr>
   );
 
-  return offers.map((o) => (
-    <tr key={o.offer_id} className="bg-indigo-50/30 border-l-2 border-indigo-200">
-      <td className="px-4 py-1.5" />
-      <td className="px-4 py-1.5 text-xs text-gray-700 max-w-xs">
-        <span className="text-indigo-300 mr-1.5 select-none">↳</span>
-        <span className="truncate" title={o.offer_name}>{o.offer_name}</span>
-      </td>
-      <td className="px-4 py-1.5" />
-      <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.clicks)}</td>
-      <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.conversions)}</td>
-      <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.cost)}</td>
-      <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.revenue)}</td>
-      <td className={`px-4 py-1.5 text-right tabular-nums text-xs font-medium ${Number(o.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-        {fmtMoney(o.profit)}
-      </td>
-    </tr>
-  ));
+  return offers.flatMap((o) => {
+    const expanded = expandedOfferIds.has(o.offer_id);
+    const rows = [
+      <tr key={o.offer_id} className="bg-indigo-50/30 border-l-2 border-indigo-200">
+        <td className="px-4 py-1.5" />
+        <td className="px-4 py-1.5 text-xs text-gray-700 max-w-xs">
+          <button
+            onClick={() => toggleOffer(o.offer_id)}
+            className="mr-1 text-indigo-200 hover:text-indigo-500 transition-colors text-xs select-none"
+            title="Show OS breakdown"
+          >
+            {expanded ? '▼' : '▶'}
+          </button>
+          <span className="text-indigo-300 mr-1.5 select-none">↳</span>
+          <span className="truncate" title={o.offer_name}>{o.offer_name}</span>
+        </td>
+        <td className="px-4 py-1.5" />
+        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.clicks)}</td>
+        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.conversions)}</td>
+        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.cost)}</td>
+        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.revenue)}</td>
+        <td className={`px-4 py-1.5 text-right tabular-nums text-xs font-medium ${Number(o.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+          {fmtMoney(o.profit)}
+        </td>
+      </tr>,
+    ];
+    if (expanded) {
+      rows.push(
+        <OsRows key={`os-${o.offer_id}`} campaignId={campaignId} offerId={o.offer_id} dateFrom={dateFrom} dateTo={dateTo} />
+      );
+    }
+    return rows;
+  });
 }
 
 export default function ReportsPage() {

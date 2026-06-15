@@ -404,6 +404,39 @@ router.get('/campaigns/:id/offers', async (req, res) => {
   }
 });
 
+// OS breakdown for a single offer within a campaign
+router.get('/campaigns/:id/offers/:offerId/os', async (req, res) => {
+  try {
+    const { id, offerId } = req.params;
+    const today    = new Date().toISOString().slice(0, 10);
+    const dateFrom = req.query.date_from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const dateTo   = req.query.date_to   || today;
+
+    const { rows } = await pool.query(`
+      SELECT os,
+        COALESCE(SUM(clicks),0)::int            AS clicks,
+        COALESCE(SUM(conversions),0)::int       AS conversions,
+        COALESCE(SUM(cost),0)::numeric(14,2)    AS cost,
+        COALESCE(SUM(revenue),0)::numeric(14,2) AS revenue,
+        COALESCE(SUM(profit),0)::numeric(14,2)  AS profit
+      FROM rt_offer_os_stats
+      WHERE campaign_id=$1 AND offer_id=$2 AND stat_date BETWEEN $3 AND $4
+      GROUP BY os ORDER BY SUM(clicks) DESC
+    `, [id, offerId, dateFrom, dateTo]);
+
+    res.json(rows.map((r) => ({
+      os:          r.os,
+      clicks:      Number(r.clicks),
+      conversions: Number(r.conversions),
+      cost:        Number(r.cost),
+      revenue:     Number(r.revenue),
+      profit:      Number(r.profit),
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Verticals report — reads from DB
 router.get('/verticals', async (req, res) => {
   try {
@@ -887,7 +920,6 @@ async function runOfferSync(dateFrom, dateTo) {
     const earliest  = new Date(Date.now() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
     if (dateFrom < earliest) dateFrom = earliest;
 
-    // Campaigns that have stats in the requested range
     const { rows: campaignRows } = await pool.query(
       `SELECT DISTINCT c.id, c.title
        FROM rt_campaigns c
@@ -900,6 +932,7 @@ async function runOfferSync(dateFrom, dateTo) {
     for (let i = 0; i < campaignRows.length; i++) {
       const c = campaignRows[i];
       try {
+        // Step 1: get offer list from campaign metadata
         await throttleRedtrack();
         const { data } = await redtrack.get(`/campaigns/${c.id}`);
         const offers = [];
@@ -911,94 +944,90 @@ async function runOfferSync(dateFrom, dateTo) {
 
         if (offers.length === 0) { offerSync.processed = i + 1; continue; }
 
-        // Upsert offers and campaign-offer links
         for (const offer of offers) {
-          await pool.query(
-            `INSERT INTO rt_offers (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name=$2`,
-            [offer.id, offer.name]
-          );
-          await pool.query(
-            `INSERT INTO rt_campaign_offers (campaign_id, offer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-            [c.id, offer.id]
-          );
+          await pool.query(`INSERT INTO rt_offers (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name=$2`, [offer.id, offer.name]);
+          await pool.query(`INSERT INTO rt_campaign_offers (campaign_id, offer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [c.id, offer.id]);
         }
 
         const historicalTo = dateTo < today ? dateTo : yesterday;
 
-        if (offers.length === 1) {
-          // Single offer — copy stats directly from rt_campaign_stats (no extra API call)
-          await pool.query(`
-            INSERT INTO rt_offer_stats (offer_id, campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
-            SELECT $1, campaign_id, stat_date, clicks, conversions, cost, revenue, profit
-            FROM rt_campaign_stats
-            WHERE campaign_id = $2 AND stat_date BETWEEN $3 AND $4
-            ON CONFLICT (offer_id, campaign_id, stat_date) DO UPDATE SET
-              clicks=EXCLUDED.clicks, conversions=EXCLUDED.conversions,
-              cost=EXCLUDED.cost, revenue=EXCLUDED.revenue, profit=EXCLUDED.profit
-          `, [offers[0].id, c.id, dateFrom, dateTo]);
-        } else {
-          // Multiple offers — fetch clicks/conversions/revenue per offer from API,
-          // then prorate campaign cost by click share (cost lives at campaign level in RedTrack).
+        // Step 2: single grouped call — offer × OS × day — replaces per-offer calls
+        async function fetchGrouped(from, to) {
+          await throttleRedtrack();
+          const { data: report } = await redtrack.get('/report', {
+            params: { campaign_id: c.id, group: 'offer,os', time_interval: 'day', date_from: from, date_to: to, per: 1000 },
+          });
+          return Array.isArray(report) ? report : (report?.items || []);
+        }
 
-          // Collect per-offer per-day traffic: { date → { offerId → { clicks, conversions, revenue } } }
-          const offerDayMap = {};
-
-          async function fetchOfferDays(offer, from, to) {
-            await throttleRedtrack();
-            const { data: report } = await redtrack.get('/report', {
-              params: { campaign_id: c.id, offer_id: offer.id, date_from: from, date_to: to, per: 1000 },
-            });
-            const rows = Array.isArray(report) ? report : (report?.items || []);
-            for (const row of rows) {
-              if (!row.date) continue;
-              if (!offerDayMap[row.date]) offerDayMap[row.date] = {};
-              offerDayMap[row.date][offer.id] = {
-                clicks:      row.clicks      || 0,
-                conversions: row.conversions || 0,
-                revenue:     row.revenue     || 0,
-              };
-            }
-          }
-
-          for (const offer of offers) {
-            if (dateFrom <= historicalTo) {
-              const { rows: existing } = await pool.query(
-                `SELECT 1 FROM rt_offer_stats WHERE offer_id=$1 AND campaign_id=$2 AND stat_date BETWEEN $3 AND $4 LIMIT 1`,
-                [offer.id, c.id, dateFrom, historicalTo]
-              );
-              if (!existing.length) await fetchOfferDays(offer, dateFrom, historicalTo);
-            }
-            if (dateTo >= today) await fetchOfferDays(offer, today, today);
-          }
-
-          // Load campaign cost per day from rt_campaign_stats (source of truth for cost)
-          const { rows: campCosts } = await pool.query(
-            `SELECT stat_date::text AS date, cost FROM rt_campaign_stats
-             WHERE campaign_id = $1 AND stat_date BETWEEN $2 AND $3`,
-            [c.id, dateFrom, dateTo]
+        let rows = [];
+        if (dateFrom <= historicalTo) {
+          const { rows: existing } = await pool.query(
+            `SELECT 1 FROM rt_offer_os_stats WHERE campaign_id=$1 AND stat_date BETWEEN $2 AND $3 LIMIT 1`,
+            [c.id, dateFrom, historicalTo]
           );
-          const campaignCostByDate = Object.fromEntries(campCosts.map((r) => [r.date, Number(r.cost)]));
+          if (!existing.length) rows.push(...await fetchGrouped(dateFrom, historicalTo));
+        }
+        if (dateTo >= today) rows.push(...await fetchGrouped(today, today));
 
-          // Write prorated stats per offer per day
-          for (const [date, offerStats] of Object.entries(offerDayMap)) {
-            const totalClicks   = Object.values(offerStats).reduce((a, v) => a + v.clicks, 0);
-            const campaignCost  = campaignCostByDate[date] ?? 0;
+        if (rows.length === 0) { offerSync.processed = i + 1; continue; }
 
-            for (const [offerId, stats] of Object.entries(offerStats)) {
-              const share   = totalClicks > 0 ? stats.clicks / totalClicks : 1 / offers.length;
-              const cost    = campaignCost * share;
-              const profit  = stats.revenue - cost;
+        // Load campaign cost per day (source of truth — cost lives at campaign level in RedTrack)
+        const { rows: campCosts } = await pool.query(
+          `SELECT stat_date::text AS date, cost FROM rt_campaign_stats WHERE campaign_id=$1 AND stat_date BETWEEN $2 AND $3`,
+          [c.id, dateFrom, dateTo]
+        );
+        const campaignCostByDate = Object.fromEntries(campCosts.map((r) => [r.date, Number(r.cost)]));
+
+        // Build: date → offerId → { clicks, conversions, revenue, byOs: { os → stats } }
+        const dayMap = {};
+        for (const row of rows) {
+          if (!row.date || !row.offer_id) continue;
+          const os = row.os || 'Unknown';
+          if (!dayMap[row.date]) dayMap[row.date] = {};
+          if (!dayMap[row.date][row.offer_id]) dayMap[row.date][row.offer_id] = { clicks: 0, conversions: 0, revenue: 0, byOs: {} };
+          const od = dayMap[row.date][row.offer_id];
+          od.clicks      += row.clicks      || 0;
+          od.conversions += row.conversions || 0;
+          od.revenue     += row.revenue     || 0;
+          od.byOs[os]     = { clicks: row.clicks||0, conversions: row.conversions||0, revenue: row.revenue||0 };
+        }
+
+        // Write prorated stats to both rt_offer_stats and rt_offer_os_stats
+        for (const [date, offerMap] of Object.entries(dayMap)) {
+          const campaignCost    = campaignCostByDate[date] ?? 0;
+          const totalCampClicks = Object.values(offerMap).reduce((a, v) => a + v.clicks, 0);
+
+          for (const [offerId, od] of Object.entries(offerMap)) {
+            // Offer cost = campaign cost × (offer clicks / total campaign clicks)
+            const offerShare  = totalCampClicks > 0 ? od.clicks / totalCampClicks : 1 / Object.keys(offerMap).length;
+            const offerCost   = campaignCost * offerShare;
+            const offerProfit = od.revenue - offerCost;
+
+            await pool.query(
+              `INSERT INTO rt_offer_stats (offer_id, campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+               ON CONFLICT (offer_id, campaign_id, stat_date) DO UPDATE SET
+                 clicks=$4, conversions=$5, cost=$6, revenue=$7, profit=$8`,
+              [offerId, c.id, date, od.clicks, od.conversions, offerCost, od.revenue, offerProfit]
+            );
+
+            // OS cost = offer cost × (OS clicks / total offer clicks)
+            for (const [os, osd] of Object.entries(od.byOs)) {
+              const osShare  = od.clicks > 0 ? osd.clicks / od.clicks : 1 / Object.keys(od.byOs).length;
+              const osCost   = offerCost * osShare;
+              const osProfit = osd.revenue - osCost;
               await pool.query(
-                `INSERT INTO rt_offer_stats (offer_id, campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-                 ON CONFLICT (offer_id, campaign_id, stat_date) DO UPDATE SET
-                   clicks=$4, conversions=$5, cost=$6, revenue=$7, profit=$8`,
-                [offerId, c.id, date, stats.clicks, stats.conversions, cost, stats.revenue, profit]
+                `INSERT INTO rt_offer_os_stats (offer_id, campaign_id, stat_date, os, clicks, conversions, cost, revenue, profit)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                 ON CONFLICT (offer_id, campaign_id, stat_date, os) DO UPDATE SET
+                   clicks=$5, conversions=$6, cost=$7, revenue=$8, profit=$9`,
+                [offerId, c.id, date, os, osd.clicks, osd.conversions, osCost, osd.revenue, osProfit]
               );
             }
           }
         }
-      } catch (err) { console.warn(`[offer-sync] campaign ${c.campaign_id} skipped: ${err.message}`); }
+      } catch (err) { console.warn(`[offer-sync] campaign ${c.id} skipped: ${err.message}`); }
 
       offerSync.processed = i + 1;
     }
