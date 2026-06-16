@@ -1111,7 +1111,7 @@ router.get('/sync/offers/status', (_req, res) => {
   });
 });
 
-// Live test: make one grouped API call for a specific campaign and return raw response
+// Live test: try different group param formats to find what RedTrack accepts
 router.get('/sync/offers/test', async (req, res) => {
   try {
     const { rows: campaigns } = await pool.query(
@@ -1119,22 +1119,29 @@ router.get('/sync/offers/test', async (req, res) => {
     );
     if (!campaigns.length) return res.json({ error: 'no campaigns found' });
     const c = campaigns[0];
-    const today    = new Date().toISOString().slice(0, 10);
-    const weekAgo  = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    await throttleRedtrack();
-    const { data } = await redtrack.get('/report', {
-      params: { campaign_id: c.id, group: 'offer,os', time_interval: 'day', date_from: weekAgo, date_to: today, per: 5 },
-    });
-    const rows = Array.isArray(data) ? data : (data?.items || []);
-    res.json({
-      campaign_id: c.id,
-      campaign_title: c.title,
-      date_from: weekAgo,
-      date_to: today,
-      row_count: rows.length,
-      first_row: rows[0] || null,
-      keys_in_first_row: rows[0] ? Object.keys(rows[0]) : [],
-    });
+    const today   = new Date().toISOString().slice(0, 10);
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const base    = { campaign_id: c.id, date_from: weekAgo, date_to: today, per: 3 };
+
+    const attempts = [
+      { label: 'group=offer,os + time_interval=day',  params: { ...base, group: 'offer,os',  time_interval: 'day' } },
+      { label: 'group=offer,os  (no time_interval)',  params: { ...base, group: 'offer,os'  } },
+      { label: 'groupBy=offer,os',                    params: { ...base, groupBy: 'offer,os', time_interval: 'day' } },
+      { label: 'group[]=offer&group[]=os',            params: { ...base, group: ['offer','os'], time_interval: 'day' } },
+    ];
+
+    const results = [];
+    for (const attempt of attempts) {
+      await throttleRedtrack();
+      try {
+        const { data } = await redtrack.get('/report', { params: attempt.params });
+        const rows = Array.isArray(data) ? data : (data?.items || []);
+        results.push({ label: attempt.label, status: 200, row_count: rows.length, first_row_keys: rows[0] ? Object.keys(rows[0]) : [] });
+      } catch (err) {
+        results.push({ label: attempt.label, status: err.response?.status || 'ERR', error: err.message });
+      }
+    }
+    res.json({ campaign_id: c.id, campaign_title: c.title, results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
