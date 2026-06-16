@@ -987,7 +987,7 @@ async function runOfferSync(dateFrom, dateTo) {
         async function fetchGrouped(from, to) {
           await throttleRedtrack();
           const { data: report } = await redtrack.get('/report', {
-            params: { campaign_id: c.id, group: 'offer,os', time_interval: 'day', date_from: from, date_to: to, per: 1000 },
+            params: { campaign_id: c.id, group: 'offer,os', date_from: from, date_to: to, per: 1000 },
           });
           return Array.isArray(report) ? report : (report?.items || []);
         }
@@ -1115,7 +1115,10 @@ router.get('/sync/offers/status', (_req, res) => {
 router.get('/sync/offers/test', async (req, res) => {
   try {
     const { rows: campaigns } = await pool.query(
-      `SELECT id, title FROM rt_campaigns WHERE buyer IS NOT NULL LIMIT 1`
+      `SELECT DISTINCT c.id, c.title FROM rt_campaigns c
+       JOIN rt_campaign_stats s ON s.campaign_id = c.id
+       WHERE c.buyer IS NOT NULL AND s.clicks > 0
+       ORDER BY c.id LIMIT 1`
     );
     if (!campaigns.length) return res.json({ error: 'no campaigns found' });
     const c = campaigns[0];
@@ -1124,10 +1127,9 @@ router.get('/sync/offers/test', async (req, res) => {
     const base    = { campaign_id: c.id, date_from: weekAgo, date_to: today, per: 3 };
 
     const attempts = [
-      { label: 'group=offer,os + time_interval=day',  params: { ...base, group: 'offer,os',  time_interval: 'day' } },
-      { label: 'group=offer,os  (no time_interval)',  params: { ...base, group: 'offer,os'  } },
-      { label: 'groupBy=offer,os',                    params: { ...base, groupBy: 'offer,os', time_interval: 'day' } },
-      { label: 'group[]=offer&group[]=os',            params: { ...base, group: ['offer','os'], time_interval: 'day' } },
+      { label: 'group=offer,os (no time_interval)',   params: { ...base, group: 'offer,os' } },
+      { label: 'group=offer (no os, no time_interval)', params: { ...base, group: 'offer' } },
+      { label: 'group=offer,os + time_interval=day',  params: { ...base, group: 'offer,os', time_interval: 'day' } },
     ];
 
     const results = [];
