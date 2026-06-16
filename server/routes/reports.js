@@ -1114,12 +1114,16 @@ router.get('/sync/offers/status', (_req, res) => {
 // Live test: try different group param formats to find what RedTrack accepts
 router.get('/sync/offers/test', async (req, res) => {
   try {
-    const { rows: campaigns } = await pool.query(
-      `SELECT DISTINCT c.id, c.title FROM rt_campaigns c
-       JOIN rt_campaign_stats s ON s.campaign_id = c.id
-       WHERE c.buyer IS NOT NULL AND s.clicks > 0
-       ORDER BY c.id LIMIT 1`
-    );
+    const forcedId = req.query.campaign_id;
+    const { rows: campaigns } = forcedId
+      ? await pool.query(`SELECT id, title FROM rt_campaigns WHERE id=$1`, [forcedId])
+      : await pool.query(
+          `SELECT c.id, c.title, SUM(s.revenue) AS rev
+           FROM rt_campaigns c JOIN rt_campaign_stats s ON s.campaign_id = c.id
+           WHERE c.buyer IS NOT NULL
+           GROUP BY c.id, c.title HAVING SUM(s.revenue) > 0
+           ORDER BY rev DESC LIMIT 1`
+        );
     if (!campaigns.length) return res.json({ error: 'no campaigns found' });
     const c = campaigns[0];
     const today   = new Date().toISOString().slice(0, 10);
