@@ -1111,6 +1111,26 @@ router.get('/sync/offers/status', (_req, res) => {
   });
 });
 
+// OS data diagnostic
+router.get('/sync/offers/debug', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*)::int                          AS total_rows,
+        COUNT(DISTINCT campaign_id)::int       AS campaigns,
+        COUNT(DISTINCT offer_id)::int          AS offers,
+        COUNT(DISTINCT os)::int                AS os_types,
+        MIN(stat_date)::text                   AS earliest,
+        MAX(stat_date)::text                   AS latest,
+        array_agg(DISTINCT os ORDER BY os)     AS os_values
+      FROM rt_offer_os_stats
+    `);
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Offer performance report
 router.get('/offers', async (req, res) => {
   try {
