@@ -1111,6 +1111,35 @@ router.get('/sync/offers/status', (_req, res) => {
   });
 });
 
+// Live test: make one grouped API call for a specific campaign and return raw response
+router.get('/sync/offers/test', async (req, res) => {
+  try {
+    const { rows: campaigns } = await pool.query(
+      `SELECT id, title FROM rt_campaigns WHERE buyer IS NOT NULL LIMIT 1`
+    );
+    if (!campaigns.length) return res.json({ error: 'no campaigns found' });
+    const c = campaigns[0];
+    const today    = new Date().toISOString().slice(0, 10);
+    const weekAgo  = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    await throttleRedtrack();
+    const { data } = await redtrack.get('/report', {
+      params: { campaign_id: c.id, group: 'offer,os', time_interval: 'day', date_from: weekAgo, date_to: today, per: 5 },
+    });
+    const rows = Array.isArray(data) ? data : (data?.items || []);
+    res.json({
+      campaign_id: c.id,
+      campaign_title: c.title,
+      date_from: weekAgo,
+      date_to: today,
+      row_count: rows.length,
+      first_row: rows[0] || null,
+      keys_in_first_row: rows[0] ? Object.keys(rows[0]) : [],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // OS data diagnostic
 router.get('/sync/offers/debug', async (_req, res) => {
   try {
