@@ -210,8 +210,8 @@ function RawDataSection({ dataJson }) {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200 bg-gray-50">
-                        {['Offer', 'Route', 'Carrier', 'Vertical', 'Partner', 'Buyer', 'Clicks', 'Profit', 'ROI'].map((h) => (
-                          <th key={h} className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Offer' ? 'text-left' : 'text-right'}`}>{h}</th>
+                        {['Offer', 'Route', 'Carrier', 'Vertical', 'Partner', 'Buyer', 'Clicks', 'EPC', 'Profit*', 'ROI*'].map((h) => (
+                          <th key={h} className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Offer' ? 'text-left' : 'text-right'}`} title={h.endsWith('*') ? 'Estimate — cost is prorated by click share' : h === 'EPC' ? 'Revenue per click — directly reported' : undefined}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -229,6 +229,9 @@ function RawDataSection({ dataJson }) {
                           </td>
                           <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.buyer}</td>
                           <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-xs font-medium text-gray-700">
+                            ${Number(r.clicks) > 0 ? (Number(r.revenue) / Number(r.clicks)).toFixed(4) : '0.0000'}
+                          </td>
                           <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                             ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </td>
@@ -541,26 +544,26 @@ export default function AIRecommendationsPage() {
                     <tr className="border-b border-gray-100 bg-gray-50">
                       <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Offer</th>
                       <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Buyer</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-purple-500 uppercase tracking-wider"> iOS Profit</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-purple-500 uppercase tracking-wider">iOS ROI</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-purple-500 uppercase tracking-wider" title="Revenue per click — directly reported">iOS EPC</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-purple-500 uppercase tracking-wider" title="Estimate — cost is prorated by click share"> iOS Profit*</th>
                       <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">iOS Clicks</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-green-600 uppercase tracking-wider">Android Profit</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-green-600 uppercase tracking-wider">Android ROI</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-green-600 uppercase tracking-wider" title="Revenue per click — directly reported">Android EPC</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-green-600 uppercase tracking-wider" title="Estimate — cost is prorated by click share">Android Profit*</th>
                       <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Android Clicks</th>
-                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Winner</th>
+                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider" title="Based on EPC, the trustworthy signal">Winner</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {osOffers.map((o, i) => {
                       const ios = o.iOS;
                       const and = o.Android;
-                      const iosRoi  = Number(ios?.roi  || 0);
-                      const andRoi  = Number(and?.roi  || 0);
                       const iosPft  = Number(ios?.profit  || 0);
                       const andPft  = Number(and?.profit  || 0);
-                      const winner  = ios && and
-                        ? (iosRoi > andRoi + 20 ? 'iOS' : andRoi > iosRoi + 20 ? 'Android' : 'Equal')
-                        : ios ? 'iOS' : 'Android';
+                      const iosEpc  = ios && Number(ios.clicks) > 0 ? Number(ios.revenue) / Number(ios.clicks) : null;
+                      const andEpc  = and && Number(and.clicks) > 0 ? Number(and.revenue) / Number(and.clicks) : null;
+                      const winner  = iosEpc != null && andEpc != null
+                        ? (iosEpc > andEpc * 1.2 ? 'iOS' : andEpc > iosEpc * 1.2 ? 'Android' : 'Equal')
+                        : iosEpc != null ? 'iOS' : 'Android';
                       return (
                         <tr key={i} className="hover:bg-gray-50/50">
                           <td className="px-4 py-2 text-xs text-gray-800 max-w-[200px] truncate" title={o.offer}>{o.offer}</td>
@@ -572,21 +575,21 @@ export default function AIRecommendationsPage() {
                             }`}>{o.buyer}</span>
                           </td>
                           {/* iOS */}
-                          <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${iosPft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {ios ? fmtMoney(iosPft) : <span className="text-gray-300">—</span>}
+                          <td className="px-4 py-2 text-right tabular-nums text-xs font-medium text-gray-700">
+                            {iosEpc != null ? `$${iosEpc.toFixed(4)}` : <span className="text-gray-300">—</span>}
                           </td>
-                          <td className={`px-4 py-2 text-right tabular-nums text-xs ${iosRoi >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {ios ? `${iosRoi.toFixed(1)}%` : <span className="text-gray-300">—</span>}
+                          <td className={`px-4 py-2 text-right tabular-nums text-xs ${iosPft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {ios ? fmtMoney(iosPft) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-500">
                             {ios ? fmtClicks(ios.clicks) : <span className="text-gray-300">—</span>}
                           </td>
                           {/* Android */}
-                          <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${andPft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {and ? fmtMoney(andPft) : <span className="text-gray-300">—</span>}
+                          <td className="px-4 py-2 text-right tabular-nums text-xs font-medium text-gray-700">
+                            {andEpc != null ? `$${andEpc.toFixed(4)}` : <span className="text-gray-300">—</span>}
                           </td>
-                          <td className={`px-4 py-2 text-right tabular-nums text-xs ${andRoi >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {and ? `${andRoi.toFixed(1)}%` : <span className="text-gray-300">—</span>}
+                          <td className={`px-4 py-2 text-right tabular-nums text-xs ${andPft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {and ? fmtMoney(andPft) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-500">
                             {and ? fmtClicks(and.clicks) : <span className="text-gray-300">—</span>}

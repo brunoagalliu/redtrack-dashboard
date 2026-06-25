@@ -816,14 +816,15 @@ router.post('/ai-recommendations/generate', async (req, res) => {
         if (!offerMap[r.offer]) offerMap[r.offer] = { buyer: r.buyer };
         offerMap[r.offer][r.os] = r;
       }
+      const epc = (r) => Number(r.clicks) > 0 ? (Number(r.revenue) / Number(r.clicks)).toFixed(4) : '0';
       const lines = Object.entries(offerMap).map(([offer, v]) => {
         const ios = v['iOS'];
         const and = v['Android'];
-        const iosStr = ios ? `iOS: $${ios.profit} ROI:${ios.roi}% (${ios.clicks} clicks)` : 'iOS: no data';
-        const andStr = and ? `Android: $${and.profit} ROI:${and.roi}% (${and.clicks} clicks)` : 'Android: no data';
+        const iosStr = ios ? `iOS: EPC:$${epc(ios)} $${ios.profit}* ROI:${ios.roi}%* (${ios.clicks} clicks)` : 'iOS: no data';
+        const andStr = and ? `Android: EPC:$${epc(and)} $${and.profit}* ROI:${and.roi}%* (${and.clicks} clicks)` : 'Android: no data';
         return `"${offer}" (${v.buyer}) → ${iosStr} | ${andStr}`;
       });
-      return `\nOS BREAKDOWN — iOS vs Android per offer:\n${lines.join('\n')}`;
+      return `\nOS BREAKDOWN — iOS vs Android per offer (EPC = revenue/click, directly reported; *profit/ROI are estimates, cost is prorated):\n${lines.join('\n')}`;
     })();
 
     // Build prompt tables
@@ -835,9 +836,10 @@ router.post('/ai-recommendations/generate', async (req, res) => {
       `${r.buyer}: Clicks:${r.clicks} | Spend:$${r.cost} | Revenue:$${r.revenue} | Profit:$${r.profit}`
     ).join('\n');
 
-    const offerTable = offerRows.slice(0, 40).map((r, i) =>
-      `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Clicks:${r.clicks} | Profit:$${r.profit} | ROI:${r.roi}%`
-    ).join('\n');
+    const offerTable = offerRows.slice(0, 40).map((r, i) => {
+      const epc = Number(r.clicks) > 0 ? (Number(r.revenue) / Number(r.clicks)).toFixed(4) : '0';
+      return `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Clicks:${r.clicks} | EPC:$${epc} | Profit:$${r.profit}* | ROI:${r.roi}%*`;
+    }).join('\n');
 
     // Per-buyer combo summaries (top 5 + bottom 3 per buyer)
     const buyerComboSections = BUYERS.map((buyer) => {
@@ -866,7 +868,7 @@ Data for the last ${days} days (${dateFrom} to ${today}):
 OVERALL COMBINATIONS — vertical × carrier × route (sorted by profit):
 ${comboTable}
 ${hasOfferData ? `
-OFFER PERFORMANCE — offer × route × carrier × partner × buyer (sorted by profit):
+OFFER PERFORMANCE — offer × route × carrier × partner × buyer (sorted by profit). EPC (revenue/click) is directly reported by RedTrack and fully trustworthy. Profit/ROI marked with * are estimates only — RedTrack doesn't track cost per offer, so cost is allocated by click share within each campaign; treat EPC as the primary signal and */profit as directional support, not gospel:
 ${offerTable}
 ` : ''}${osPromptSection}
 
@@ -1201,7 +1203,13 @@ router.get('/offers', async (req, res) => {
              ELSE 0 END                                                    AS cvr,
         CASE WHEN SUM(os.cost) > 0
              THEN ROUND(((SUM(os.revenue)-SUM(os.cost))/SUM(os.cost))*100, 1)
-             ELSE 0 END                                                    AS roi
+             ELSE 0 END                                                    AS roi,
+        CASE WHEN SUM(os.clicks) > 0
+             THEN ROUND(SUM(os.revenue)/SUM(os.clicks), 4)
+             ELSE 0 END                                                    AS epc,
+        CASE WHEN SUM(os.clicks) > 0
+             THEN ROUND(SUM(os.cost)/SUM(os.clicks), 4)
+             ELSE 0 END                                                    AS cpc
       FROM rt_offer_stats os
       JOIN rt_offers o     ON o.id  = os.offer_id
       JOIN rt_campaigns c  ON c.id  = os.campaign_id

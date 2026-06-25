@@ -7,6 +7,7 @@ const BUYERS = ['TK', 'MA', 'DS'];
 function fmt(n)      { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
 function fmtMoney(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtPct(n)   { return Number(n).toFixed(2) + '%'; }
+function fmtRate(n)  { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
 
 function SortIcon({ col, sortCol, sortDir }) {
   if (sortCol !== col) return <span className="text-gray-300 ml-1">↕</span>;
@@ -79,6 +80,8 @@ export default function OffersPage() {
     { key: 'revenue',      label: 'Revenue',      align: 'right', sortable: true  },
     { key: 'profit',       label: 'Profit',       align: 'right', sortable: true  },
     { key: 'roi',          label: 'ROI',          align: 'right', sortable: true  },
+    { key: 'cpc',          label: 'CPC',          align: 'right', sortable: true  },
+    { key: 'epc',          label: 'EPC',          align: 'right', sortable: true  },
   ];
 
   return (
@@ -261,6 +264,12 @@ export default function OffersPage() {
                       </td>
                       <td className={`px-3 py-2 text-right tabular-nums text-xs font-semibold ${Number(row.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                         {row.roi}%
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-400" title="Estimated — cost is prorated by click share">
+                        {fmtRate(row.cpc)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs font-medium text-gray-700" title="Revenue per click — directly reported, not prorated">
+                        {fmtRate(row.epc)}
                       </td>
                     </tr>
                   ))}

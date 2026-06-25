@@ -20,6 +20,15 @@ function fmtMoney(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function fmtRate(n) {
+  if (n == null) return '—';
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+function perClick(amount, clicks) {
+  return clicks > 0 ? Number(amount) / Number(clicks) : 0;
+}
+
 function SortIcon({ col, sortKey, sortDir }) {
   if (sortKey !== col) return (
     <svg className="w-3.5 h-3.5 text-gray-300 ml-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,12 +111,12 @@ function OsRows({ campaignId, offerId, dateFrom, dateTo }) {
 
   if (isLoading) return (
     <tr>
-      <td colSpan={8} className="px-4 py-1 text-xs text-gray-400 text-center bg-violet-50/20">Loading OS…</td>
+      <td colSpan={10} className="px-4 py-1 text-xs text-gray-400 text-center bg-violet-50/20">Loading OS…</td>
     </tr>
   );
   if (!osStats?.length) return (
     <tr>
-      <td colSpan={8} className="px-12 py-1 text-xs text-gray-400 bg-violet-50/20">No OS data yet — run a sync first.</td>
+      <td colSpan={10} className="px-12 py-1 text-xs text-gray-400 bg-violet-50/20">No OS data yet — run a sync first.</td>
     </tr>
   );
 
@@ -125,6 +134,12 @@ function OsRows({ campaignId, offerId, dateFrom, dateTo }) {
       <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmtMoney(s.revenue)}</td>
       <td className={`px-4 py-1 text-right tabular-nums text-xs font-medium ${Number(s.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
         {fmtMoney(s.profit)}
+      </td>
+      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-400" title="Estimated — cost is prorated by click share">
+        {fmtRate(perClick(s.cost, s.clicks))}
+      </td>
+      <td className="px-4 py-1 text-right tabular-nums text-xs font-medium text-gray-700" title="Revenue per click — directly reported, not prorated">
+        {fmtRate(perClick(s.revenue, s.clicks))}
       </td>
     </tr>
   ));
@@ -149,7 +164,7 @@ function OfferRows({ campaignId, dateFrom, dateTo }) {
 
   if (isLoading) return (
     <tr>
-      <td colSpan={8} className="px-4 py-2 text-xs text-gray-400 text-center bg-gray-50/50">
+      <td colSpan={10} className="px-4 py-2 text-xs text-gray-400 text-center bg-gray-50/50">
         Loading offers…
       </td>
     </tr>
@@ -157,7 +172,7 @@ function OfferRows({ campaignId, dateFrom, dateTo }) {
 
   if (!offers?.length) return (
     <tr>
-      <td colSpan={8} className="px-8 py-2 text-xs text-gray-400 bg-gray-50/50">
+      <td colSpan={10} className="px-8 py-2 text-xs text-gray-400 bg-gray-50/50">
         No offer data yet — run a sync first.
       </td>
     </tr>
@@ -186,6 +201,12 @@ function OfferRows({ campaignId, dateFrom, dateTo }) {
         <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.revenue)}</td>
         <td className={`px-4 py-1.5 text-right tabular-nums text-xs font-medium ${Number(o.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
           {fmtMoney(o.profit)}
+        </td>
+        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-400" title="Estimated — cost is prorated by click share">
+          {fmtRate(perClick(o.cost, o.clicks))}
+        </td>
+        <td className="px-4 py-1.5 text-right tabular-nums text-xs font-medium text-gray-700" title="Revenue per click — directly reported, not prorated">
+          {fmtRate(perClick(o.revenue, o.clicks))}
         </td>
       </tr>,
     ];
@@ -406,6 +427,8 @@ export default function ReportsPage() {
                   <Th col="cost" label="Spend" right />
                   <Th col="revenue" label="Revenue" right />
                   <Th col="profit" label="Profit" right />
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider" title="Cost per click">CPC</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider" title="Revenue per click">EPC</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -439,6 +462,8 @@ export default function ReportsPage() {
                     <td className={`px-4 py-2.5 text-right tabular-nums text-sm font-medium ${Number(c.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                       {fmtMoney(c.profit)}
                     </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-600">{fmtRate(perClick(c.cost, c.clicks))}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-sm font-medium text-gray-700">{fmtRate(perClick(c.revenue, c.clicks))}</td>
                   </tr>
                   {expandedId === c.id && (
                     <OfferRows
@@ -462,6 +487,8 @@ export default function ReportsPage() {
                   <td className={`px-4 py-3 text-right tabular-nums text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                     {fmtMoney(totals.profit)}
                   </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.cost, totals.clicks))}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.revenue, totals.clicks))}</td>
                 </tr>
               </tbody>
             </table>
