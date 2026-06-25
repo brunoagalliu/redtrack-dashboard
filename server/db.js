@@ -108,7 +108,7 @@ async function init() {
     CREATE INDEX IF NOT EXISTS rt_offer_os_stats_campaign ON rt_offer_os_stats(campaign_id);
   `);
 
-  // AI recommendations cache
+  // AI recommendations cache (id=1 always holds the latest report)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS rt_ai_report (
       id           INT PRIMARY KEY DEFAULT 1,
@@ -117,6 +117,18 @@ async function init() {
       content      TEXT,
       data_json    JSONB
     );
+  `);
+
+  // Full history of generated AI reports, for diffing and outcome tracking
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rt_ai_report_history (
+      id           SERIAL PRIMARY KEY,
+      generated_at TIMESTAMP,
+      period_days  INT,
+      content      TEXT,
+      data_json    JSONB
+    );
+    CREATE INDEX IF NOT EXISTS rt_ai_report_history_date ON rt_ai_report_history(generated_at);
   `);
 
   await pool.query(`

@@ -232,6 +232,21 @@ async function runSync(dateFrom, dateTo) {
     await persistSyncStatus();
     await runOfferSync(dateFrom, dateTo);
 
+    // Auto-generate the AI report weekly, using the data this sync just refreshed
+    try {
+      const { rows: lastReportRows } = await pool.query(`SELECT generated_at FROM rt_ai_report WHERE id = 1`);
+      const lastGeneratedAt = lastReportRows[0]?.generated_at;
+      const daysSinceLast = lastGeneratedAt
+        ? (Date.now() - new Date(lastGeneratedAt).getTime()) / 86400000
+        : Infinity;
+      if (daysSinceLast >= 7) {
+        await generateAIReport(14);
+        console.log('[ai] Auto-generated weekly report');
+      }
+    } catch (err) {
+      console.warn('[ai] Auto-generation skipped:', err.message);
+    }
+
     sync.status = 'complete';
     sync.phase  = 'idle';
     sync.completedAt = new Date();
@@ -670,12 +685,67 @@ router.get('/ai-recommendations', async (req, res) => {
   }
 });
 
-// POST generate new AI report
-router.post('/ai-recommendations/generate', async (req, res) => {
-  try {
-    const days = parseInt(req.body?.days) || 14;
+// Compare the new report's data against the previous one — surfaces buyer profit
+// swings and whether last report's top "scale" / "cut" calls were actually followed.
+function buildReportDiff(previous, combos, buyerRows) {
+  if (!previous?.data_json) return null;
+  const prev = previous.data_json;
+  const daysSince = previous.generated_at
+    ? Math.round((Date.now() - new Date(previous.generated_at).getTime()) / 86400000)
+    : null;
+  const key = (r) => `${r.vertical}|${r.carrier}|${r.route}`;
+
+  const lines = [];
+
+  const prevBuyers = Object.fromEntries((prev.buyers || []).map((b) => [b.buyer, b]));
+  for (const b of buyerRows) {
+    const p = prevBuyers[b.buyer];
+    if (!p || Number(p.profit) === 0) continue;
+    const pct = ((Number(b.profit) - Number(p.profit)) / Math.abs(Number(p.profit))) * 100;
+    if (Math.abs(pct) >= 15) {
+      lines.push(`${b.buyer} profit ${pct >= 0 ? 'up' : 'down'} ${Math.abs(pct).toFixed(0)}% vs last report ($${p.profit} → $${b.profit}).`);
+    }
+  }
+
+  // Did last report's top scale picks actually get scaled?
+  for (const p of (prev.combinations || []).slice(0, 3)) {
+    const cur = combos.find((c) => key(c) === key(p));
+    if (!cur) {
+      lines.push(`Last report's scale pick ${p.vertical}|${p.route}|${p.carrier} (was $${p.profit} profit) dropped out of the top 60 — check if it's still running.`);
+      continue;
+    }
+    const prevClicks = Number(p.clicks), curClicks = Number(cur.clicks);
+    if (prevClicks <= 0) continue;
+    const clickChange = ((curClicks - prevClicks) / prevClicks) * 100;
+    if (clickChange >= 30) {
+      lines.push(`Scale call followed: ${p.vertical}|${p.route}|${p.carrier} clicks up ${clickChange.toFixed(0)}%, now $${cur.profit} profit.`);
+    } else if (clickChange <= -20) {
+      lines.push(`Scale call NOT followed: ${p.vertical}|${p.route}|${p.carrier} clicks down ${Math.abs(clickChange).toFixed(0)}% instead of scaling.`);
+    }
+  }
+
+  // Did last report's flagged losers get cut?
+  for (const p of (prev.combinations || []).filter((c) => Number(c.profit) < 0).slice(-3)) {
+    const cur = combos.find((c) => key(c) === key(p));
+    if (!cur) {
+      lines.push(`Cut call followed: ${p.vertical}|${p.route}|${p.carrier} (was -$${Math.abs(p.profit)}) no longer appears — looks paused.`);
+    } else if (Number(p.clicks) > 0 && Number(cur.clicks) > Number(p.clicks) * 0.8) {
+      lines.push(`Cut call NOT followed: ${p.vertical}|${p.route}|${p.carrier} still running at similar volume, now $${cur.profit} profit.`);
+    }
+  }
+
+  if (!lines.length) return null;
+  return { daysSince, lines };
+}
+
+// Core AI report generation — callable from the route handler or the weekly auto-trigger.
+async function generateAIReport(days) {
     const today    = new Date().toISOString().slice(0, 10);
     const dateFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+    // Snapshot the current "latest" row before it gets overwritten — this is the diff baseline.
+    const { rows: previousRows } = await pool.query(`SELECT generated_at, data_json FROM rt_ai_report WHERE id = 1`);
+    const previous = previousRows[0] || null;
 
     // Aggregate: vertical × carrier × route combinations with stats
     const { rows: combos } = await pool.query(`
@@ -829,7 +899,7 @@ router.post('/ai-recommendations/generate', async (req, res) => {
 
     // Build prompt tables
     const comboTable = combos.slice(0, 25).map((r, i) =>
-      `${i+1}. ${r.vertical} | ${r.carrier} | ${r.route} | Clicks:${r.clicks} | Profit:$${r.profit} | ROI:${r.roi}%`
+      `${i+1}. ${r.vertical} | ${r.carrier} | ${r.route} | Clicks:${r.clicks} | Conv:${r.conversions} | Profit:$${r.profit} | ROI:${r.roi}%`
     ).join('\n');
 
     const buyerTable = buyerRows.map((r) =>
@@ -838,8 +908,14 @@ router.post('/ai-recommendations/generate', async (req, res) => {
 
     const offerTable = offerRows.slice(0, 40).map((r, i) => {
       const epc = Number(r.clicks) > 0 ? (Number(r.revenue) / Number(r.clicks)).toFixed(4) : '0';
-      return `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Clicks:${r.clicks} | EPC:$${epc} | Profit:$${r.profit}* | ROI:${r.roi}%*`;
+      return `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Clicks:${r.clicks} | Conv:${r.conversions} | EPC:$${epc} | Profit:$${r.profit}* | ROI:${r.roi}%*`;
     }).join('\n');
+
+    const diff = buildReportDiff(previous, combos, buyerRows);
+    dataJson.changes_since_last = diff;
+    const diffSection = diff
+      ? `\nCHANGES SINCE LAST REPORT (${diff.daysSince} day${diff.daysSince === 1 ? '' : 's'} ago):\n${diff.lines.join('\n')}\n`
+      : '';
 
     // Per-buyer combo summaries (top 5 + bottom 3 per buyer)
     const buyerComboSections = BUYERS.map((buyer) => {
@@ -871,7 +947,7 @@ ${hasOfferData ? `
 OFFER PERFORMANCE — offer × route × carrier × partner × buyer (sorted by profit). EPC (revenue/click) is directly reported by RedTrack and fully trustworthy. Profit/ROI marked with * are estimates only — RedTrack doesn't track cost per offer, so cost is allocated by click share within each campaign; treat EPC as the primary signal and */profit as directional support, not gospel:
 ${offerTable}
 ` : ''}${osPromptSection}
-
+${diffSection}
 PER-BUYER BREAKDOWN:
 ${buyerComboSections}
 
@@ -880,9 +956,11 @@ STRICT FORMAT RULES:
 - Each bullet: ONE action or insight, max 20 words, include ONE key number.
 - Overall sections: max 4 bullets each.
 - Buyer sections: exactly 5 bullets each — no more.
+- CONFIDENCE RULE: Only recommend aggressive scaling (5x, 10x, "scale immediately") for a combo/offer with at least 30 conversions (Conv column above). Below that threshold, no matter how high the ROI, it's an early signal — put it in "Highest-Upside Tests" as a cautious test, never as a scale instruction.
+${diff ? '- If CHANGES SINCE LAST REPORT shows a call was or wasn\'t followed, mention it once where relevant — don\'t repeat it in every section.' : ''}
 
 ## 💰 Best Combinations to Scale
-4 bullets. ${hasOfferData ? 'Name offer + route + carrier.' : 'Name vertical + route + carrier.'} One number per bullet. ${hasOsData ? 'Flag iOS targeting if iOS ROI >> Android.' : ''}
+4 bullets. ${hasOfferData ? 'Name offer + route + carrier.' : 'Name vertical + route + carrier.'} One number per bullet. Only combos with 30+ conversions. ${hasOsData ? 'Flag iOS targeting if iOS ROI >> Android.' : ''}
 
 ## 🔴 Cut These Now
 4 bullets. Name what to kill and the loss amount.
@@ -930,15 +1008,44 @@ Exactly 5 bullets. Same rules.`;
       content += second.content[0].text;
     }
 
+    const generatedAt = new Date();
+
     await pool.query(`
       INSERT INTO rt_ai_report (id, generated_at, period_days, content, data_json)
-      VALUES (1, NOW(), $1, $2, $3)
-      ON CONFLICT (id) DO UPDATE SET generated_at=NOW(), period_days=$1, content=$2, data_json=$3
-    `, [days, content, JSON.stringify(dataJson)]);
+      VALUES (1, $1, $2, $3, $4)
+      ON CONFLICT (id) DO UPDATE SET generated_at=$1, period_days=$2, content=$3, data_json=$4
+    `, [generatedAt, days, content, JSON.stringify(dataJson)]);
 
-    res.json({ generated_at: new Date(), period_days: days, content, data_json: dataJson });
+    await pool.query(`
+      INSERT INTO rt_ai_report_history (generated_at, period_days, content, data_json)
+      VALUES ($1, $2, $3, $4)
+    `, [generatedAt, days, content, JSON.stringify(dataJson)]);
+
+    return { generated_at: generatedAt, period_days: days, content, data_json: dataJson };
+}
+
+// POST generate new AI report (manual trigger)
+router.post('/ai-recommendations/generate', async (req, res) => {
+  try {
+    const days = parseInt(req.body?.days) || 14;
+    const report = await generateAIReport(days);
+    res.json(report);
   } catch (err) {
     console.error('AI report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET report history (for diffing/inspection)
+router.get('/ai-recommendations/history', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const { rows } = await pool.query(
+      `SELECT id, generated_at, period_days FROM rt_ai_report_history ORDER BY generated_at DESC LIMIT $1`,
+      [limit]
+    );
+    res.json(rows);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
