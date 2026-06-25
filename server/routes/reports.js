@@ -1027,8 +1027,11 @@ async function runOfferSync(dateFrom, dateTo) {
 
         const totalOfferClicks = Object.values(offerMap).reduce((a, v) => a + v.clicks, 0);
 
-        // Replace OS stats for this campaign with fresh aggregated data
+        // Replace offer/OS stats for this campaign with fresh aggregated data
+        // (RedTrack returns a single aggregated total, not per-day rows, so each
+        // sync run must overwrite — not append — or totals accumulate across runs)
         await pool.query(`DELETE FROM rt_offer_os_stats WHERE campaign_id=$1`, [c.id]);
+        await pool.query(`DELETE FROM rt_offer_stats    WHERE campaign_id=$1`, [c.id]);
 
         for (const [offerId, od] of Object.entries(offerMap)) {
           const offerShare  = totalOfferClicks > 0 ? od.clicks / totalOfferClicks : 1 / Object.keys(offerMap).length;
@@ -1038,9 +1041,7 @@ async function runOfferSync(dateFrom, dateTo) {
           // Update offer-level stats (aggregated row per offer)
           await pool.query(
             `INSERT INTO rt_offer_stats (offer_id, campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-             ON CONFLICT (offer_id, campaign_id, stat_date) DO UPDATE SET
-               clicks=$4, conversions=$5, cost=$6, revenue=$7, profit=$8`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
             [offerId, c.id, dateTo, od.clicks, od.conversions, offerCost, od.revenue, offerProfit]
           );
 
