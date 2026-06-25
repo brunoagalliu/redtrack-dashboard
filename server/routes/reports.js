@@ -907,7 +907,7 @@ Exactly 5 bullets. Same rules.`;
 
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const MODEL = 'claude-haiku-4-5-20251001';
+    const MODEL = 'claude-sonnet-4-6';
     const first = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 8000,
