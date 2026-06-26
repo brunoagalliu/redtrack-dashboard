@@ -290,30 +290,32 @@ export default function AIRecommendationsPage() {
   const [days, setDays] = useState(14);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
-  const [selectedHistoryId, setSelectedHistoryId] = useState('latest');
+  // null = "show the freshest report for the selected period" — set to a specific
+  // history id when the user picks an older entry from the Viewing dropdown.
+  const [selectedHistoryId, setSelectedHistoryId] = useState(null);
   const queryClient = useQueryClient();
 
-  const { data: latestReport, isLoading } = useQuery({
-    queryKey: ['reports', 'ai-recommendations'],
-    queryFn: () => api.getAIReport(),
-    staleTime: 30 * 60 * 1000,
-    retry: false,
-  });
-
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isLoading: isLoadingHistory } = useQuery({
     queryKey: ['reports', 'ai-recommendations', 'history'],
-    queryFn: () => api.getAIReportHistory(20),
+    queryFn: () => api.getAIReportHistory(50),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
 
-  const { data: historyItem, isLoading: isLoadingHistoryItem } = useQuery({
-    queryKey: ['reports', 'ai-recommendations', 'history', selectedHistoryId],
-    queryFn: () => api.getAIReportHistoryItem(selectedHistoryId),
-    enabled: selectedHistoryId !== 'latest',
+  // Only the reports generated with the currently-selected day window
+  const periodHistory = history.filter((h) => h.period_days === days);
+  const effectiveHistoryId = selectedHistoryId ?? periodHistory[0]?.id ?? null;
+  const viewingHistory = effectiveHistoryId != null && effectiveHistoryId !== periodHistory[0]?.id;
+
+  const { data: report, isLoading: isLoadingReport } = useQuery({
+    queryKey: ['reports', 'ai-recommendations', 'history', effectiveHistoryId],
+    queryFn: () => api.getAIReportHistoryItem(effectiveHistoryId),
+    enabled: effectiveHistoryId != null,
     staleTime: 30 * 60 * 1000,
     retry: false,
   });
+
+  const isLoading = isLoadingHistory || isLoadingReport;
 
   const { data: syncStatus } = useQuery({
     queryKey: ['reports', 'sync', 'status'],
@@ -331,27 +333,30 @@ export default function AIRecommendationsPage() {
     retry: false,
   });
 
-  const report = selectedHistoryId === 'latest' ? latestReport : historyItem;
-  const viewingHistory = selectedHistoryId !== 'latest';
-
-  // Freshness check — always against the latest report, regardless of which one is on screen
+  // Freshness check — against the freshest report for the selected period
   const syncRunning = Boolean(syncStatus?.running || offerSyncStatus?.running);
   const lastSyncAt = [syncStatus?.completed_at, offerSyncStatus?.completed_at]
     .filter(Boolean)
     .map((d) => new Date(d))
     .sort((a, b) => b - a)[0] || null;
-  const reportGeneratedAt = latestReport?.generated_at ? new Date(latestReport.generated_at) : null;
+  const freshestForPeriod = periodHistory[0] || null;
+  const reportGeneratedAt = freshestForPeriod ? new Date(freshestForPeriod.generated_at) : null;
   const dataIsNewer = Boolean(lastSyncAt && reportGeneratedAt && lastSyncAt > reportGeneratedAt);
   const daysSinceReport = reportGeneratedAt ? (Date.now() - reportGeneratedAt.getTime()) / 86400000 : null;
   const staleByAge = daysSinceReport !== null && daysSinceReport >= 7;
-  const freshness = syncRunning ? 'syncing' : dataIsNewer ? 'stale-data' : staleByAge ? 'stale-age' : 'fresh';
+  const freshness = syncRunning ? 'syncing' : !freshestForPeriod ? 'none' : dataIsNewer ? 'stale-data' : staleByAge ? 'stale-age' : 'fresh';
+
+  function handleDaysChange(d) {
+    setDays(d);
+    setSelectedHistoryId(null);
+  }
 
   async function handleGenerate() {
     setGenerating(true);
     setGenError(null);
     try {
       await api.generateAIReport(days);
-      setSelectedHistoryId('latest');
+      setSelectedHistoryId(null);
       queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
     } catch (err) {
       setGenError(err.message || 'Failed to generate report.');
@@ -408,27 +413,27 @@ export default function AIRecommendationsPage() {
           <p className="text-sm text-gray-500 mt-1">Profit-maximization analysis with dedicated actions per media buyer</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          {history.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500">Analyze last</span>
+            <select value={days} onChange={(e) => handleDaysChange(Number(e.target.value))}
+              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white">
+              {[7, 14, 30].map((d) => <option key={d} value={d}>{d} days</option>)}
+            </select>
+          </div>
+          {periodHistory.length > 0 && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-gray-500">Viewing</span>
-              <select value={selectedHistoryId} onChange={(e) => setSelectedHistoryId(e.target.value)}
+              <select value={effectiveHistoryId ?? ''} onChange={(e) => setSelectedHistoryId(Number(e.target.value))}
                 className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white max-w-[220px]">
-                <option value="latest">Latest</option>
-                {history.map((h) => (
+                {periodHistory.map((h, i) => (
                   <option key={h.id} value={h.id}>
-                    {new Date(h.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} — {h.period_days}d
+                    {i === 0 ? 'Latest — ' : ''}
+                    {new Date(h.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                   </option>
                 ))}
               </select>
             </div>
           )}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-500">Analyze last</span>
-            <select value={days} onChange={(e) => setDays(Number(e.target.value))}
-              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white">
-              {[7, 14, 30].map((d) => <option key={d} value={d}>{d} days</option>)}
-            </select>
-          </div>
           <button onClick={handleGenerate} disabled={generating}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
             {generating ? (
@@ -449,7 +454,7 @@ export default function AIRecommendationsPage() {
         </div>
       </div>
 
-      {latestReport && (
+      {freshness !== 'none' && (
         <div className={`flex items-center gap-1.5 text-xs ${
           freshness === 'syncing' ? 'text-blue-600'
           : freshness === 'stale-data' ? 'text-amber-600'
@@ -462,9 +467,9 @@ export default function AIRecommendationsPage() {
             : 'bg-green-500'
           }`} />
           {freshness === 'syncing' && 'A sync is running — wait for it to finish before generating a new report, or the data may be incomplete.'}
-          {freshness === 'stale-data' && 'New sync data has come in since the latest report was generated — consider hitting Generate Report.'}
-          {freshness === 'stale-age' && `The latest report is ${Math.floor(daysSinceReport)} days old — due for a refresh.`}
-          {freshness === 'fresh' && 'Latest report reflects the most recent synced data.'}
+          {freshness === 'stale-data' && `New sync data has come in since the latest ${days}-day report was generated — consider hitting Generate Report.`}
+          {freshness === 'stale-age' && `The latest ${days}-day report is ${Math.floor(daysSinceReport)} days old — due for a refresh.`}
+          {freshness === 'fresh' && `Latest ${days}-day report reflects the most recent synced data.`}
         </div>
       )}
 
@@ -474,21 +479,21 @@ export default function AIRecommendationsPage() {
 
       {viewingHistory && (
         <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-xs text-amber-700 flex items-center justify-between">
-          <span>Viewing a past report from history — this is not the current live report.</span>
-          <button onClick={() => setSelectedHistoryId('latest')} className="font-medium underline hover:no-underline">
+          <span>Viewing a past {days}-day report from history — this is not the latest one for this window.</span>
+          <button onClick={() => setSelectedHistoryId(null)} className="font-medium underline hover:no-underline">
             Back to latest
           </button>
         </div>
       )}
 
       {/* ── Loading / empty states ── */}
-      {(viewingHistory ? isLoadingHistoryItem : isLoading) && (
+      {isLoading && (
         <div className="card p-10 text-center">
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
         </div>
       )}
 
-      {!(viewingHistory ? isLoadingHistoryItem : isLoading) && !report && !generating && (
+      {!isLoading && !report && !generating && (
         <div className="card p-10 text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
             <svg className="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -496,8 +501,8 @@ export default function AIRecommendationsPage() {
                 d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-gray-700 mb-1">No report generated yet</p>
-          <p className="text-xs text-gray-400">Run a sync first, then click Generate Report.</p>
+          <p className="text-sm font-medium text-gray-700 mb-1">No {days}-day report generated yet</p>
+          <p className="text-xs text-gray-400">Click Generate Report to create one for this window.</p>
         </div>
       )}
 
