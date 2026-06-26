@@ -290,20 +290,68 @@ export default function AIRecommendationsPage() {
   const [days, setDays] = useState(14);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState('latest');
   const queryClient = useQueryClient();
 
-  const { data: report, isLoading } = useQuery({
+  const { data: latestReport, isLoading } = useQuery({
     queryKey: ['reports', 'ai-recommendations'],
     queryFn: () => api.getAIReport(),
     staleTime: 30 * 60 * 1000,
     retry: false,
   });
 
+  const { data: history = [] } = useQuery({
+    queryKey: ['reports', 'ai-recommendations', 'history'],
+    queryFn: () => api.getAIReportHistory(20),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const { data: historyItem, isLoading: isLoadingHistoryItem } = useQuery({
+    queryKey: ['reports', 'ai-recommendations', 'history', selectedHistoryId],
+    queryFn: () => api.getAIReportHistoryItem(selectedHistoryId),
+    enabled: selectedHistoryId !== 'latest',
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  });
+
+  const { data: syncStatus } = useQuery({
+    queryKey: ['reports', 'sync', 'status'],
+    queryFn: () => api.getSyncStatus(),
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+    retry: false,
+  });
+
+  const { data: offerSyncStatus } = useQuery({
+    queryKey: ['reports', 'sync', 'offers', 'status'],
+    queryFn: () => api.getOfferSyncStatus(),
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+    retry: false,
+  });
+
+  const report = selectedHistoryId === 'latest' ? latestReport : historyItem;
+  const viewingHistory = selectedHistoryId !== 'latest';
+
+  // Freshness check — always against the latest report, regardless of which one is on screen
+  const syncRunning = Boolean(syncStatus?.running || offerSyncStatus?.running);
+  const lastSyncAt = [syncStatus?.completed_at, offerSyncStatus?.completed_at]
+    .filter(Boolean)
+    .map((d) => new Date(d))
+    .sort((a, b) => b - a)[0] || null;
+  const reportGeneratedAt = latestReport?.generated_at ? new Date(latestReport.generated_at) : null;
+  const dataIsNewer = Boolean(lastSyncAt && reportGeneratedAt && lastSyncAt > reportGeneratedAt);
+  const daysSinceReport = reportGeneratedAt ? (Date.now() - reportGeneratedAt.getTime()) / 86400000 : null;
+  const staleByAge = daysSinceReport !== null && daysSinceReport >= 7;
+  const freshness = syncRunning ? 'syncing' : dataIsNewer ? 'stale-data' : staleByAge ? 'stale-age' : 'fresh';
+
   async function handleGenerate() {
     setGenerating(true);
     setGenError(null);
     try {
       await api.generateAIReport(days);
+      setSelectedHistoryId('latest');
       queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
     } catch (err) {
       setGenError(err.message || 'Failed to generate report.');
@@ -360,6 +408,20 @@ export default function AIRecommendationsPage() {
           <p className="text-sm text-gray-500 mt-1">Profit-maximization analysis with dedicated actions per media buyer</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {history.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-500">Viewing</span>
+              <select value={selectedHistoryId} onChange={(e) => setSelectedHistoryId(e.target.value)}
+                className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white max-w-[220px]">
+                <option value="latest">Latest</option>
+                {history.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {new Date(h.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} — {h.period_days}d
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-500">Analyze last</span>
             <select value={days} onChange={(e) => setDays(Number(e.target.value))}
@@ -387,18 +449,46 @@ export default function AIRecommendationsPage() {
         </div>
       </div>
 
+      {latestReport && (
+        <div className={`flex items-center gap-1.5 text-xs ${
+          freshness === 'syncing' ? 'text-blue-600'
+          : freshness === 'stale-data' ? 'text-amber-600'
+          : freshness === 'stale-age' ? 'text-amber-600'
+          : 'text-gray-400'
+        }`}>
+          <span className={`inline-block w-2 h-2 rounded-full ${
+            freshness === 'syncing' ? 'bg-blue-500 animate-pulse'
+            : freshness === 'stale-data' || freshness === 'stale-age' ? 'bg-amber-500'
+            : 'bg-green-500'
+          }`} />
+          {freshness === 'syncing' && 'A sync is running — wait for it to finish before generating a new report, or the data may be incomplete.'}
+          {freshness === 'stale-data' && 'New sync data has come in since the latest report was generated — consider hitting Generate Report.'}
+          {freshness === 'stale-age' && `The latest report is ${Math.floor(daysSinceReport)} days old — due for a refresh.`}
+          {freshness === 'fresh' && 'Latest report reflects the most recent synced data.'}
+        </div>
+      )}
+
       {genError && (
         <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{genError}</div>
       )}
 
+      {viewingHistory && (
+        <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-xs text-amber-700 flex items-center justify-between">
+          <span>Viewing a past report from history — this is not the current live report.</span>
+          <button onClick={() => setSelectedHistoryId('latest')} className="font-medium underline hover:no-underline">
+            Back to latest
+          </button>
+        </div>
+      )}
+
       {/* ── Loading / empty states ── */}
-      {isLoading && (
+      {(viewingHistory ? isLoadingHistoryItem : isLoading) && (
         <div className="card p-10 text-center">
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
         </div>
       )}
 
-      {!isLoading && !report && !generating && (
+      {!(viewingHistory ? isLoadingHistoryItem : isLoading) && !report && !generating && (
         <div className="card p-10 text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
             <svg className="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
