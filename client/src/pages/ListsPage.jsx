@@ -97,9 +97,9 @@ function sectionStyle(h) {
 }
 
 export default function ListsPage() {
+  const [tab, setTab]               = useState('ai'); // 'ai' | 'lists'
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError]     = useState(null);
-  const [showAI, setShowAI]         = useState(true);
   const [expandedList, setExpandedList] = useState(null);
   const [campaignDays, setCampaignDays] = useState(30);
   const [sortCol, setSortCol]       = useState('profit');
@@ -188,81 +188,110 @@ export default function ListsPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Data List Intelligence</h1>
-          <p className="text-sm text-gray-500 mt-1">Click any list to see all campaigns that used it, oldest to newest</p>
+          <p className="text-sm text-gray-500 mt-1">AI-driven analysis of which lists to reuse, rest, or retire</p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {history.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-gray-500">AI report</span>
-              <select value={effectiveId ?? ''} onChange={e => setSelectedHistoryId(e.target.value ? Number(e.target.value) : null)}
-                className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white max-w-[200px]">
-                <option value="">Latest</option>
-                {history.map((h, i) => (
-                  <option key={h.id} value={h.id}>
-                    {i === 0 ? 'Latest — ' : ''}{new Date(h.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <button onClick={handleGenerate} disabled={generating}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors">
-            {generating
-              ? <><span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</>
-              : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Generate Analysis</>
-            }
-          </button>
-        </div>
+        {tab === 'ai' && (
+          <div className="flex items-center gap-3 shrink-0">
+            {history.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Viewing</span>
+                <select value={effectiveId ?? ''} onChange={e => setSelectedHistoryId(e.target.value ? Number(e.target.value) : null)}
+                  className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white max-w-[200px]">
+                  <option value="">Latest</option>
+                  {history.map((h, i) => (
+                    <option key={h.id} value={h.id}>
+                      {i === 0 ? 'Latest — ' : ''}{new Date(h.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <button onClick={handleGenerate} disabled={generating}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors">
+              {generating
+                ? <><span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</>
+                : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Generate Analysis</>
+              }
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Freshness */}
-      {freshness !== 'none' && (
-        <div className={`flex items-center gap-1.5 text-xs ${freshness === 'syncing' ? 'text-blue-600' : freshness === 'stale-data' || freshness === 'stale-age' ? 'text-amber-600' : 'text-gray-400'}`}>
-          <span className={`w-2 h-2 rounded-full inline-block ${freshness === 'syncing' ? 'bg-blue-500 animate-pulse' : freshness === 'stale-data' || freshness === 'stale-age' ? 'bg-amber-500' : 'bg-green-500'}`} />
-          {freshness === 'syncing'    && 'Sync running — wait before generating for complete data.'}
-          {freshness === 'stale-data' && 'New sync data available — regenerate for updated list analysis.'}
-          {freshness === 'stale-age'  && `AI analysis is ${Math.floor(daysSince)} days old — consider regenerating.`}
-          {freshness === 'fresh'      && 'AI analysis reflects the most recent synced data.'}
-        </div>
-      )}
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {[
+          { key: 'ai',    label: '✦ AI Analysis' },
+          { key: 'lists', label: 'Lists & Campaigns' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === t.key
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {genError && <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{genError}</div>}
 
-      {/* AI Analysis — collapsible */}
-      {aiReport && (
-        <div>
-          <button onClick={() => setShowAI(v => !v)}
-            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 mb-3">
-            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showAI ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            AI Analysis
-            <span className="text-xs text-gray-400 font-normal">· {new Date(aiReport.generated_at).toLocaleString()}</span>
-          </button>
-          {showAI && (
-            <div className="grid grid-cols-1 gap-3 mb-6">
-              {aiSections.map((sec, i) => {
-                const style = sectionStyle(sec.heading);
-                return (
-                  <div key={i} className={`rounded-lg border ${style.border} ${style.bg} px-4 py-3`}>
-                    <h3 className={`font-semibold text-sm mb-1.5 ${style.heading}`}>{sec.heading}</h3>
-                    <ul className="space-y-1">
-                      {sec.bullets.map((b, j) => (
-                        <li key={j} className="flex items-start gap-2 text-sm text-gray-700">
-                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-current flex-shrink-0 opacity-40" />{b}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              })}
+      {/* ── AI Analysis tab ── */}
+      {tab === 'ai' && (
+        <>
+          {freshness !== 'none' && (
+            <div className={`flex items-center gap-1.5 text-xs ${freshness === 'syncing' ? 'text-blue-600' : freshness === 'stale-data' || freshness === 'stale-age' ? 'text-amber-600' : 'text-gray-400'}`}>
+              <span className={`w-2 h-2 rounded-full inline-block ${freshness === 'syncing' ? 'bg-blue-500 animate-pulse' : freshness === 'stale-data' || freshness === 'stale-age' ? 'bg-amber-500' : 'bg-green-500'}`} />
+              {freshness === 'syncing'    && 'Sync running — wait before generating for complete data.'}
+              {freshness === 'stale-data' && 'New sync data available — regenerate for updated list analysis.'}
+              {freshness === 'stale-age'  && `AI analysis is ${Math.floor(daysSince)} days old — consider regenerating.`}
+              {freshness === 'fresh'      && 'AI analysis reflects the most recent synced data.'}
             </div>
           )}
-        </div>
+
+          {isLoadingAI && <div className="card p-10 text-center"><div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>}
+
+          {!isLoadingAI && !aiReport && !generating && (
+            <div className="card p-10 text-center">
+              <p className="text-sm font-medium text-gray-700 mb-1">No list analysis yet</p>
+              <p className="text-xs text-gray-400">Click Generate Analysis to create your first report.</p>
+            </div>
+          )}
+
+          {generating && (
+            <div className="card p-10 text-center">
+              <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
+              <p className="text-sm font-medium text-gray-700">Analyzing list performance…</p>
+            </div>
+          )}
+
+          {aiReport && !generating && (
+            <>
+              <div className="text-xs text-gray-400">Generated: {new Date(aiReport.generated_at).toLocaleString()} · {(aiReport.data_json?.lists || []).length} lists analyzed</div>
+              <div className="grid grid-cols-1 gap-3">
+                {aiSections.map((sec, i) => {
+                  const style = sectionStyle(sec.heading);
+                  return (
+                    <div key={i} className={`rounded-lg border ${style.border} ${style.bg} px-4 py-3`}>
+                      <h3 className={`font-semibold text-sm mb-1.5 ${style.heading}`}>{sec.heading}</h3>
+                      <ul className="space-y-1">
+                        {sec.bullets.map((b, j) => (
+                          <li key={j} className="flex items-start gap-2 text-sm text-gray-700">
+                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-current flex-shrink-0 opacity-40" />{b}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
       )}
 
-      {/* Lists table */}
-      <div className="space-y-3">
+      {/* ── Lists & Campaigns tab ── */}
+      {tab === 'lists' && <div className="space-y-3">
         <div className="flex items-center gap-3">
           <input type="text" placeholder="Search list…" value={search} onChange={e => setSearch(e.target.value)}
             className="border border-gray-200 rounded px-3 py-1.5 text-sm w-64" />
@@ -349,7 +378,8 @@ export default function ListsPage() {
             </table>
           </div>
         )}
-      </div>
+      </div>}
+
     </div>
   );
 }
