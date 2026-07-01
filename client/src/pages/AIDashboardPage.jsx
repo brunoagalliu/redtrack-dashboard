@@ -55,7 +55,7 @@ function Section({ sec }) {
 }
 
 const BUYERS = ['TK', 'MA', 'DS'];
-const DAY_OPTIONS = [7, 14, 30];
+const DAY_OPTIONS = [7, 14, 30, 60, 90];
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
