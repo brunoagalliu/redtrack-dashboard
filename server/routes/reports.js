@@ -991,7 +991,7 @@ async function generateAIReport(days) {
     })();
 
     // Build prompt tables
-    const comboTable = combos.slice(0, 25).map((r, i) =>
+    const comboTable = combos.slice(0, 40).map((r, i) =>
       `${i+1}. ${r.vertical} | ${r.carrier} | ${r.route} | Clicks:${r.clicks} | Conv:${r.conversions} | Profit:$${r.profit} | ROI:${r.roi}%`
     ).join('\n');
 
@@ -999,7 +999,7 @@ async function generateAIReport(days) {
       `${r.buyer}: Clicks:${r.clicks} | Spend:$${r.cost} | Revenue:$${r.revenue} | Profit:$${r.profit}`
     ).join('\n');
 
-    const offerTable = offerRows.slice(0, 40).map((r, i) => {
+    const offerTable = offerRows.slice(0, 60).map((r, i) => {
       const epc = Number(r.clicks) > 0 ? (Number(r.revenue) / Number(r.clicks)).toFixed(4) : '0';
       return `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Clicks:${r.clicks} | Conv:${r.conversions} | EPC:$${epc} | Profit:$${r.profit}* | ROI:${r.roi}%*`;
     }).join('\n');
@@ -1020,10 +1020,10 @@ async function generateAIReport(days) {
     const buyerComboSections = BUYERS.map((buyer) => {
       const rows = buyerComboRows.filter((r) => r.buyer === buyer);
       if (!rows.length) return `${buyer}: no data`;
-      const top = rows.slice(0, 5).map((r) =>
+      const top = rows.slice(0, 10).map((r) =>
         `  + ${r.vertical} | ${r.route} | ${r.carrier} → Profit:$${r.profit} ROI:${r.roi}%`
       ).join('\n');
-      const bottom = [...rows].reverse().slice(0, 3)
+      const bottom = [...rows].reverse().slice(0, 5)
         .filter((r) => Number(r.profit) < 0)
         .map((r) => `  - ${r.vertical} | ${r.route} | ${r.carrier} → Profit:$${r.profit} ROI:${r.roi}%`)
         .join('\n');
@@ -1051,43 +1051,45 @@ ${listTable ? `DATA LIST PERFORMANCE — list name | buyers | campaigns run | cl
 PER-BUYER BREAKDOWN:
 ${buyerComboSections}
 
-STRICT FORMAT RULES:
-- Bullet points only. NO paragraphs. NO sub-headings inside sections.
-- Each bullet: ONE action or insight, max 20 words, include ONE key number.
-- Overall sections: max 4 bullets each.
-- Buyer sections: exactly 5 bullets each — no more.
-- CONFIDENCE RULE: Only recommend aggressive scaling (5x, 10x, "scale immediately") for a combo/offer with at least 30 conversions (Conv column above). Below that threshold, no matter how high the ROI, it's an early signal — put it in "Highest-Upside Tests" as a cautious test, never as a scale instruction.
-${diff ? '- If CHANGES SINCE LAST REPORT shows a call was or wasn\'t followed, mention it once where relevant — don\'t repeat it in every section.' : ''}
+FORMAT RULES:
+- Bullet points only. No paragraphs. No sub-headings inside sections.
+- Be thorough — if 10 items deserve attention, write 10 bullets. Never pad, never truncate.
+- Each bullet must include at least one specific number (EPC, profit, ROI, clicks, etc.).
+- Name exact offers, routes, carriers, partners wherever possible.
+- CONFIDENCE RULE: Only say "scale aggressively" for combos/offers with 30+ conversions. Below 30 conv, label as "test" regardless of ROI.
+${diff ? '- CHANGES SINCE LAST REPORT: call out ignored recommendations once, in the most relevant section only.' : ''}
 
 ## 💰 Best Combinations to Scale
-4 bullets. ${hasOfferData ? 'Name offer + route + carrier.' : 'Name vertical + route + carrier.'} One number per bullet. Only combos with 30+ conversions. ${hasOsData ? 'Flag iOS targeting if iOS ROI >> Android.' : ''}
+Every combo worth scaling with 30+ conversions. ${hasOfferData ? 'Name offer + route + carrier + buyer.' : 'Name vertical + route + carrier.'} Include EPC, profit, and ROI. ${hasOsData ? 'Flag iOS-only opportunity wherever iOS EPC significantly beats Android.' : ''} No artificial limit — cover every strong signal.
 
-## 🔴 Cut These Now
-4 bullets. Name what to kill and the loss amount.
+## 🔴 Cut Immediately
+Every losing combo. Name it, state the exact loss, name the buyer who owns it. Cover all negatives — do not summarise or truncate.
 
 ## 🔁 Budget Reallocation
-4 bullets. Format: "Move $X from [A] to [B] — [buyer]." ${hasOsData ? 'Include OS shifts if data supports.' : ''}
+Specific moves. Format: "Move $X from [losing combo] → [winning combo] — [buyer]." Include both source and destination profit/ROI to justify the move. Cover every actionable reallocation.
+
+## 📡 Route & Carrier Intelligence
+Which routes (USMS, TechStar, Ranhog, Internal, ltsauto, etc.) and carriers (Verizon, AT&T, T-Mobile) are outperforming or underperforming right now. ${hasOsData ? 'Include iOS vs Android carrier-level signals.' : ''} Surface any route or carrier that's consistently printing or consistently losing.
+
+## 🤝 Partner & Offer Analysis
+Which offers and data partners (LM, JC, AVANTO, UPSTART, KOINO) are driving results — and which are underperforming. Call out offer-partner combinations that stand out. Flag any partner whose offers have unusually high or low EPC relative to others.
 
 ## 🧪 Highest-Upside Tests
-3 bullets. Specific untested combo + expected upside. ${hasOsData ? 'Include an iOS-only test if warranted.' : ''}
+Specific untested or under-tested combinations worth trying. Include the rationale (why this combo has upside) and a target EPC or ROI based on related data. ${hasOsData ? 'Include iOS-only tests where Android is dragging down a good iOS signal.' : ''}
 
 ---
 
 ## 👤 TK
-Exactly 5 bullets. Each = one specific action with a number. ${hasOfferData ? 'Name exact offers.' : ''} ${hasOsData ? 'Include OS opportunity if applicable.' : ''} No summaries, no context, actions only.
+Comprehensive action plan. Cover everything: what to scale immediately (with numbers), what to cut, what to test, which offers to push harder, which routes/carriers to prioritise, and what new campaigns to launch. Remember: this team creates new campaigns rather than editing existing ones — recommend specific new campaign setups where relevant. Be exhaustive.
 
 ## 👤 MA
-Exactly 5 bullets. Same rules.
+Comprehensive action plan. Same depth as TK.
 
 ## 👤 DS
-Exactly 5 bullets. Same rules.${listTable ? `
+Comprehensive action plan. Same depth as DS.${listTable ? `
 
 ## 📋 Data List Intelligence
-3-5 bullets total. Rules:
-- ✅ ACTIVE lists (last used <14d): if EPC and ROI are strong, say "reuse [list] — EPC $X, ROI Y%".
-- 🕐 COOLING lists (14-28d idle): if historically profitable, say "test [list] again — was ROI Y%, cooled off X days".
-- ⏸ IDLE lists (28d+ idle): if ROI was good, say "[list] ready for reuse — idle Xd, was ROI Y%". If ROI was poor, say "skip [list] — ROI was Y%".
-- Never recommend a list idle <21 days for reuse.` : ''}`;
+Cover every meaningful list signal. For active lists with strong performance, say to keep running. For cooling lists with good history, name them and the ROI. For idle lists ready to retest, be explicit about who should pick them up and why. For degrading lists, state the EPC drop and recommend rest duration.` : ''}`;
 
 
 
@@ -1095,7 +1097,7 @@ Exactly 5 bullets. Same rules.${listTable ? `
     const MODEL = 'claude-sonnet-4-6';
     const first = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 8000,
+      max_tokens: 16000,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -1235,35 +1237,39 @@ Columns: list name | buyers who used it | campaigns run | all-time EPC | recent 
 ${listTable}
 
 FORMAT RULES:
-- Bullet points only. Each bullet = one specific action with ONE number.
-- Do NOT repeat the same list across multiple sections.
-- Use the exact list name in quotes when referencing it.
+- Bullet points only. No paragraphs. No artificial limits — if 12 lists deserve attention, write 12 bullets.
+- Each bullet must include at least one number (EPC, ROI, idle days, profit).
+- Use the exact list name (no quotes needed) when referencing it.
+- Do not repeat the same list across multiple sections — place it in the most relevant one only.
 
 ## ✅ Reuse Now
-Lists idle 28+ days with strong historical ROI (>50%). 4-6 bullets. Name the list, ROI, who should run it (TK/MA/DS based on who ran it before).
+All lists idle 28+ days with ROI > 30% and reasonable EPC. Name each, include idle days, all-time ROI, all-time EPC, and which buyer ran it best. If recent EPC is available and up, flag the uptrend. Be exhaustive — every reusable list should be here.
 
 ## 🔁 Still Performing — Keep Running
-Lists currently active (idle <14d) with positive ROI. 3-4 bullets. Note if recent EPC is trending up or holding.
+All currently active lists (idle < 14d) with positive ROI. For each: state ROI, current EPC, whether the 30-day EPC is holding or improving vs all-time. Flag any that are showing signs of fatigue (slight EPC decline) so buyers can monitor.
 
 ## ⚠️ Degrading — Pull and Rest
-Lists where recent EPC is significantly lower than all-time EPC (>20% drop) OR ROI has gone negative. 3-4 bullets. State the EPC drop and recommend rest duration.
+Every list where recent 30-day EPC has dropped more than 15% vs all-time EPC, or where ROI has gone negative recently. State the exact EPC drop (from X to Y), the percentage decline, and a recommended rest duration (typically 3-4 weeks). Include even mild degradation — better to flag early.
+
+## 📊 Partner List Rankings
+Based on all available list data, rank the data partners (LM, KN, USMS clickers, AVANTO, UPSTART, KOINO, etc.) by average EPC and ROI across their lists. Highlight which partner consistently delivers the best-performing lists, and which to approach with caution. Include supporting numbers.
 
 ## ❌ Retire
-Lists with negative all-time ROI and no recent recovery signal. 2-3 bullets max.
+All lists with negative all-time ROI and no uptrend signal in recent EPC. Be direct — if a list has never worked, say so with the numbers.
 
 ## 👤 TK — Priority List Queue
-3 bullets. Specific lists TK should run next, in priority order. One number each.
+Every list TK should queue for their next campaigns, in priority order. Include: list name, why it's queued (idle X days, ROI Y%, EPC $Z), and whether to run it on Verizon, AT&T, or T-Mobile based on past performance. Cover all strong candidates.
 
 ## 👤 MA — Priority List Queue
-3 bullets. Same format.
+Same comprehensive format for MA.
 
 ## 👤 DS — Priority List Queue
-3 bullets. Same format.`;
+Same comprehensive format for DS.`;
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 6000,
+    max_tokens: 10000,
     messages: [{ role: 'user', content: prompt }],
   });
 
