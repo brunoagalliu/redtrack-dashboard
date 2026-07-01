@@ -1171,6 +1171,160 @@ router.get('/ai-recommendations/history/:id', async (req, res) => {
   }
 });
 
+// ── AI List Intelligence ─────────────────────────────────────────────────────
+
+async function generateListReport() {
+  // Query all-time list performance + recent 30-day trend
+  const { rows: listRows } = await pool.query(`
+    SELECT
+      c.data_list                                                              AS list_key,
+      ARRAY_AGG(DISTINCT c.buyer ORDER BY c.buyer)                            AS buyers,
+      ARRAY_AGG(DISTINCT c.carrier)                                           AS carriers,
+      COUNT(DISTINCT c.id)::int                                               AS campaign_count,
+      COALESCE(SUM(cs.clicks),0)::int                                         AS clicks,
+      COALESCE(SUM(cs.conversions),0)::int                                    AS conversions,
+      ROUND(SUM(cs.revenue)::numeric,2)                                       AS revenue,
+      ROUND(SUM(cs.profit)::numeric,2)                                        AS profit,
+      CASE WHEN SUM(cs.clicks) > 0
+           THEN ROUND(SUM(cs.revenue)::numeric/SUM(cs.clicks),4) ELSE 0
+           END                                                                AS epc,
+      CASE WHEN SUM(cs.cost) > 0
+           THEN ROUND(SUM(cs.profit)::numeric/SUM(cs.cost)*100,1) ELSE 0
+           END                                                                AS roi,
+      -- recent 30-day EPC
+      CASE WHEN SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - 30 THEN cs.clicks ELSE 0 END) > 0
+           THEN ROUND(
+             SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - 30 THEN cs.revenue ELSE 0 END)::numeric /
+             SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - 30 THEN cs.clicks  ELSE 0 END), 4)
+           ELSE 0 END                                                         AS epc_recent,
+      SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - 30 THEN cs.clicks ELSE 0 END)::int
+                                                                              AS clicks_recent,
+      EXTRACT(DAY FROM NOW() - MAX(c.created_at::timestamptz))::int          AS days_since_last_use,
+      MIN(c.created_at)                                                       AS first_used,
+      MAX(c.created_at)                                                       AS last_used
+    FROM rt_campaigns c
+    JOIN rt_campaign_stats cs ON cs.campaign_id = c.id
+    WHERE c.data_list IS NOT NULL
+    GROUP BY c.data_list
+    HAVING SUM(cs.clicks) > 100
+    ORDER BY SUM(cs.profit) DESC
+  `);
+
+  if (listRows.length === 0) {
+    throw new Error('No list data available yet — run a sync first.');
+  }
+
+  // Build prompt table
+  const listTable = listRows.map((r, i) => {
+    const trend = Number(r.clicks_recent) > 100
+      ? ` | RecentEPC:$${r.epc_recent}`
+      : ' | RecentEPC:insufficient data';
+    const epcDelta = Number(r.clicks_recent) > 100 && Number(r.epc) > 0
+      ? ` (${Number(r.epc_recent) >= Number(r.epc) ? '↑' : '↓'}${Math.abs(((Number(r.epc_recent) - Number(r.epc)) / Number(r.epc)) * 100).toFixed(0)}% vs all-time)`
+      : '';
+    return `${i+1}. "${r.list_key}" | Buyers:${(r.buyers||[]).join('+')} | Campaigns:${r.campaign_count} | AllTimeEPC:$${r.epc}${trend}${epcDelta} | Profit:$${r.profit} | ROI:${r.roi}% | IdleDays:${r.days_since_last_use}`;
+  }).join('\n');
+
+  const prompt = `You are a data list performance analyst for an SMS media buying team. Your job is to tell the media buyers (TK, MA, DS) exactly which data lists to use next, which to rest, and which to retire — with specific reasoning backed by numbers.
+
+CONTEXT: Media buyers create new SMS campaigns using specific data lists (named audience batches). A list's performance can change over time due to audience fatigue or seasonal patterns. Best practice: if a list's recent EPC has dropped significantly vs its all-time EPC, rest it 3-4 weeks before retesting. If a list has been idle 28+ days and had good historical ROI, it's a candidate for retest.
+
+DATA: ${listRows.length} lists tracked, all-time stats + recent 30-day trend.
+Columns: list name | buyers who used it | campaigns run | all-time EPC | recent EPC (↑/↓ vs all-time) | total profit | ROI | days idle
+
+${listTable}
+
+FORMAT RULES:
+- Bullet points only. Each bullet = one specific action with ONE number.
+- Do NOT repeat the same list across multiple sections.
+- Use the exact list name in quotes when referencing it.
+
+## ✅ Reuse Now
+Lists idle 28+ days with strong historical ROI (>50%). 4-6 bullets. Name the list, ROI, who should run it (TK/MA/DS based on who ran it before).
+
+## 🔁 Still Performing — Keep Running
+Lists currently active (idle <14d) with positive ROI. 3-4 bullets. Note if recent EPC is trending up or holding.
+
+## ⚠️ Degrading — Pull and Rest
+Lists where recent EPC is significantly lower than all-time EPC (>20% drop) OR ROI has gone negative. 3-4 bullets. State the EPC drop and recommend rest duration.
+
+## ❌ Retire
+Lists with negative all-time ROI and no recent recovery signal. 2-3 bullets max.
+
+## 👤 TK — Priority List Queue
+3 bullets. Specific lists TK should run next, in priority order. One number each.
+
+## 👤 MA — Priority List Queue
+3 bullets. Same format.
+
+## 👤 DS — Priority List Queue
+3 bullets. Same format.`;
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 6000,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const content = response.content[0].text;
+  const generatedAt = new Date();
+  const dataJson = { lists: listRows, generated_at: generatedAt };
+
+  await pool.query(`
+    INSERT INTO rt_ai_list_report (id, generated_at, content, data_json)
+    VALUES (1, $1, $2, $3)
+    ON CONFLICT (id) DO UPDATE SET generated_at=$1, content=$2, data_json=$3
+  `, [generatedAt, content, JSON.stringify(dataJson)]);
+
+  await pool.query(`
+    INSERT INTO rt_ai_list_report_history (generated_at, content, data_json)
+    VALUES ($1, $2, $3)
+  `, [generatedAt, content, JSON.stringify(dataJson)]);
+
+  return { generated_at: generatedAt, content, data_json: dataJson };
+}
+
+router.get('/ai-list', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT id, generated_at, content, data_json FROM rt_ai_list_report WHERE id = 1`);
+    if (!rows[0]) return res.json(null);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/ai-list/generate', async (_req, res) => {
+  try {
+    const report = await generateListReport();
+    res.json(report);
+  } catch (err) {
+    console.error('List AI report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/ai-list/history', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const { rows } = await pool.query(
+      `SELECT id, generated_at FROM rt_ai_list_report_history ORDER BY generated_at DESC LIMIT $1`,
+      [limit]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/ai-list/history/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, generated_at, content, data_json FROM rt_ai_list_report_history WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Offer sync ───────────────────────────────────────────────────────────────
 
 const offerSync = {
