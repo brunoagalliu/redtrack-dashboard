@@ -805,6 +805,12 @@ function buildReportDiff(previous, combos, buyerRows) {
 }
 
 // Core AI report generation — callable from the route handler or the weekly auto-trigger.
+// In-memory generation status — avoids concurrent runs and lets the frontend poll
+const aiStatus = {
+  campaign: { running: false, error: null, startedAt: null },
+  list:     { running: false, error: null, startedAt: null },
+};
+
 async function generateAIReport(days) {
     const today    = new Date().toISOString().slice(0, 10);
     const dateFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -1133,16 +1139,22 @@ Cover every meaningful list signal. For active lists with strong performance, sa
     return { generated_at: generatedAt, period_days: days, content, data_json: dataJson };
 }
 
-// POST generate new AI report (manual trigger)
-router.post('/ai-recommendations/generate', async (req, res) => {
-  try {
-    const days = parseInt(req.body?.days) || 14;
-    const report = await generateAIReport(days);
-    res.json(report);
-  } catch (err) {
-    console.error('AI report error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
+// POST generate new AI campaign report — fire-and-forget to avoid proxy timeouts
+router.post('/ai-recommendations/generate', (req, res) => {
+  if (aiStatus.campaign.running) return res.status(202).json({ status: 'already_running' });
+  const days = parseInt(req.body?.days) || 14;
+  aiStatus.campaign.running = true;
+  aiStatus.campaign.error   = null;
+  aiStatus.campaign.startedAt = new Date();
+  res.status(202).json({ status: 'started' });
+  generateAIReport(days)
+    .then(() => { aiStatus.campaign.running = false; console.log('[ai] Campaign report done'); })
+    .catch((err) => { aiStatus.campaign.running = false; aiStatus.campaign.error = err.message; console.error('[ai] Campaign report error:', err.message); });
+});
+
+// GET campaign generation status
+router.get('/ai-recommendations/status', (_req, res) => {
+  res.json(aiStatus.campaign);
 });
 
 // GET report history (for diffing/inspection)
@@ -1299,14 +1311,21 @@ router.get('/ai-list', async (_req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/ai-list/generate', async (_req, res) => {
-  try {
-    const report = await generateListReport();
-    res.json(report);
-  } catch (err) {
-    console.error('List AI report error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
+// POST generate list AI report — fire-and-forget
+router.post('/ai-list/generate', (_req, res) => {
+  if (aiStatus.list.running) return res.status(202).json({ status: 'already_running' });
+  aiStatus.list.running = true;
+  aiStatus.list.error   = null;
+  aiStatus.list.startedAt = new Date();
+  res.status(202).json({ status: 'started' });
+  generateListReport()
+    .then(() => { aiStatus.list.running = false; console.log('[ai] List report done'); })
+    .catch((err) => { aiStatus.list.running = false; aiStatus.list.error = err.message; console.error('[ai] List report error:', err.message); });
+});
+
+// GET list generation status
+router.get('/ai-list/status', (_req, res) => {
+  res.json(aiStatus.list);
 });
 
 router.get('/ai-list/history', async (req, res) => {

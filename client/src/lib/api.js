@@ -108,10 +108,12 @@ export const api = {
   },
   getAIListReport: () => request('/reports/ai-list'),
   generateAIListReport: () => request('/reports/ai-list/generate', { method: 'POST' }),
+  getAIListStatus: () => request('/reports/ai-list/status'),
   getAIListReportHistory: (limit = 20) => request(`/reports/ai-list/history?limit=${limit}`),
   getAIListReportHistoryItem: (id) => request(`/reports/ai-list/history/${id}`),
   getAIReport: () => request('/reports/ai-recommendations'),
   generateAIReport: (days = 14) => request('/reports/ai-recommendations/generate', { method: 'POST', body: JSON.stringify({ days }) }),
+  getAICampaignStatus: () => request('/reports/ai-recommendations/status'),
   getAIReportHistory: (limit = 20) => request(`/reports/ai-recommendations/history?limit=${limit}`),
   getAIReportHistoryItem: (id) => request(`/reports/ai-recommendations/history/${id}`),
   getVerticalsReport: (params = {}) => {

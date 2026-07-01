@@ -89,6 +89,7 @@ export default function AIDashboardPage() {
   const [days, setDays]                 = useState(14);
   const [generating, setGenerating]     = useState(false);
   const [error, setError]               = useState(null);
+  const [genStartedAt, setGenStartedAt] = useState(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState(null); // null = freshest for period
   const [selectedListId, setSelectedListId]         = useState(null); // null = latest
   const queryClient = useQueryClient();
@@ -144,22 +145,54 @@ export default function AIDashboardPage() {
   const dataIsNewer  = Boolean(lastSyncAt && oldestAt && lastSyncAt > oldestAt);
   const freshness    = syncRunning ? 'syncing' : !oldestAt ? 'none' : dataIsNewer ? 'stale' : 'fresh';
 
+  // Poll status while generating — stop when both are done
+  const { data: campaignStatus } = useQuery({
+    queryKey: ['ai-status', 'campaign'],
+    queryFn: () => api.getAICampaignStatus(),
+    enabled: generating,
+    refetchInterval: generating ? 4000 : false,
+    retry: false,
+  });
+  const { data: listStatus } = useQuery({
+    queryKey: ['ai-status', 'list'],
+    queryFn: () => api.getAIListStatus(),
+    enabled: generating,
+    refetchInterval: generating ? 4000 : false,
+    retry: false,
+  });
+
+  // Detect completion: both status.running = false AND a new history entry appeared after genStartedAt
+  const campaignDone = generating && campaignStatus && !campaignStatus.running && genStartedAt &&
+    new Date(campaignStatus.startedAt) >= genStartedAt;
+  const listDone = generating && listStatus && !listStatus.running && genStartedAt &&
+    new Date(listStatus.startedAt) >= genStartedAt;
+
+  if (campaignDone && listDone) {
+    setGenerating(false);
+    setGenStartedAt(null);
+    setSelectedCampaignId(null);
+    setSelectedListId(null);
+    const err = campaignStatus.error || listStatus.error;
+    if (err) setError(err);
+    queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
+    queryClient.invalidateQueries({ queryKey: ['reports', 'ai-list'] });
+  }
+
   // ── Generate both at once ────────────────────────────────────────────────
   async function handleGenerate() {
-    setGenerating(true); setError(null);
+    setError(null);
+    setGenerating(true);
+    setGenStartedAt(new Date());
     try {
+      // Both respond 202 immediately — actual work runs server-side in background
       await Promise.all([
         api.generateAIReport(days),
         api.generateAIListReport(),
       ]);
-      setSelectedCampaignId(null); // pick up the new entry for this period
-      setSelectedListId(null);
-      queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
-      queryClient.invalidateQueries({ queryKey: ['reports', 'ai-list'] });
     } catch (e) {
-      setError(e.message || 'Failed to generate analysis.');
-    } finally {
+      setError(e.message || 'Failed to start generation.');
       setGenerating(false);
+      setGenStartedAt(null);
     }
   }
 
@@ -295,10 +328,18 @@ export default function AIDashboardPage() {
 
       {/* Generating */}
       {generating && (
-        <div className="card p-10 text-center space-y-3">
+        <div className="card p-10 text-center space-y-4">
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-          <p className="text-sm font-medium text-gray-700">Running campaign + list analysis in parallel…</p>
-          <p className="text-xs text-gray-400">Takes about 15–30 seconds.</p>
+          <p className="text-sm font-medium text-gray-700">Running campaign + list analysis…</p>
+          <div className="flex justify-center gap-6 text-xs">
+            <span className={campaignDone ? 'text-green-600' : 'text-gray-400'}>
+              {campaignDone ? '✓ Campaign done' : campaignStatus?.running ? '⏳ Campaign analyzing…' : '⏳ Campaign queued'}
+            </span>
+            <span className={listDone ? 'text-green-600' : 'text-gray-400'}>
+              {listDone ? '✓ Lists done' : listStatus?.running ? '⏳ Lists analyzing…' : '⏳ Lists queued'}
+            </span>
+          </div>
+          <p className="text-xs text-gray-400">Large windows (60d/90d) can take 45–60 seconds.</p>
         </div>
       )}
 
