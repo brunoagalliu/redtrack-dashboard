@@ -38,6 +38,10 @@ function sectionStyle(h) {
   return { border: 'border-gray-200', bg: 'bg-gray-50', heading: 'text-gray-700', dot: 'bg-gray-400' };
 }
 
+function renderMd(text) {
+  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
 function Section({ sec }) {
   const style = sectionStyle(sec.heading);
   return (
@@ -46,7 +50,8 @@ function Section({ sec }) {
       <ul className="space-y-1.5">
         {sec.bullets.map((b, j) => (
           <li key={j} className="flex items-start gap-2 text-sm text-gray-700">
-            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-50 ${style.dot}`} />{b}
+            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-50 ${style.dot}`} />
+            <span dangerouslySetInnerHTML={{ __html: renderMd(b) }} />
           </li>
         ))}
       </ul>
