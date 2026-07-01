@@ -1572,6 +1572,79 @@ router.post('/lists/backfill', async (req, res) => {
   }
 });
 
+// GET /reports/lists/campaigns?list_key=... — all campaigns for a list, last 30d stats, oldest first
+router.get('/lists/campaigns', async (req, res) => {
+  try {
+    const listKey = req.query.list_key;
+    if (!listKey) return res.status(400).json({ error: 'list_key required' });
+
+    const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 90);
+
+    const { rows } = await pool.query(`
+      SELECT
+        c.id,
+        c.title,
+        c.buyer,
+        c.route,
+        c.carrier,
+        c.vertical,
+        c.created_at,
+        c.list_last_used,
+        COALESCE(SUM(cs.clicks),0)::int                        AS clicks,
+        COALESCE(SUM(cs.conversions),0)::int                   AS conversions,
+        ROUND(COALESCE(SUM(cs.revenue),0)::numeric, 2)         AS revenue,
+        ROUND(COALESCE(SUM(cs.cost),0)::numeric, 2)            AS cost,
+        ROUND(COALESCE(SUM(cs.profit),0)::numeric, 2)          AS profit,
+        CASE WHEN SUM(cs.clicks) > 0
+             THEN ROUND(SUM(cs.revenue)::numeric / SUM(cs.clicks), 4)
+             ELSE 0 END                                        AS epc
+      FROM rt_campaigns c
+      LEFT JOIN rt_campaign_stats cs
+        ON cs.campaign_id = c.id
+        AND cs.stat_date >= CURRENT_DATE - ($2 || ' days')::interval
+      WHERE c.data_list = $1
+      GROUP BY c.id, c.title, c.buyer, c.route, c.carrier, c.vertical, c.created_at, c.list_last_used
+      ORDER BY c.created_at ASC
+    `, [listKey, days]);
+
+    res.json({ rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /reports/lists/daily?list_key=... — day-by-day breakdown for one list
+router.get('/lists/daily', async (req, res) => {
+  try {
+    const listKey = req.query.list_key;
+    if (!listKey) return res.status(400).json({ error: 'list_key required' });
+
+    const { rows } = await pool.query(`
+      SELECT
+        cs.stat_date,
+        ARRAY_AGG(DISTINCT c.buyer)             AS buyers,
+        COUNT(DISTINCT c.id)::int               AS campaigns,
+        SUM(cs.clicks)::int                     AS clicks,
+        SUM(cs.conversions)::int                AS conversions,
+        ROUND(SUM(cs.revenue)::numeric, 2)      AS revenue,
+        ROUND(SUM(cs.cost)::numeric, 2)         AS cost,
+        ROUND(SUM(cs.profit)::numeric, 2)       AS profit,
+        CASE WHEN SUM(cs.clicks) > 0
+             THEN ROUND(SUM(cs.revenue)::numeric / SUM(cs.clicks), 4)
+             ELSE 0 END                         AS epc
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats cs ON cs.campaign_id = c.id
+      WHERE c.data_list = $1
+      GROUP BY cs.stat_date
+      ORDER BY cs.stat_date DESC
+    `, [listKey]);
+
+    res.json({ rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/lists', async (req, res) => {
   try {
     const buyer   = req.query.buyer   || null;
