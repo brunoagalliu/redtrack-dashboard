@@ -9,6 +9,7 @@ import InsightsPage from './pages/InsightsPage';
 import AIRecommendationsPage from './pages/AIRecommendationsPage';
 import OffersPage from './pages/OffersPage';
 import ListsPage from './pages/ListsPage';
+import ListsAIPage from './pages/ListsAIPage';
 import CostUpdaterPage from './pages/CostUpdaterPage';
 import RevenueUpdaterPage from './pages/RevenueUpdaterPage';
 import LoginPage from './pages/LoginPage';
@@ -76,6 +77,7 @@ function Sidebar() {
             <NavLink to="/reports/media-buyers" className={subLinkClass}>Media Buyers</NavLink>
             <NavLink to="/reports/verticals" className={subLinkClass}>Verticals</NavLink>
             <NavLink to="/reports/offers" className={subLinkClass}>Offers</NavLink>
+            <NavLink to="/reports/lists-ai" className={subLinkClass}>✦ Lists AI</NavLink>
             <NavLink to="/reports/lists" className={subLinkClass}>Lists</NavLink>
           </div>
         )}
@@ -130,6 +132,7 @@ function AppLayout() {
           <Route path="/reports/media-buyers" element={<ReportsPage />} />
           <Route path="/reports/verticals" element={<VerticalsPage />} />
           <Route path="/reports/offers" element={<OffersPage />} />
+          <Route path="/reports/lists-ai" element={<ListsAIPage />} />
           <Route path="/reports/lists" element={<ListsPage />} />
           <Route path="/tools/cost-updater" element={<CostUpdaterPage />} />
           <Route path="/tools/revenue-updater" element={<RevenueUpdaterPage />} />
