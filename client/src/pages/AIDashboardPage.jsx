@@ -55,51 +55,80 @@ function Section({ sec }) {
 }
 
 const BUYERS = ['TK', 'MA', 'DS'];
+const DAY_OPTIONS = [7, 14, 30];
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AIDashboardPage() {
-  const [buyer, setBuyer]       = useState('Overview');
-  const [days, setDays]         = useState(14);
-  const [generating, setGenerating] = useState(false);
-  const [error, setError]       = useState(null);
+  const [buyer, setBuyer]               = useState('Overview');
+  const [days, setDays]                 = useState(14);
+  const [generating, setGenerating]     = useState(false);
+  const [error, setError]               = useState(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState(null); // null = freshest for period
+  const [selectedListId, setSelectedListId]         = useState(null); // null = latest
   const queryClient = useQueryClient();
 
-  // Latest campaign report
+  // ── Campaign report — period-scoped history ──────────────────────────────
+  const { data: campaignHistory = [], isLoading: loadingHistory } = useQuery({
+    queryKey: ['reports', 'ai-recommendations', 'history'],
+    queryFn: () => api.getAIReportHistory(50),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const periodHistory = campaignHistory.filter(h => h.period_days === days);
+  const effectiveCampaignId = selectedCampaignId ?? periodHistory[0]?.id ?? null;
+
   const { data: campaignReport, isLoading: loadingCampaign } = useQuery({
-    queryKey: ['reports', 'ai-recommendations'],
-    queryFn: () => api.getAIReport(),
+    queryKey: ['reports', 'ai-recommendations', 'history', effectiveCampaignId],
+    queryFn: () => api.getAIReportHistoryItem(effectiveCampaignId),
+    enabled: effectiveCampaignId != null,
     staleTime: 30 * 60 * 1000,
     retry: false,
   });
 
-  // Latest list report
+  // ── List report — always latest (no period concept) ──────────────────────
+  const { data: listHistory = [] } = useQuery({
+    queryKey: ['reports', 'ai-list', 'history'],
+    queryFn: () => api.getAIListReportHistory(20),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const effectiveListId = selectedListId ?? listHistory[0]?.id ?? null;
+
   const { data: listReport, isLoading: loadingList } = useQuery({
-    queryKey: ['reports', 'ai-list'],
-    queryFn: () => api.getAIListReport(),
+    queryKey: ['reports', 'ai-list', 'history', effectiveListId],
+    queryFn: () => api.getAIListReportHistoryItem(effectiveListId),
+    enabled: effectiveListId != null,
     staleTime: 30 * 60 * 1000,
     retry: false,
   });
 
-  // Sync freshness
+  // ── Sync freshness ───────────────────────────────────────────────────────
   const { data: syncStatus }      = useQuery({ queryKey: ['reports','sync','status'],         queryFn: () => api.getSyncStatus(),      staleTime: 30000, refetchInterval: 30000, retry: false });
   const { data: offerSyncStatus } = useQuery({ queryKey: ['reports','sync','offers','status'], queryFn: () => api.getOfferSyncStatus(), staleTime: 30000, refetchInterval: 30000, retry: false });
 
   const syncRunning = Boolean(syncStatus?.running || offerSyncStatus?.running);
   const lastSyncAt  = [syncStatus?.completed_at, offerSyncStatus?.completed_at].filter(Boolean).map(d => new Date(d)).sort((a,b) => b-a)[0] || null;
-  const oldestReportAt = [campaignReport?.generated_at, listReport?.generated_at].filter(Boolean).map(d => new Date(d)).sort((a,b) => a-b)[0] || null;
-  const dataIsNewer = Boolean(lastSyncAt && oldestReportAt && lastSyncAt > oldestReportAt);
-  const freshness = syncRunning ? 'syncing' : !oldestReportAt ? 'none' : dataIsNewer ? 'stale' : 'fresh';
 
-  // Generate both at once
+  // freshness checks against the freshest report for the current period
+  const campaignAt   = campaignReport?.generated_at ? new Date(campaignReport.generated_at) : null;
+  const listAt       = listReport?.generated_at     ? new Date(listReport.generated_at)     : null;
+  const oldestAt     = [campaignAt, listAt].filter(Boolean).sort((a,b) => a-b)[0] || null;
+  const dataIsNewer  = Boolean(lastSyncAt && oldestAt && lastSyncAt > oldestAt);
+  const freshness    = syncRunning ? 'syncing' : !oldestAt ? 'none' : dataIsNewer ? 'stale' : 'fresh';
+
+  // ── Generate both at once ────────────────────────────────────────────────
   async function handleGenerate() {
-    setGenerating(true);
-    setError(null);
+    setGenerating(true); setError(null);
     try {
       await Promise.all([
         api.generateAIReport(days),
         api.generateAIListReport(),
       ]);
+      setSelectedCampaignId(null); // pick up the new entry for this period
+      setSelectedListId(null);
       queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
       queryClient.invalidateQueries({ queryKey: ['reports', 'ai-list'] });
     } catch (e) {
@@ -109,7 +138,12 @@ export default function AIDashboardPage() {
     }
   }
 
-  // Parse both reports
+  function handleDaysChange(d) {
+    setDays(d);
+    setSelectedCampaignId(null); // auto-pick freshest for new period
+  }
+
+  // ── Parsed sections ──────────────────────────────────────────────────────
   const campaignSections = parseContent(campaignReport?.content);
   const listSections     = parseContent(listReport?.content);
   const campaignGeneral  = campaignSections.filter(s => !isBuyerSection(s.heading));
@@ -117,8 +151,13 @@ export default function AIDashboardPage() {
   const campaignBuyer    = b => campaignSections.find(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
   const listBuyer        = b => listSections.find(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
 
-  const isLoading   = loadingCampaign || loadingList;
+  const isLoading   = loadingHistory || loadingCampaign || loadingList;
   const hasAnything = campaignReport || listReport;
+  const noPeriodReport = !loadingCampaign && !loadingHistory && periodHistory.length === 0;
+
+  function fmtDate(d) {
+    return new Date(d).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
 
   return (
     <div className="p-8 max-w-7xl space-y-5">
@@ -130,11 +169,6 @@ export default function AIDashboardPage() {
           <p className="text-sm text-gray-500 mt-1">Campaign recommendations + list intelligence in one view</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-gray-500">Analyze last</span>
-          <select value={days} onChange={e => setDays(Number(e.target.value))}
-            className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white">
-            {[7, 14, 30].map(d => <option key={d} value={d}>{d} days</option>)}
-          </select>
           <button onClick={handleGenerate} disabled={generating || syncRunning}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
             {generating ? (
@@ -146,21 +180,64 @@ export default function AIDashboardPage() {
         </div>
       </div>
 
-      {/* Freshness + timestamps */}
-      {freshness !== 'none' && (
-        <div className={`flex items-center gap-1.5 text-xs ${freshness === 'syncing' ? 'text-blue-600' : freshness === 'stale' ? 'text-amber-600' : 'text-gray-400'}`}>
-          <span className={`w-2 h-2 rounded-full inline-block ${freshness === 'syncing' ? 'bg-blue-500 animate-pulse' : freshness === 'stale' ? 'bg-amber-500' : 'bg-green-500'}`} />
-          {freshness === 'syncing' && 'Sync running — wait for it to finish before generating.'}
-          {freshness === 'stale'   && 'New sync data available — regenerate for updated analysis.'}
-          {freshness === 'fresh'   && (
-            <>
-              Up to date
-              {campaignReport && <span className="ml-2 text-gray-300">· Campaign: {new Date(campaignReport.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ({campaignReport.period_days}d)</span>}
-              {listReport     && <span className="ml-1 text-gray-300">· Lists: {new Date(listReport.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>}
-            </>
-          )}
+      {/* Controls row: period tabs + history dropdowns */}
+      <div className="flex flex-wrap items-center gap-4">
+
+        {/* Period selector */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-gray-500">Analyze last</span>
+          <div className="flex rounded-md border border-gray-200 overflow-hidden">
+            {DAY_OPTIONS.map(d => (
+              <button key={d} onClick={() => handleDaysChange(d)}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  days === d ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}>
+                {d}d
+              </button>
+            ))}
+          </div>
         </div>
-      )}
+
+        {/* Campaign history — scoped to selected period */}
+        {periodHistory.length > 1 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500">Campaign report</span>
+            <select value={effectiveCampaignId ?? ''} onChange={e => setSelectedCampaignId(e.target.value ? Number(e.target.value) : null)}
+              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white max-w-[180px]">
+              {periodHistory.map((h, i) => (
+                <option key={h.id} value={h.id}>
+                  {i === 0 ? 'Latest — ' : ''}{fmtDate(h.generated_at)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* List history */}
+        {listHistory.length > 1 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500">List analysis</span>
+            <select value={effectiveListId ?? ''} onChange={e => setSelectedListId(e.target.value ? Number(e.target.value) : null)}
+              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white max-w-[180px]">
+              {listHistory.map((h, i) => (
+                <option key={h.id} value={h.id}>
+                  {i === 0 ? 'Latest — ' : ''}{fmtDate(h.generated_at)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Freshness dot */}
+        {freshness !== 'none' && (
+          <div className={`flex items-center gap-1.5 text-xs ml-auto ${freshness === 'syncing' ? 'text-blue-600' : freshness === 'stale' ? 'text-amber-600' : 'text-gray-400'}`}>
+            <span className={`w-2 h-2 rounded-full inline-block ${freshness === 'syncing' ? 'bg-blue-500 animate-pulse' : freshness === 'stale' ? 'bg-amber-500' : 'bg-green-500'}`} />
+            {freshness === 'syncing' && 'Sync running — wait before generating.'}
+            {freshness === 'stale'   && 'New sync data — regenerate for latest analysis.'}
+            {freshness === 'fresh'   && campaignAt && `Generated ${fmtDate(campaignAt)}`}
+          </div>
+        )}
+      </div>
 
       {error && <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
 
@@ -177,25 +254,26 @@ export default function AIDashboardPage() {
       </div>
 
       {/* Loading */}
-      {isLoading && (
+      {isLoading && !generating && (
         <div className="card p-10 text-center">
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
         </div>
       )}
 
-      {/* Empty */}
-      {!isLoading && !hasAnything && !generating && (
-        <div className="card p-10 text-center space-y-2">
-          <p className="text-sm font-medium text-gray-700">No analysis yet</p>
-          <p className="text-xs text-gray-400">Pick a day window and click Generate Analysis to get started.</p>
+      {/* No report for this period yet */}
+      {noPeriodReport && !generating && (
+        <div className="card p-8 text-center space-y-2">
+          <p className="text-sm font-medium text-gray-700">No {days}-day report generated yet</p>
+          <p className="text-xs text-gray-400">Click Generate Analysis to create one for this window.</p>
         </div>
       )}
 
+      {/* Generating */}
       {generating && (
         <div className="card p-10 text-center space-y-3">
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-          <p className="text-sm font-medium text-gray-700">Running campaign + list analysis…</p>
-          <p className="text-xs text-gray-400">Both reports are generating in parallel. This takes about 15–30 seconds.</p>
+          <p className="text-sm font-medium text-gray-700">Running campaign + list analysis in parallel…</p>
+          <p className="text-xs text-gray-400">Takes about 15–30 seconds.</p>
         </div>
       )}
 
@@ -204,7 +282,7 @@ export default function AIDashboardPage() {
         <div className="space-y-8">
           {campaignGeneral.length > 0 && (
             <div className="space-y-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Campaign Recommendations · {campaignReport?.period_days}d window</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Campaign · {days}d window</p>
               {campaignGeneral.map((sec, i) => <Section key={i} sec={sec} />)}
             </div>
           )}
@@ -214,9 +292,6 @@ export default function AIDashboardPage() {
               {listGeneral.map((sec, i) => <Section key={i} sec={sec} />)}
             </div>
           )}
-          {!campaignReport && !listReport && (
-            <div className="card p-6 text-center text-sm text-gray-400">No reports yet — click Generate Analysis.</div>
-          )}
         </div>
       )}
 
@@ -224,17 +299,17 @@ export default function AIDashboardPage() {
       {BUYERS.includes(buyer) && hasAnything && !isLoading && !generating && (
         <div className="space-y-6">
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Campaign Actions · {campaignReport?.period_days}d window</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Campaign Actions · {days}d window</p>
             {campaignBuyer(buyer)
               ? <Section sec={campaignBuyer(buyer)} />
-              : <div className="card p-4 text-sm text-gray-400">{campaignReport ? `No section for ${buyer}.` : 'No campaign report — click Generate Analysis.'}</div>
+              : <div className="card p-4 text-sm text-gray-400">{campaignReport ? `No section for ${buyer}.` : `No ${days}-day campaign report — click Generate.`}</div>
             }
           </div>
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">List Queue</p>
             {listBuyer(buyer)
               ? <Section sec={listBuyer(buyer)} />
-              : <div className="card p-4 text-sm text-gray-400">{listReport ? `No list queue for ${buyer}.` : 'No list analysis — click Generate Analysis.'}</div>
+              : <div className="card p-4 text-sm text-gray-400">{listReport ? `No list queue for ${buyer}.` : 'No list analysis — click Generate.'}</div>
             }
           </div>
         </div>
