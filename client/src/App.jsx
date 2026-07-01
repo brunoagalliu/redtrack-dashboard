@@ -7,6 +7,7 @@ import ReportsPage from './pages/ReportsPage';
 import VerticalsPage from './pages/VerticalsPage';
 import InsightsPage from './pages/InsightsPage';
 import AIRecommendationsPage from './pages/AIRecommendationsPage';
+import AIDashboardPage from './pages/AIDashboardPage';
 import OffersPage from './pages/OffersPage';
 import ListsPage from './pages/ListsPage';
 import ListsAIPage from './pages/ListsAIPage';
@@ -72,12 +73,11 @@ function Sidebar() {
         {/* Sub-nav shown when inside /reports */}
         {inReports && (
           <div className="space-y-0.5">
-            <NavLink to="/reports/ai" className={subLinkClass}>✦ AI Recommendations</NavLink>
+            <NavLink to="/reports/ai" className={subLinkClass}>✦ AI</NavLink>
             <NavLink to="/reports/insights" className={subLinkClass}>Insights</NavLink>
             <NavLink to="/reports/media-buyers" className={subLinkClass}>Media Buyers</NavLink>
             <NavLink to="/reports/verticals" className={subLinkClass}>Verticals</NavLink>
             <NavLink to="/reports/offers" className={subLinkClass}>Offers</NavLink>
-            <NavLink to="/reports/lists-ai" className={subLinkClass}>✦ Lists AI</NavLink>
             <NavLink to="/reports/lists" className={subLinkClass}>Lists</NavLink>
           </div>
         )}
@@ -127,12 +127,11 @@ function AppLayout() {
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
           <Route path="/campaigns/:id/edit" element={<CampaignEditPage />} />
           <Route path="/reports" element={<Navigate to="/reports/ai" replace />} />
-          <Route path="/reports/ai" element={<AIRecommendationsPage />} />
+          <Route path="/reports/ai" element={<AIDashboardPage />} />
           <Route path="/reports/insights" element={<InsightsPage />} />
           <Route path="/reports/media-buyers" element={<ReportsPage />} />
           <Route path="/reports/verticals" element={<VerticalsPage />} />
           <Route path="/reports/offers" element={<OffersPage />} />
-          <Route path="/reports/lists-ai" element={<ListsAIPage />} />
           <Route path="/reports/lists" element={<ListsPage />} />
           <Route path="/tools/cost-updater" element={<CostUpdaterPage />} />
           <Route path="/tools/revenue-updater" element={<RevenueUpdaterPage />} />
