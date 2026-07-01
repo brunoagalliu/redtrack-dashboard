@@ -1546,6 +1546,32 @@ router.get('/sync/offers/debug', async (_req, res) => {
 
 // Offer performance report
 // GET /reports/lists — per-list performance aggregated across all campaigns
+// One-time backfill: parse data_list from existing campaign titles
+router.post('/lists/backfill', async (req, res) => {
+  try {
+    const { rows: vRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'vertical'`);
+    const knownVerticals = new Set(vRows.map(r => r.value.toUpperCase()));
+    const { rows: rRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'route'`);
+    const knownRoutes = new Map(rRows.map(r => [r.value.toUpperCase(), r.value]));
+
+    const { rows: campaigns } = await pool.query(`SELECT id, title FROM rt_campaigns WHERE data_list IS NULL`);
+    let updated = 0;
+    for (const c of campaigns) {
+      const { listKey, listLastUsed } = parseListFromTitle(c.title, knownRoutes, knownVerticals);
+      if (listKey) {
+        await pool.query(
+          `UPDATE rt_campaigns SET data_list=$1, list_last_used=$2 WHERE id=$3`,
+          [listKey, listLastUsed || null, c.id]
+        );
+        updated++;
+      }
+    }
+    res.json({ total: campaigns.length, updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/lists', async (req, res) => {
   try {
     const buyer   = req.query.buyer   || null;
