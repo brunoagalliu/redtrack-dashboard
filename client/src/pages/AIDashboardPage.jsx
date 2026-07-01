@@ -54,6 +54,26 @@ function Section({ sec }) {
   );
 }
 
+function SectionGroup({ icon, label, sublabel, color, children }) {
+  const colors = {
+    indigo: { bar: 'bg-indigo-600', text: 'text-white', wrap: 'border-indigo-200 ring-1 ring-indigo-100' },
+    teal:   { bar: 'bg-teal-600',   text: 'text-white', wrap: 'border-teal-200   ring-1 ring-teal-100'   },
+  };
+  const c = colors[color] || colors.indigo;
+  return (
+    <div className={`rounded-xl border ${c.wrap} overflow-hidden`}>
+      <div className={`${c.bar} px-4 py-2.5 flex items-center gap-2`}>
+        <span className="text-lg leading-none">{icon}</span>
+        <span className={`font-semibold text-sm ${c.text}`}>{label}</span>
+        {sublabel && <span className={`text-xs opacity-70 ${c.text} ml-1`}>· {sublabel}</span>}
+      </div>
+      <div className="p-3 space-y-3 bg-white/60">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 const BUYERS = ['TK', 'MA', 'DS'];
 const DAY_OPTIONS = [7, 14, 30, 60, 90];
 
@@ -279,18 +299,16 @@ export default function AIDashboardPage() {
 
       {/* ── OVERVIEW ── */}
       {buyer === 'Overview' && hasAnything && !isLoading && !generating && (
-        <div className="space-y-8">
+        <div className="space-y-6">
           {campaignGeneral.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Campaign · {days}d window</p>
+            <SectionGroup icon="📊" label="Campaign Recommendations" sublabel={`${days}d window`} color="indigo">
               {campaignGeneral.map((sec, i) => <Section key={i} sec={sec} />)}
-            </div>
+            </SectionGroup>
           )}
           {listGeneral.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">List Intelligence</p>
+            <SectionGroup icon="📋" label="List Intelligence" color="teal">
               {listGeneral.map((sec, i) => <Section key={i} sec={sec} />)}
-            </div>
+            </SectionGroup>
           )}
         </div>
       )}
@@ -298,20 +316,18 @@ export default function AIDashboardPage() {
       {/* ── BUYER VIEW ── */}
       {BUYERS.includes(buyer) && hasAnything && !isLoading && !generating && (
         <div className="space-y-6">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Campaign Actions · {days}d window</p>
+          <SectionGroup icon="📊" label="Campaign Actions" sublabel={`${days}d window`} color="indigo">
             {campaignBuyer(buyer)
               ? <Section sec={campaignBuyer(buyer)} />
-              : <div className="card p-4 text-sm text-gray-400">{campaignReport ? `No section for ${buyer}.` : `No ${days}-day campaign report — click Generate.`}</div>
+              : <p className="text-sm text-gray-400 px-1">{campaignReport ? `No section for ${buyer}.` : `No ${days}-day campaign report — click Generate.`}</p>
             }
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">List Queue</p>
+          </SectionGroup>
+          <SectionGroup icon="📋" label="List Queue" color="teal">
             {listBuyer(buyer)
               ? <Section sec={listBuyer(buyer)} />
-              : <div className="card p-4 text-sm text-gray-400">{listReport ? `No list queue for ${buyer}.` : 'No list analysis — click Generate.'}</div>
+              : <p className="text-sm text-gray-400 px-1">{listReport ? `No list queue for ${buyer}.` : 'No list analysis — click Generate.'}</p>
             }
-          </div>
+          </SectionGroup>
         </div>
       )}
 
