@@ -19,10 +19,8 @@ function parseContent(text) {
   return sections;
 }
 
-// Sections that start with a buyer emoji are buyer-specific
-const BUYER_EMOJI = '👤';
-function isBuyerSection(heading) { return heading.startsWith(BUYER_EMOJI); }
-function buyerOf(heading) { return heading.replace(/^👤\s*/, '').split(/[\s—–-]/)[0].trim(); }
+function isBuyerSection(h) { return h.startsWith('👤'); }
+function buyerOf(h) { return h.replace(/^👤\s*/, '').split(/[\s—–-]/)[0].trim(); }
 
 const SECTION_STYLES = {
   '✅': { border: 'border-green-200',  bg: 'bg-green-50',  heading: 'text-green-800',  dot: 'bg-green-500'  },
@@ -33,6 +31,7 @@ const SECTION_STYLES = {
   '🔴': { border: 'border-red-200',    bg: 'bg-red-50',    heading: 'text-red-800',    dot: 'bg-red-500'    },
   '🧪': { border: 'border-purple-200', bg: 'bg-purple-50', heading: 'text-purple-800', dot: 'bg-purple-500' },
   '👤': { border: 'border-indigo-200', bg: 'bg-indigo-50', heading: 'text-indigo-800', dot: 'bg-indigo-500' },
+  '📋': { border: 'border-teal-200',   bg: 'bg-teal-50',   heading: 'text-teal-800',   dot: 'bg-teal-500'   },
 };
 function sectionStyle(h) {
   for (const [e, s] of Object.entries(SECTION_STYLES)) if (h.startsWith(e)) return s;
@@ -55,16 +54,23 @@ function Section({ sec }) {
   );
 }
 
-function GenerateBtn({ label, generating, onClick }) {
+function HistorySelect({ label, options, value, onChange }) {
+  if (!options.length) return null;
   return (
-    <button onClick={onClick} disabled={generating}
-      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors">
-      {generating
-        ? <span className="inline-block w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-        : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-      }
-      {generating ? 'Analyzing…' : label}
-    </button>
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-gray-400">{label}</span>
+      <select value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}
+        className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white max-w-[190px]">
+        <option value="">Latest</option>
+        {options.map((h, i) => (
+          <option key={h.id} value={h.id}>
+            {i === 0 ? 'Latest — ' : ''}
+            {new Date(h.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            {h.period_days ? ` (${h.period_days}d)` : ''}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -73,39 +79,84 @@ const BUYERS = ['TK', 'MA', 'DS'];
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AIDashboardPage() {
-  const [buyer, setBuyer]                   = useState('Overview');
-  const [genCampaign, setGenCampaign]       = useState(false);
-  const [genList, setGenList]               = useState(false);
-  const [days, setDays]                     = useState(14);
-  const [campaignErr, setCampaignErr]       = useState(null);
-  const [listErr, setListErr]               = useState(null);
+  const [buyer, setBuyer]             = useState('Overview');
+  const [genCampaign, setGenCampaign] = useState(false);
+  const [genList, setGenList]         = useState(false);
+  const [campaignDays, setCampaignDays] = useState(14);
+  const [campaignErr, setCampaignErr] = useState(null);
+  const [listErr, setListErr]         = useState(null);
+
+  // History selection — null means "show latest"
+  const [selectedCampaignId, setSelectedCampaignId] = useState(null);
+  const [selectedListId, setSelectedListId]         = useState(null);
+
   const queryClient = useQueryClient();
 
-  // Campaign AI report
-  const { data: campaignReport, isLoading: loadingCampaign } = useQuery({
+  // ── Campaign report ──────────────────────────────────────────────────────
+  const { data: latestCampaign, isLoading: loadingCampaign } = useQuery({
     queryKey: ['reports', 'ai-recommendations'],
     queryFn: () => api.getAIReport(),
     staleTime: 30 * 60 * 1000,
     retry: false,
   });
 
-  // List AI report
-  const { data: listReport, isLoading: loadingList } = useQuery({
+  const { data: campaignHistory = [] } = useQuery({
+    queryKey: ['reports', 'ai-recommendations', 'history'],
+    queryFn: () => api.getAIReportHistory(50),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  // Filter history by selected campaign day window
+  const periodHistory = campaignHistory.filter(h => h.period_days === campaignDays);
+  const effectiveCampaignId = selectedCampaignId ?? periodHistory[0]?.id ?? null;
+
+  const { data: campaignHistoryItem, isLoading: loadingCampaignItem } = useQuery({
+    queryKey: ['reports', 'ai-recommendations', 'history', effectiveCampaignId],
+    queryFn: () => api.getAIReportHistoryItem(effectiveCampaignId),
+    enabled: effectiveCampaignId != null,
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  });
+
+  const campaignReport = effectiveCampaignId != null ? campaignHistoryItem : latestCampaign;
+
+  // ── List report ──────────────────────────────────────────────────────────
+  const { data: latestList, isLoading: loadingList } = useQuery({
     queryKey: ['reports', 'ai-list'],
     queryFn: () => api.getAIListReport(),
     staleTime: 30 * 60 * 1000,
     retry: false,
   });
 
-  // Sync freshness
+  const { data: listHistory = [] } = useQuery({
+    queryKey: ['reports', 'ai-list', 'history'],
+    queryFn: () => api.getAIListReportHistory(20),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const { data: listHistoryItem, isLoading: loadingListItem } = useQuery({
+    queryKey: ['reports', 'ai-list', 'history', selectedListId],
+    queryFn: () => api.getAIListReportHistoryItem(selectedListId),
+    enabled: selectedListId != null,
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  });
+
+  const listReport = selectedListId != null ? listHistoryItem : latestList;
+
+  // ── Sync freshness ───────────────────────────────────────────────────────
   const { data: syncStatus }      = useQuery({ queryKey: ['reports','sync','status'],         queryFn: () => api.getSyncStatus(),      staleTime: 30000, refetchInterval: 30000, retry: false });
   const { data: offerSyncStatus } = useQuery({ queryKey: ['reports','sync','offers','status'], queryFn: () => api.getOfferSyncStatus(), staleTime: 30000, refetchInterval: 30000, retry: false });
   const syncRunning = Boolean(syncStatus?.running || offerSyncStatus?.running);
 
+  // ── Generate handlers ────────────────────────────────────────────────────
   async function handleGenCampaign() {
     setGenCampaign(true); setCampaignErr(null);
     try {
-      await api.generateAIReport(days);
+      await api.generateAIReport(campaignDays);
+      setSelectedCampaignId(null);
       queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
     } catch (e) { setCampaignErr(e.message); }
     finally { setGenCampaign(false); }
@@ -115,26 +166,30 @@ export default function AIDashboardPage() {
     setGenList(true); setListErr(null);
     try {
       await api.generateAIListReport();
+      setSelectedListId(null);
       queryClient.invalidateQueries({ queryKey: ['reports', 'ai-list'] });
     } catch (e) { setListErr(e.message); }
     finally { setGenList(false); }
   }
 
-  // Parse both reports into sections
+  function handleDaysChange(d) {
+    setCampaignDays(d);
+    setSelectedCampaignId(null); // auto-pick freshest for new period
+  }
+
+  // ── Parsed sections ──────────────────────────────────────────────────────
   const campaignSections = parseContent(campaignReport?.content);
   const listSections     = parseContent(listReport?.content);
+  const campaignGeneral  = campaignSections.filter(s => !isBuyerSection(s.heading));
+  const listGeneral      = listSections.filter(s => !isBuyerSection(s.heading));
+  const campaignBuyer    = b => campaignSections.find(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
+  const listBuyer        = b => listSections.find(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
 
-  const campaignGeneral = campaignSections.filter(s => !isBuyerSection(s.heading));
-  const listGeneral     = listSections.filter(s => !isBuyerSection(s.heading));
-
-  const campaignBuyer = (b) => campaignSections.find(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
-  const listBuyer     = (b) => listSections.find(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
-
-  const isLoading   = loadingCampaign || loadingList;
+  const isLoading   = loadingCampaign || loadingList || loadingCampaignItem || loadingListItem;
   const hasAnything = campaignReport || listReport;
 
   return (
-    <div className="p-8 max-w-7xl space-y-6">
+    <div className="p-8 max-w-7xl space-y-5">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
@@ -148,43 +203,73 @@ export default function AIDashboardPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />Sync running
             </span>
           )}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-500">Campaign window</span>
-            <select value={days} onChange={e => setDays(Number(e.target.value))}
-              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white">
-              {[7, 14, 30].map(d => <option key={d} value={d}>{d} days</option>)}
+          {/* Campaign generate */}
+          <div className="flex items-center gap-1.5 border border-gray-200 rounded-md px-2 py-1.5 bg-white">
+            <span className="text-xs text-gray-500">Campaign</span>
+            <select value={campaignDays} onChange={e => handleDaysChange(Number(e.target.value))}
+              className="text-xs text-gray-700 bg-transparent border-none outline-none">
+              {[7, 14, 30].map(d => <option key={d} value={d}>{d}d</option>)}
             </select>
+            <button onClick={handleGenCampaign} disabled={genCampaign}
+              className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50">
+              {genCampaign
+                ? <span className="inline-block w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+                : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              }
+              {genCampaign ? 'Generating…' : 'Generate'}
+            </button>
           </div>
-          <GenerateBtn label="Campaign Report" generating={genCampaign} onClick={handleGenCampaign} />
-          <GenerateBtn label="List Analysis"   generating={genList}     onClick={handleGenList}     />
+          {/* List generate */}
+          <div className="flex items-center gap-1.5 border border-gray-200 rounded-md px-2 py-1.5 bg-white">
+            <span className="text-xs text-gray-500">Lists</span>
+            <button onClick={handleGenList} disabled={genList}
+              className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50">
+              {genList
+                ? <span className="inline-block w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+                : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              }
+              {genList ? 'Generating…' : 'Generate'}
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* History selectors */}
+      <div className="flex flex-wrap items-center gap-4 text-xs">
+        <HistorySelect
+          label="Campaign report:"
+          options={periodHistory}
+          value={selectedCampaignId}
+          onChange={setSelectedCampaignId}
+        />
+        <HistorySelect
+          label="List analysis:"
+          options={listHistory}
+          value={selectedListId}
+          onChange={setSelectedListId}
+        />
+        {campaignReport && (
+          <span className="text-gray-400 ml-auto">
+            Campaign: {new Date(campaignReport.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · {campaignReport.period_days}d window
+            {listReport && ` · Lists: ${new Date(listReport.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}
+          </span>
+        )}
       </div>
 
       {/* Errors */}
       {campaignErr && <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{campaignErr}</div>}
       {listErr     && <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{listErr}</div>}
 
-      {/* Buyer picker */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-gray-500">Viewing</span>
-        <div className="flex gap-1">
-          {['Overview', ...BUYERS].map(b => (
-            <button key={b} onClick={() => setBuyer(b)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                buyer === b
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}>
-              {b === 'Overview' ? '🌐 Overview' : b}
-            </button>
-          ))}
-        </div>
-        {campaignReport && (
-          <span className="text-xs text-gray-400 ml-auto">
-            Campaign: {new Date(campaignReport.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-            {listReport && ` · Lists: ${new Date(listReport.generated_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}
-          </span>
-        )}
+      {/* Buyer pills */}
+      <div className="flex items-center gap-2">
+        {['Overview', ...BUYERS].map(b => (
+          <button key={b} onClick={() => setBuyer(b)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              buyer === b ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}>
+            {b === 'Overview' ? '🌐 Overview' : b}
+          </button>
+        ))}
       </div>
 
       {/* Loading */}
@@ -202,11 +287,10 @@ export default function AIDashboardPage() {
         </div>
       )}
 
-      {/* Generating spinner */}
       {(genCampaign || genList) && (
         <div className="card p-8 text-center">
-          <div className="inline-block w-6 h-6 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-3" />
-          <p className="text-sm text-gray-600">{genCampaign && genList ? 'Running both analyses…' : genCampaign ? 'Analyzing campaign data…' : 'Analyzing list performance…'}</p>
+          <div className="inline-block w-6 h-6 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-3" />
+          <p className="text-sm text-gray-600">{genCampaign ? 'Analyzing campaign data…' : 'Analyzing list performance…'}</p>
         </div>
       )}
 
@@ -219,8 +303,8 @@ export default function AIDashboardPage() {
               {campaignGeneral.map((sec, i) => <Section key={i} sec={sec} />)}
             </div>
           )}
-          {!campaignReport && (
-            <div className="card p-6 text-center text-sm text-gray-400">No campaign report yet — click Campaign Report to generate.</div>
+          {!campaignReport && !loadingCampaign && (
+            <div className="card p-6 text-center text-sm text-gray-400">No campaign report for {campaignDays}-day window — click Generate to create one.</div>
           )}
           {listGeneral.length > 0 && (
             <div className="space-y-3">
@@ -228,8 +312,8 @@ export default function AIDashboardPage() {
               {listGeneral.map((sec, i) => <Section key={i} sec={sec} />)}
             </div>
           )}
-          {!listReport && (
-            <div className="card p-6 text-center text-sm text-gray-400">No list analysis yet — click List Analysis to generate.</div>
+          {!listReport && !loadingList && (
+            <div className="card p-6 text-center text-sm text-gray-400">No list analysis yet — click Generate under Lists.</div>
           )}
         </div>
       )}
@@ -242,26 +326,14 @@ export default function AIDashboardPage() {
             const lb = listBuyer(buyer);
             return (
               <>
-                {cb ? (
-                  <div className="space-y-2">
-                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Campaign Actions</h2>
-                    <Section sec={cb} />
-                  </div>
-                ) : campaignReport ? (
-                  <div className="card p-4 text-sm text-gray-400">No campaign section for {buyer}.</div>
-                ) : (
-                  <div className="card p-4 text-sm text-gray-400">No campaign report yet.</div>
-                )}
-                {lb ? (
-                  <div className="space-y-2">
-                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">List Queue</h2>
-                    <Section sec={lb} />
-                  </div>
-                ) : listReport ? (
-                  <div className="card p-4 text-sm text-gray-400">No list queue for {buyer}.</div>
-                ) : (
-                  <div className="card p-4 text-sm text-gray-400">No list analysis yet.</div>
-                )}
+                <div className="space-y-2">
+                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Campaign Actions</h2>
+                  {cb ? <Section sec={cb} /> : <div className="card p-4 text-sm text-gray-400">{campaignReport ? `No section for ${buyer} in this report.` : 'No campaign report — click Generate.'}</div>}
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">List Queue</h2>
+                  {lb ? <Section sec={lb} /> : <div className="card p-4 text-sm text-gray-400">{listReport ? `No list queue for ${buyer} in this report.` : 'No list analysis — click Generate.'}</div>}
+                </div>
               </>
             );
           })()}
