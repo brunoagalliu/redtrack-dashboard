@@ -1254,21 +1254,6 @@ FORMAT RULES:
 - Use the exact list name (no quotes needed) when referencing it.
 - Do not repeat the same list across multiple sections — place it in the most relevant one only.
 
-## ✅ Reuse Now
-All lists idle 28+ days with ROI > 30% and reasonable EPC. Name each, include idle days, all-time ROI, all-time EPC, and which buyer ran it best. If recent EPC is available and up, flag the uptrend. Be exhaustive — every reusable list should be here.
-
-## 🔁 Still Performing — Keep Running
-All currently active lists (idle < 14d) with positive ROI. For each: state ROI, current EPC, whether the 30-day EPC is holding or improving vs all-time. Flag any that are showing signs of fatigue (slight EPC decline) so buyers can monitor.
-
-## ⚠️ Degrading — Pull and Rest
-Every list where recent 30-day EPC has dropped more than 15% vs all-time EPC, or where ROI has gone negative recently. State the exact EPC drop (from X to Y), the percentage decline, and a recommended rest duration (typically 3-4 weeks). Include even mild degradation — better to flag early.
-
-## 📊 Partner List Rankings
-Based on all available list data, rank the data partners (LM, KN, USMS clickers, AVANTO, UPSTART, KOINO, etc.) by average EPC and ROI across their lists. Highlight which partner consistently delivers the best-performing lists, and which to approach with caution. Include supporting numbers.
-
-## ❌ Retire
-All lists with negative all-time ROI and no uptrend signal in recent EPC. Be direct — if a list has never worked, say so with the numbers.
-
 ## 👤 TK — Priority List Queue
 Every list TK should queue for their next campaigns, in priority order. Include: list name, why it's queued (idle X days, ROI Y%, EPC $Z), and whether to run it on Verizon, AT&T, or T-Mobile based on past performance. Cover all strong candidates.
 
@@ -1276,16 +1261,47 @@ Every list TK should queue for their next campaigns, in priority order. Include:
 Same comprehensive format for MA.
 
 ## 👤 DS — Priority List Queue
-Same comprehensive format for DS.`;
+Same comprehensive format for DS.
+
+---
+
+## ✅ Reuse Now
+All lists idle 28+ days with ROI > 30% and reasonable EPC. Name each, include idle days, all-time ROI, all-time EPC, and which buyer ran it best. If recent EPC is available and up, flag the uptrend. Be exhaustive — every reusable list should be here.
+
+## 🔁 Still Performing — Keep Running
+All currently active lists (idle < 14d) with positive ROI. For each: state ROI, current EPC, whether the 30-day EPC is holding or improving vs all-time. Flag any showing signs of fatigue.
+
+## ⚠️ Degrading — Pull and Rest
+Every list where recent 30-day EPC dropped more than 15% vs all-time, or ROI has gone negative. State the exact EPC drop and recommended rest duration.
+
+## 📊 Partner List Rankings
+Rank data partners (LM, KN, USMS clickers, AVANTO, UPSTART, KOINO, etc.) by average EPC and ROI across their lists. Include supporting numbers.
+
+## ❌ Retire
+All lists with negative all-time ROI and no uptrend signal. Be direct.`;
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const response = await anthropic.messages.create({
+  const first = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 10000,
     messages: [{ role: 'user', content: prompt }],
   });
 
-  const content = response.content[0].text;
+  let content = first.content[0].text;
+
+  if (first.stop_reason === 'max_tokens') {
+    console.warn('[ai-list] hit max_tokens — continuing...');
+    const second = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 6000,
+      messages: [
+        { role: 'user', content: prompt },
+        { role: 'assistant', content },
+        { role: 'user', content: 'Continue exactly where you left off.' },
+      ],
+    });
+    content += second.content[0].text;
+  }
   const generatedAt = new Date();
   const dataJson = { lists: listRows, generated_at: generatedAt };
 
