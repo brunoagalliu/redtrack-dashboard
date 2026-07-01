@@ -100,6 +100,10 @@ export const api = {
     return request(`/reports/campaigns/${campaignId}/offers/${offerId}/os${qs ? `?${qs}` : ''}`);
   },
   getInsights: (days = 30) => request(`/reports/insights?days=${days}`),
+  getListsReport: (params = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
+    return request(`/reports/lists${qs ? `?${qs}` : ''}`);
+  },
   getAIReport: () => request('/reports/ai-recommendations'),
   generateAIReport: (days = 14) => request('/reports/ai-recommendations/generate', { method: 'POST', body: JSON.stringify({ days }) }),
   getAIReportHistory: (limit = 20) => request(`/reports/ai-recommendations/history?limit=${limit}`),

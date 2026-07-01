@@ -79,6 +79,71 @@ function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes, knownPartners
   return { buyer, platform, vertical, route, carrier, dataPartner };
 }
 
+// Parse list key and last-used date from a campaign title.
+// Confirmed convention: {buyer} - {route}_{vertical?}_{list_name_ending_in_size}_{DD.MM?}
+// e.g. "TK - USMS_Cloud_kn_billing_sweeps_att_mar2026_34k_23.03"
+//   →  listKey = "kn_billing_sweeps_att_mar2026_34k", listLastUsed = "23.03"
+const _LIST_NOISE = new Set(['own', 'upm']);
+function parseListFromTitle(rawTitle, knownRoutes, knownVerticals) {
+  let s = rawTitle.trim().replace(/\s*-?\s*COPY\s*$/i, '');
+
+  // Extract trailing _DD.MM date stamp
+  let listLastUsed = null;
+  const dateM = s.match(/_(\d{1,2})\.(\d{1,2})\s*$/);
+  if (dateM) { listLastUsed = `${dateM[1]}.${dateM[2]}`; s = s.slice(0, dateM.index); }
+
+  // Find the last size token — list name ends here (e.g. "34k", "114k", "5,7k")
+  const sizeRe = /\d+(?:[.,]\d+)?\s*[kK]\b/g;
+  const sizeMatches = [...s.matchAll(sizeRe)];
+  if (!sizeMatches.length) return { listKey: null, listLastUsed };
+  const lastSize = sizeMatches[sizeMatches.length - 1];
+  let body = s.slice(0, lastSize.index + lastSize[0].length);
+
+  // When a " - " dash splits the string and the tail is only carrier+size (no other text),
+  // the dash is a list/carrier separator — keep the full body.
+  // Otherwise the tail IS the list (discard leading provider/sub-account segment).
+  if (body.includes(' - ')) {
+    const idx = body.lastIndexOf(' - ');
+    const tail = body.slice(idx + 3);
+    const tailCore = tail.replace(/\d+(?:[.,]\d+)?\s*[kK]\b/gi, '').replace(/[_\s]+/g, '').trim();
+    const carrierOnly = /^(att|vz|verizon|tmob|t-mobile|all|ios|android|iosonly)$/i.test(tailCore);
+    if (!carrierOnly && tailCore.length > 0) body = tail;
+  }
+
+  // Strip leading buyer code (TK/MA/DS)
+  body = body.replace(/^\s*(TK|MA|DS)\s*-\s*/i, '');
+
+  // Strip leading known-route token then optional known-vertical token
+  const toks = body.split(/[_\s]+/).filter(Boolean);
+  let skip = 0;
+  const t0up = (toks[skip] || '').toUpperCase();
+  if (knownRoutes.has(t0up) || ROUTE_ALIASES.has(t0up)) skip++;
+  const t1up = (toks[skip] || '').toUpperCase();
+  if (knownVerticals.has(t1up)) skip++;
+
+  if (skip > 0) {
+    const prefixPat = toks.slice(0, skip)
+      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('[_\\s]+');
+    body = body.replace(new RegExp('^[_\\s]*' + prefixPat + '[_\\s]+', 'i'), '');
+  }
+
+  body = body.trim().replace(/^[_\s]+|[_\s]+$/g, '');
+  if (!body || body.length < 5) return { listKey: null, listLastUsed };
+
+  // Normalize: lowercase, collapse noise words and consecutive duplicates
+  const norm = body.toLowerCase().split(/[_\s]+/).filter(Boolean);
+  const deduped = [];
+  for (const t of norm) {
+    if (_LIST_NOISE.has(t)) continue;
+    if (deduped.length && deduped[deduped.length - 1] === t) continue;
+    deduped.push(t);
+  }
+  const listKey = deduped.join('_');
+  if (listKey.length < 5 || !listKey.includes('_')) return { listKey: null, listLastUsed };
+  return { listKey, listLastUsed };
+}
+
 function defaultDateRange() {
   const to = new Date();
   const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -155,7 +220,8 @@ async function runSync(dateFrom, dateTo) {
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
         if (pattern.test(title)) {
           const parsed = parseCampaignTitle(title, knownVerticals, knownRoutes, knownPartners);
-          buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, route: parsed.route, carrier: parsed.carrier, dataPartner: parsed.dataPartner, created_at: createdAt });
+          const { listKey, listLastUsed } = parseListFromTitle(title, knownRoutes, knownVerticals);
+          buyerCampaigns.push({ id: c.id, title, buyer, platform: parsed.platform, vertical: parsed.vertical, route: parsed.route, carrier: parsed.carrier, dataPartner: parsed.dataPartner, dataList: listKey, listLastUsed, created_at: createdAt });
           break;
         }
       }
@@ -164,10 +230,10 @@ async function runSync(dateFrom, dateTo) {
     // 4. Upsert campaign metadata
     for (const c of buyerCampaigns) {
       await pool.query(
-        `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, route, carrier, data_partner, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, vertical=$4, platform=$5, route=$6, carrier=$7, data_partner=$8, synced_at=NOW()`,
-        [c.id, c.title, c.buyer, c.vertical || null, c.platform || null, c.route || null, c.carrier || null, c.dataPartner || null, c.created_at || null]
+        `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, route, carrier, data_partner, data_list, list_last_used, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, vertical=$4, platform=$5, route=$6, carrier=$7, data_partner=$8, data_list=$9, list_last_used=$10, synced_at=NOW()`,
+        [c.id, c.title, c.buyer, c.vertical || null, c.platform || null, c.route || null, c.carrier || null, c.dataPartner || null, c.dataList || null, c.listLastUsed || null, c.created_at || null]
       );
     }
 
@@ -850,6 +916,33 @@ async function generateAIReport(days) {
     `);
     const hasOsData = osRows.length > 0;
 
+    // Data list performance — lists with enough volume, sorted by profit
+    const { rows: listRows } = await pool.query(`
+      SELECT
+        c.data_list                                                            AS list_key,
+        ARRAY_AGG(DISTINCT c.buyer)                                           AS buyers,
+        COALESCE(SUM(cs.clicks),0)::int                                       AS clicks,
+        COALESCE(SUM(cs.conversions),0)::int                                  AS conversions,
+        ROUND(SUM(cs.revenue)::numeric,2)                                     AS revenue,
+        ROUND(SUM(cs.profit)::numeric,2)                                      AS profit,
+        CASE WHEN SUM(cs.clicks) > 0
+             THEN ROUND(SUM(cs.revenue)::numeric/SUM(cs.clicks),4) ELSE 0
+             END                                                              AS epc,
+        CASE WHEN SUM(cs.cost) > 0
+             THEN ROUND(SUM(cs.profit)::numeric/SUM(cs.cost)*100,1) ELSE 0
+             END                                                              AS roi,
+        EXTRACT(DAY FROM NOW() - MAX(c.created_at::timestamptz))::int        AS days_since_last_use,
+        COUNT(DISTINCT c.id)                                                  AS campaign_count
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats cs ON cs.campaign_id = c.id
+      WHERE c.data_list IS NOT NULL
+        AND cs.stat_date BETWEEN $1 AND $2
+      GROUP BY c.data_list
+      HAVING SUM(cs.clicks) > 200
+      ORDER BY SUM(cs.profit) DESC
+      LIMIT 30
+    `, [dateFrom, today]);
+
     // Per-buyer top and bottom combos (vertical × route × carrier)
     const { rows: buyerComboRows } = await pool.query(`
       SELECT
@@ -875,7 +968,7 @@ async function generateAIReport(days) {
     const dataJson = {
       period_days: days, date_from: dateFrom, date_to: today,
       combinations: combos, buyers: buyerRows, offer_combinations: offerRows,
-      os_combinations: osRows,
+      os_combinations: osRows, list_performance: listRows,
     };
 
     // Build compact iOS vs Android comparison for prompt
@@ -910,6 +1003,12 @@ async function generateAIReport(days) {
       const epc = Number(r.clicks) > 0 ? (Number(r.revenue) / Number(r.clicks)).toFixed(4) : '0';
       return `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Clicks:${r.clicks} | Conv:${r.conversions} | EPC:$${epc} | Profit:$${r.profit}* | ROI:${r.roi}%*`;
     }).join('\n');
+
+    // Build list performance table for prompt
+    const listTable = listRows.length > 0 ? listRows.map((r, i) => {
+      const status = r.days_since_last_use >= 28 ? '⏸ IDLE' : r.days_since_last_use >= 14 ? '🕐 COOLING' : '✅ ACTIVE';
+      return `${i+1}. "${r.list_key}" | Buyers:${(r.buyers||[]).join('+')} | Campaigns:${r.campaign_count} | Clicks:${r.clicks} | Conv:${r.conversions} | EPC:$${r.epc} | Profit:$${r.profit} | ROI:${r.roi}% | LastUsed:${r.days_since_last_use}d ago | ${status}`;
+    }).join('\n') : '';
 
     const diff = buildReportDiff(previous, combos, buyerRows);
     dataJson.changes_since_last = diff;
@@ -948,6 +1047,7 @@ OFFER PERFORMANCE — offer × route × carrier × partner × buyer (sorted by p
 ${offerTable}
 ` : ''}${osPromptSection}
 ${diffSection}
+${listTable ? `DATA LIST PERFORMANCE — list name | buyers | campaigns run | clicks | conversions | EPC | profit | ROI | days since last used | status:\n${listTable}\n` : ''}
 PER-BUYER BREAKDOWN:
 ${buyerComboSections}
 
@@ -980,7 +1080,14 @@ Exactly 5 bullets. Each = one specific action with a number. ${hasOfferData ? 'N
 Exactly 5 bullets. Same rules.
 
 ## 👤 DS
-Exactly 5 bullets. Same rules.`;
+Exactly 5 bullets. Same rules.${listTable ? `
+
+## 📋 Data List Intelligence
+3-5 bullets total. Rules:
+- ✅ ACTIVE lists (last used <14d): if EPC and ROI are strong, say "reuse [list] — EPC $X, ROI Y%".
+- 🕐 COOLING lists (14-28d idle): if historically profitable, say "test [list] again — was ROI Y%, cooled off X days".
+- ⏸ IDLE lists (28d+ idle): if ROI was good, say "[list] ready for reuse — idle Xd, was ROI Y%". If ROI was poor, say "skip [list] — ROI was Y%".
+- Never recommend a list idle <21 days for reuse.` : ''}`;
 
 
 
@@ -1284,6 +1391,67 @@ router.get('/sync/offers/debug', async (_req, res) => {
 });
 
 // Offer performance report
+// GET /reports/lists — per-list performance aggregated across all campaigns
+router.get('/lists', async (req, res) => {
+  try {
+    const buyer   = req.query.buyer   || null;
+    const route   = req.query.route   || null;
+    const carrier = req.query.carrier || null;
+
+    const conditions = [`c.data_list IS NOT NULL`];
+    const params = [];
+    if (buyer)   { params.push(buyer);   conditions.push(`c.buyer = $${params.length}`); }
+    if (route)   { params.push(route);   conditions.push(`c.route = $${params.length}`); }
+    if (carrier) { params.push(carrier); conditions.push(`c.carrier = $${params.length}`); }
+
+    const where = conditions.join(' AND ');
+
+    const { rows } = await pool.query(`
+      SELECT
+        c.data_list                                              AS list_key,
+        COUNT(DISTINCT c.id)                                     AS campaign_count,
+        ARRAY_AGG(DISTINCT c.buyer)                             AS buyers,
+        ARRAY_AGG(DISTINCT c.carrier)                           AS carriers,
+        MIN(c.created_at)                                        AS first_used,
+        MAX(c.created_at)                                        AS last_used,
+        SUM(cs.clicks)                                           AS clicks,
+        SUM(cs.conversions)                                      AS conversions,
+        ROUND(SUM(cs.revenue)::numeric, 2)                       AS revenue,
+        ROUND(SUM(cs.cost)::numeric, 2)                         AS cost,
+        ROUND(SUM(cs.profit)::numeric, 2)                       AS profit,
+        CASE WHEN SUM(cs.clicks) > 0
+             THEN ROUND(SUM(cs.revenue)::numeric / SUM(cs.clicks), 4)
+             ELSE 0 END                                         AS epc,
+        CASE WHEN SUM(cs.cost) > 0
+             THEN ROUND(SUM(cs.profit)::numeric / SUM(cs.cost) * 100, 2)
+             ELSE 0 END                                         AS roi,
+        -- EPC for campaigns whose stats are within the last 30 days
+        CASE WHEN SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - INTERVAL '30 days'
+                           THEN cs.clicks ELSE 0 END) > 0
+             THEN ROUND(
+               SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - INTERVAL '30 days' THEN cs.revenue ELSE 0 END)::numeric /
+               SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - INTERVAL '30 days' THEN cs.clicks  ELSE 0 END),
+               4)
+             ELSE 0 END                                         AS epc_recent,
+        SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - INTERVAL '30 days'
+                 THEN cs.clicks ELSE 0 END)                     AS clicks_recent,
+        -- days since last campaign using this list was created
+        EXTRACT(DAY FROM NOW() - MAX(c.created_at::timestamptz))::int AS days_since_last_use
+      FROM rt_campaigns c
+      JOIN rt_campaign_stats cs ON cs.campaign_id = c.id
+      WHERE ${where}
+      GROUP BY c.data_list
+      HAVING SUM(cs.clicks) > 100
+      ORDER BY SUM(cs.profit) DESC
+    `, params);
+
+    res.json({ rows });
+  } catch (err) {
+    console.error('Lists report error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/offers', async (req, res) => {
   try {
     const defaults = defaultDateRange();

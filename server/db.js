@@ -44,11 +44,13 @@ async function init() {
 
   // Migrate existing DBs that pre-date the vertical/platform/route/carrier/data_partner columns
   await pool.query(`
-    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS vertical     TEXT;
-    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS platform     TEXT;
-    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS route        TEXT;
-    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS carrier      TEXT;
-    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS data_partner TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS vertical       TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS platform       TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS route          TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS carrier        TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS data_partner   TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS data_list      TEXT;
+    ALTER TABLE rt_campaigns ADD COLUMN IF NOT EXISTS list_last_used TEXT;
   `);
 
   // Indexes after columns are guaranteed to exist
@@ -57,6 +59,7 @@ async function init() {
     CREATE INDEX IF NOT EXISTS rt_campaigns_route        ON rt_campaigns(route);
     CREATE INDEX IF NOT EXISTS rt_campaigns_carrier      ON rt_campaigns(carrier);
     CREATE INDEX IF NOT EXISTS rt_campaigns_data_partner ON rt_campaigns(data_partner);
+    CREATE INDEX IF NOT EXISTS rt_campaigns_data_list    ON rt_campaigns(data_list);
   `);
 
   // Offer analytics tables
