@@ -107,14 +107,34 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Build a cloned campaign title by stripping any stale date / copy suffix
+// and appending today's date as _DD.MM.
+// Convention: {buyer} - {route}_{vertical?}_{list_ending_in_size}_{DD.MM}
+function buildCloneTitle(original) {
+  const today = new Date();
+  const dd = String(today.getDate()).padStart(2, '0');
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const todayStamp = `_${dd}.${mm}`;
+
+  let title = original.trim();
+  // Strip trailing " COPY" or "_copy" variants (case-insensitive)
+  title = title.replace(/\s*[-_]?\s*copy\s*$/i, '').trim();
+  // Strip trailing _DD.MM date stamp
+  title = title.replace(/_\d{1,2}\.\d{1,2}\s*$/, '').trim();
+  // Strip any leftover trailing underscores or spaces
+  title = title.replace(/[_\s]+$/, '');
+
+  return `${title}${todayStamp}`;
+}
+
 // Clone campaign
 router.post('/:id/clone', async (req, res) => {
   try {
     const { data: source } = await redtrack.get(`/campaigns/${req.params.id}`);
 
-    // Strip read-only fields; prefix title
+    // Strip read-only fields; rebuild title with today's date
     const { id: _id, serial_number: _sn, trackback_url: _tu, impression_url: _iu, ...campaignBody } = source;
-    campaignBody.title = `${source.title}_copy`;
+    campaignBody.title = buildCloneTitle(source.title);
 
     // Strip stream IDs so resolveStreams creates fresh streams
     const rawStreams = (source.streams || []).map((s) => ({
