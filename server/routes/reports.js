@@ -1058,44 +1058,65 @@ PER-BUYER BREAKDOWN:
 ${buyerComboSections}
 
 FORMAT RULES:
-- Bullet points only. No paragraphs. No sub-headings inside sections.
-- Be thorough — if 10 items deserve attention, write 10 bullets. Never pad, never truncate.
-- Each bullet must include at least one specific number (EPC, profit, ROI, clicks, etc.).
-- Name exact offers, routes, carriers, partners wherever possible.
-- CONFIDENCE RULE: Only say "scale aggressively" for combos/offers with 30+ conversions. Below 30 conv, label as "test" regardless of ROI.
-${diff ? '- CHANGES SINCE LAST REPORT: call out ignored recommendations once, in the most relevant section only.' : ''}
+- Output every section as a markdown table. No bullet points, no paragraphs.
+- Be thorough — never truncate. If 12 rows are warranted, write 12 rows.
+- Use exact offer names, route names, carrier names wherever possible.
+- Include at least one key number per row (EPC, profit, ROI, etc.).
+- CONFIDENCE RULE: Only write "Scale immediately" for combos/offers with 30+ conversions. Below 30 conv use "Test" in the Action column.
+${diff ? '- If CHANGES SINCE LAST REPORT shows a call was ignored, note it in the Action/Note column of the relevant row.' : ''}
 
 ## 💰 Best Combinations to Scale
-Every combo worth scaling with 30+ conversions. ${hasOfferData ? 'Name offer + route + carrier + buyer.' : 'Name vertical + route + carrier.'} Include EPC, profit, and ROI. ${hasOsData ? 'Flag iOS-only opportunity wherever iOS EPC significantly beats Android.' : ''} No artificial limit — cover every strong signal.
+Every combo worth scaling (30+ conversions). One row per combo.
+| ${hasOfferData ? 'Offer' : 'Vertical'} | Buyer | Route | Carrier | EPC | ROI | Conv | Action |
+|---|---|---|---|---|---|---|---|
+${hasOsData ? '(Flag iOS-only in Action column where iOS EPC significantly beats Android)' : ''}
 
 ## 🔴 Cut Immediately
-Every losing combo. Name it, state the exact loss, name the buyer who owns it. Cover all negatives — do not summarise or truncate.
+Every losing combo. One row per combo — no omissions.
+| What | Buyer | Profit | Action |
+|---|---|---|---|
 
 ## 🔁 Budget Reallocation
-Specific moves. Format: "Move $X from [losing combo] → [winning combo] — [buyer]." Include both source and destination profit/ROI to justify the move. Cover every actionable reallocation.
+One row per move.
+| From | To | Buyer | Move Amount | Why |
+|---|---|---|---|---|
 
 ## 📡 Route & Carrier Intelligence
-Which routes (USMS, TechStar, Ranhog, Internal, ltsauto, etc.) and carriers (Verizon, AT&T, T-Mobile) are outperforming or underperforming right now. ${hasOsData ? 'Include iOS vs Android carrier-level signals.' : ''} Surface any route or carrier that's consistently printing or consistently losing.
+One row per route or carrier.
+| Route / Carrier | Avg EPC | ROI | Signal | Note |
+|---|---|---|---|---|
 
 ## 🤝 Partner & Offer Analysis
-Which offers and data partners (LM, JC, AVANTO, UPSTART, KOINO) are driving results — and which are underperforming. Call out offer-partner combinations that stand out. Flag any partner whose offers have unusually high or low EPC relative to others.
+One row per offer or partner combination.
+| Offer | Partner | Buyer | EPC | ROI | Verdict |
+|---|---|---|---|---|---|
 
 ## 🧪 Highest-Upside Tests
-Specific untested or under-tested combinations worth trying. Include the rationale (why this combo has upside) and a target EPC or ROI based on related data. ${hasOsData ? 'Include iOS-only tests where Android is dragging down a good iOS signal.' : ''}
+One row per test idea.
+| Test Combo | Buyer | Route | Carrier | Expected Upside | Rationale |
+|---|---|---|---|---|---|
 
 ---
 
 ## 👤 TK
-Comprehensive action plan. Cover everything: what to scale immediately (with numbers), what to cut, what to test, which offers to push harder, which routes/carriers to prioritise, and what new campaigns to launch. Remember: this team creates new campaigns rather than editing existing ones — recommend specific new campaign setups where relevant. Be exhaustive.
+One row per action. Cover scale, cut, test, and new campaign launches. This team creates new campaigns — be specific about what to set up.
+| Action | Target (offer/route/carrier/list) | Key Number | Priority |
+|---|---|---|---|
 
 ## 👤 MA
-Comprehensive action plan. Same depth as TK.
+Same format.
+| Action | Target | Key Number | Priority |
+|---|---|---|---|
 
 ## 👤 DS
-Comprehensive action plan. Same depth as DS.${listTable ? `
+Same format.
+| Action | Target | Key Number | Priority |
+|---|---|---|---|${listTable ? `
 
 ## 📋 Data List Intelligence
-Cover every meaningful list signal. For active lists with strong performance, say to keep running. For cooling lists with good history, name them and the ROI. For idle lists ready to retest, be explicit about who should pick them up and why. For degrading lists, state the EPC drop and recommend rest duration.` : ''}`;
+One row per list signal.
+| List | Buyer | Status | EPC | ROI | Idle Days | Note |
+|---|---|---|---|---|---|---|` : ''}`;
 
 
 
@@ -1249,34 +1270,48 @@ Columns: list name | buyers who used it | campaigns run | all-time EPC | recent 
 ${listTable}
 
 FORMAT RULES:
-- Bullet points only. No paragraphs. No artificial limits — if 12 lists deserve attention, write 12 bullets.
-- Each bullet must include at least one number (EPC, ROI, idle days, profit).
-- Use the exact list name (no quotes needed) when referencing it.
-- Do not repeat the same list across multiple sections — place it in the most relevant one only.
+- Output every section as a markdown table. No bullets, no paragraphs.
+- Never truncate — if 15 lists deserve a row, write 15 rows.
+- Use the exact list name in every row.
+- Do not repeat the same list across multiple sections.
 
 ## 👤 TK — Priority List Queue
-Every list TK should queue for their next campaigns, in priority order. Include: list name, why it's queued (idle X days, ROI Y%, EPC $Z), and whether to run it on Verizon, AT&T, or T-Mobile based on past performance. Cover all strong candidates.
+Every list TK should queue next, in priority order.
+| List | Idle Days | All-time EPC | ROI | Carrier | Priority | Note |
+|---|---|---|---|---|---|---|
 
 ## 👤 MA — Priority List Queue
-Same comprehensive format for MA.
+Same format for MA.
+| List | Idle Days | All-time EPC | ROI | Carrier | Priority | Note |
+|---|---|---|---|---|---|---|
 
 ## 👤 DS — Priority List Queue
-Same comprehensive format for DS.
+Same format for DS.
+| List | Idle Days | All-time EPC | ROI | Carrier | Priority | Note |
+|---|---|---|---|---|---|---|
 
 ## ✅ Reuse Now
-All lists idle 28+ days with ROI > 30% and reasonable EPC. Name each, include idle days, all-time ROI, all-time EPC, and which buyer ran it best. If recent EPC is available and up, flag the uptrend. Be exhaustive — every reusable list should be here.
+All lists idle 28+ days with ROI > 30%. Be exhaustive.
+| List | Buyer | Idle Days | All-time EPC | Recent EPC | ROI | Note |
+|---|---|---|---|---|---|---|
 
 ## 🔁 Still Performing — Keep Running
-All currently active lists (idle < 14d) with positive ROI. For each: state ROI, current EPC, whether the 30-day EPC is holding or improving vs all-time. Flag any showing signs of fatigue.
+All active lists (idle < 14d) with positive ROI.
+| List | Buyer | EPC | 30d EPC Trend | ROI | Note |
+|---|---|---|---|---|---|
 
 ## ⚠️ Degrading — Pull and Rest
-Every list where recent 30-day EPC dropped more than 15% vs all-time, or ROI has gone negative. State the exact EPC drop and recommended rest duration.
+Lists where recent EPC dropped >15% vs all-time, or ROI has gone negative.
+| List | Buyer | All-time EPC | Recent EPC | Drop % | Rest Duration |
+|---|---|---|---|---|---|
 
 ## 📊 Partner List Rankings
-Rank data partners (LM, KN, USMS clickers, AVANTO, UPSTART, KOINO, etc.) by average EPC and ROI across their lists. Include supporting numbers.
+| Partner | Avg EPC | Avg ROI | # Lists Tracked | Verdict |
+|---|---|---|---|---|
 
 ## ❌ Retire
-All lists with negative all-time ROI and no uptrend signal. Be direct.`;
+| List | Buyer | All-time ROI | Reason |
+|---|---|---|---|`;
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const first = await anthropic.messages.create({

@@ -11,10 +11,23 @@ function parseContent(text) {
   let current = null;
   for (const line of lines) {
     const h2 = line.match(/^##\s+(.+)/);
-    if (h2) { if (current) sections.push(current); current = { heading: h2[1].trim(), bullets: [] }; }
-    else if (current && /^-{2,}\s*$/.test(line.trim())) { /* skip horizontal rules */ }
-    else if (current && line.trim().startsWith('-')) current.bullets.push(line.replace(/^[-*]\s*/, '').trim());
-    else if (current && line.trim() && !line.startsWith('#')) current.bullets.push(line.trim());
+    if (h2) {
+      if (current) sections.push(current);
+      current = { heading: h2[1].trim(), bullets: [], table: null };
+    } else if (!current) {
+      continue;
+    } else if (/^-{2,}\s*$/.test(line.trim())) {
+      // horizontal rule — skip
+    } else if (line.trim().startsWith('|')) {
+      const cells = line.split('|').slice(1, -1).map(c => c.trim());
+      if (cells.every(c => /^[-: ]+$/.test(c))) continue; // separator row
+      if (!current.table) current.table = { headers: cells, rows: [] };
+      else current.table.rows.push(cells);
+    } else if (line.trim().startsWith('-')) {
+      current.bullets.push(line.replace(/^[-*]\s*/, '').trim());
+    } else if (line.trim() && !line.startsWith('#')) {
+      // plain text instruction lines (like column spec hints) — skip
+    }
   }
   if (current) sections.push(current);
   return sections;
@@ -40,22 +53,72 @@ function sectionStyle(h) {
 }
 
 function renderMd(text) {
-  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  return (text || '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
+// Color-code cell values: money (red/green), ROI%, EPC
+function cellClass(header, value) {
+  const h = (header || '').toLowerCase();
+  const v = (value || '').trim();
+  if (h === 'action' || h === 'priority' || h === 'verdict' || h === 'signal') return 'font-medium';
+  if (h.includes('profit') || h.includes('loss') || h.includes('move amount')) {
+    if (v.startsWith('-') || v.startsWith('-$')) return 'text-red-600 font-medium tabular-nums';
+    if (v.startsWith('$') || v.match(/^\d/)) return 'text-green-700 font-medium tabular-nums';
+  }
+  if (h.includes('roi') || h.includes('drop')) {
+    if (v.startsWith('-')) return 'text-red-600 font-medium tabular-nums';
+    return 'text-green-700 font-medium tabular-nums';
+  }
+  if (h.includes('epc')) return 'font-medium tabular-nums text-indigo-700';
+  return 'text-gray-700';
+}
+
+function SectionTable({ table }) {
+  if (!table || !table.headers || !table.rows.length) return null;
+  return (
+    <div className="overflow-x-auto rounded-md border border-white/60">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-black/10 bg-black/5">
+            {table.headers.map((h, i) => (
+              <th key={i} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-black/5">
+          {table.rows.map((row, i) => (
+            <tr key={i} className={i % 2 === 0 ? 'bg-white/40' : 'bg-white/20'}>
+              {table.headers.map((h, j) => (
+                <td key={j} className={`px-3 py-2 ${cellClass(h, row[j])}`}
+                  dangerouslySetInnerHTML={{ __html: renderMd(row[j] ?? '') }} />
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function Section({ sec }) {
   const style = sectionStyle(sec.heading);
+  const hasTable = sec.table && sec.table.rows.length > 0;
   return (
     <div className={`rounded-lg border ${style.border} ${style.bg} px-4 py-3`}>
-      <h3 className={`font-semibold text-sm mb-2 ${style.heading}`}>{sec.heading}</h3>
-      <ul className="space-y-1.5">
-        {sec.bullets.map((b, j) => (
-          <li key={j} className="flex items-start gap-2 text-sm text-gray-700">
-            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-50 ${style.dot}`} />
-            <span dangerouslySetInnerHTML={{ __html: renderMd(b) }} />
-          </li>
-        ))}
-      </ul>
+      <h3 className={`font-semibold text-sm mb-2.5 ${style.heading}`}>{sec.heading}</h3>
+      {hasTable
+        ? <SectionTable table={sec.table} />
+        : (
+          <ul className="space-y-1.5">
+            {sec.bullets.map((b, j) => (
+              <li key={j} className="flex items-start gap-2 text-sm text-gray-700">
+                <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-50 ${style.dot}`} />
+                <span dangerouslySetInnerHTML={{ __html: renderMd(b) }} />
+              </li>
+            ))}
+          </ul>
+        )
+      }
     </div>
   );
 }
