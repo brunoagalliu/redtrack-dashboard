@@ -1059,63 +1059,61 @@ ${buyerComboSections}
 
 FORMAT RULES:
 - Output every section as a markdown table. No bullet points, no paragraphs.
-- Be thorough — never truncate. If 12 rows are warranted, write 12 rows.
-- Use exact offer names, route names, carrier names wherever possible.
-- Include at least one key number per row (EPC, profit, ROI, etc.).
+- Each field must have its own column — never combine multiple values in one cell.
+- Be thorough — never truncate rows. If 12 items deserve attention, write 12 rows.
 - CONFIDENCE RULE: Only write "Scale immediately" for combos/offers with 30+ conversions. Below 30 conv use "Test" in the Action column.
-${diff ? '- If CHANGES SINCE LAST REPORT shows a call was ignored, note it in the Action/Note column of the relevant row.' : ''}
+${diff ? '- If CHANGES SINCE LAST REPORT shows a call was ignored, note it in the Note column.' : ''}
 
 ## 💰 Best Combinations to Scale
-Every combo worth scaling (30+ conversions). One row per combo.
+Every combo worth scaling (30+ conversions). One row per combo. ${hasOsData ? 'Put iOS-only in the Action column where iOS EPC significantly beats Android.' : ''}
 | ${hasOfferData ? 'Offer' : 'Vertical'} | Buyer | Route | Carrier | EPC | ROI | Conv | Action |
 |---|---|---|---|---|---|---|---|
-${hasOsData ? '(Flag iOS-only in Action column where iOS EPC significantly beats Android)' : ''}
 
 ## 🔴 Cut Immediately
 Every losing combo. One row per combo — no omissions.
-| What | Buyer | Profit | Action |
-|---|---|---|---|
+| Vertical/Offer | Buyer | Route | Carrier | Loss ($) | Action |
+|---|---|---|---|---|---|
 
 ## 🔁 Budget Reallocation
-One row per move.
-| From | To | Buyer | Move Amount | Why |
-|---|---|---|---|---|
+One row per budget move. Separate Route and Carrier into their own columns.
+| From (Offer/Vertical) | From Route | From Carrier | To (Offer/Vertical) | To Route | Buyer | Amount | Why |
+|---|---|---|---|---|---|---|---|
 
 ## 📡 Route & Carrier Intelligence
-One row per route or carrier.
-| Route / Carrier | Avg EPC | ROI | Signal | Note |
-|---|---|---|---|---|
+One row per route or carrier. Type column = "Route" or "Carrier".
+| Type | Name | Avg EPC | ROI | Trend | Note |
+|---|---|---|---|---|---|
 
 ## 🤝 Partner & Offer Analysis
-One row per offer or partner combination.
+One row per offer–partner pair.
 | Offer | Partner | Buyer | EPC | ROI | Verdict |
 |---|---|---|---|---|---|
 
 ## 🧪 Highest-Upside Tests
-One row per test idea.
-| Test Combo | Buyer | Route | Carrier | Expected Upside | Rationale |
+One row per test. Be specific.
+| Offer/Vertical | Buyer | Route | Carrier | Target EPC | Rationale |
 |---|---|---|---|---|---|
 
 ---
 
 ## 👤 TK
-One row per action. Cover scale, cut, test, and new campaign launches. This team creates new campaigns — be specific about what to set up.
-| Action | Target (offer/route/carrier/list) | Key Number | Priority |
-|---|---|---|---|
+One row per action. This team creates new campaigns — recommend specific new setups where relevant.
+| Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
+|---|---|---|---|---|---|
 
 ## 👤 MA
 Same format.
-| Action | Target | Key Number | Priority |
-|---|---|---|---|
+| Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
+|---|---|---|---|---|---|
 
 ## 👤 DS
 Same format.
-| Action | Target | Key Number | Priority |
-|---|---|---|---|${listTable ? `
+| Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
+|---|---|---|---|---|---|${listTable ? `
 
 ## 📋 Data List Intelligence
-One row per list signal.
-| List | Buyer | Status | EPC | ROI | Idle Days | Note |
+One row per list.
+| List | Buyer | Status | All-time EPC | ROI | Idle Days | Note |
 |---|---|---|---|---|---|---|` : ''}`;
 
 

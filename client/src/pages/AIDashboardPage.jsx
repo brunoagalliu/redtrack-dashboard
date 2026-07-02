@@ -19,7 +19,9 @@ function parseContent(text) {
     } else if (/^-{2,}\s*$/.test(line.trim())) {
       // horizontal rule — skip
     } else if (line.trim().startsWith('|')) {
-      const cells = line.split('|').slice(1, -1).map(c => c.trim());
+      // Split on unescaped | only — \| is a literal pipe inside a cell
+      const cells = line.replace(/\\\|/g, '\x00').split('|')
+        .slice(1, -1).map(c => c.replace(/\x00/g, '|').trim());
       if (cells.every(c => /^[-: ]+$/.test(c))) continue; // separator row
       if (!current.table) current.table = { headers: cells, rows: [] };
       else current.table.rows.push(cells);
