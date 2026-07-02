@@ -1059,60 +1059,64 @@ ${buyerComboSections}
 
 FORMAT RULES:
 - Output every section as a markdown table. No bullet points, no paragraphs.
-- Each field must have its own column — never combine multiple values in one cell.
-- Be thorough — never truncate rows. If 12 items deserve attention, write 12 rows.
-- CONFIDENCE RULE: Only write "Scale immediately" for combos/offers with 30+ conversions. Below 30 conv use "Test" in the Action column.
-${diff ? '- If CHANGES SINCE LAST REPORT shows a call was ignored, note it in the Note column.' : ''}
+- Each field must have its own dedicated column — never combine multiple values in one cell.
+- COLUMN ORDER IS STRICT — fill every column in the exact order shown in the header, even if you write "N/A" or "—".
+- Buyer column = ALWAYS one of: TK, MA, DS (or "TK+MA" if shared). Never put a carrier or route name in the Buyer column.
+- No annotations or extra context in parentheses inside cells (e.g. "(LM)", "(DS)", "(TK)"). Put that info in the Note/Action column.
+- Be thorough — never truncate. If 12 rows are warranted, write 12 rows.
+- CONFIDENCE RULE: Only write "Scale immediately" for combos with 30+ conversions. Below 30 conv write "Test" in the Action column.
+${diff ? '- If CHANGES SINCE LAST REPORT shows a call was ignored, note it in the Action column.' : ''}
 
 ## 💰 Best Combinations to Scale
-Every combo worth scaling (30+ conversions). One row per combo. ${hasOsData ? 'Put iOS-only in the Action column where iOS EPC significantly beats Android.' : ''}
+Every combo worth scaling (30+ conversions). One row per combo. ${hasOsData ? 'Note iOS-only opportunity in the Action column where iOS EPC significantly beats Android.' : ''}
+STRICT column order — Buyer must be TK/MA/DS, never a carrier name.
 | ${hasOfferData ? 'Offer' : 'Vertical'} | Buyer | Route | Carrier | EPC | ROI | Conv | Action |
 |---|---|---|---|---|---|---|---|
 
 ## 🔴 Cut Immediately
-Every losing combo. One row per combo — no omissions.
+Every losing combo. One row per combo — no omissions. Buyer = TK/MA/DS only.
 | Vertical/Offer | Buyer | Route | Carrier | Loss ($) | Action |
 |---|---|---|---|---|---|
 
 ## 🔁 Budget Reallocation
-One row per budget move. Separate Route and Carrier into their own columns.
-| From (Offer/Vertical) | From Route | From Carrier | To (Offer/Vertical) | To Route | Buyer | Amount | Why |
+One row per move. Buyer = TK/MA/DS only. No annotations in parentheses.
+| From Vertical/Offer | From Route | From Carrier | To Vertical/Offer | To Route | To Carrier | Buyer | Why |
 |---|---|---|---|---|---|---|---|
 
 ## 📡 Route & Carrier Intelligence
-One row per route or carrier. Type column = "Route" or "Carrier".
+One row per route or carrier. Type = "Route" or "Carrier".
 | Type | Name | Avg EPC | ROI | Trend | Note |
 |---|---|---|---|---|---|
 
 ## 🤝 Partner & Offer Analysis
-One row per offer–partner pair.
+One row per offer. Buyer = TK/MA/DS only.
 | Offer | Partner | Buyer | EPC | ROI | Verdict |
 |---|---|---|---|---|---|
 
 ## 🧪 Highest-Upside Tests
-One row per test. Be specific.
+One row per test. Buyer = TK/MA/DS only.
 | Offer/Vertical | Buyer | Route | Carrier | Target EPC | Rationale |
 |---|---|---|---|---|---|
 
 ---
 
 ## 👤 TK
-One row per action. This team creates new campaigns — recommend specific new setups where relevant.
+One row per action. This team creates new campaigns — recommend specific new setups. Action Type = Scale / Cut / Test / Launch.
 | Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
 |---|---|---|---|---|---|
 
 ## 👤 MA
-Same format.
+Same format. Action Type = Scale / Cut / Test / Launch.
 | Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
 |---|---|---|---|---|---|
 
 ## 👤 DS
-Same format.
+Same format. Action Type = Scale / Cut / Test / Launch.
 | Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
 |---|---|---|---|---|---|${listTable ? `
 
 ## 📋 Data List Intelligence
-One row per list.
+One row per list. Buyer = TK/MA/DS only.
 | List | Buyer | Status | All-time EPC | ROI | Idle Days | Note |
 |---|---|---|---|---|---|---|` : ''}`;
 
