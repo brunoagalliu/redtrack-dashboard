@@ -1263,8 +1263,6 @@ Same comprehensive format for MA.
 ## 👤 DS — Priority List Queue
 Same comprehensive format for DS.
 
----
-
 ## ✅ Reuse Now
 All lists idle 28+ days with ROI > 30% and reasonable EPC. Name each, include idle days, all-time ROI, all-time EPC, and which buyer ran it best. If recent EPC is available and up, flag the uptrend. Be exhaustive — every reusable list should be here.
 

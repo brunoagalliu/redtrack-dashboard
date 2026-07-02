@@ -12,6 +12,7 @@ function parseContent(text) {
   for (const line of lines) {
     const h2 = line.match(/^##\s+(.+)/);
     if (h2) { if (current) sections.push(current); current = { heading: h2[1].trim(), bullets: [] }; }
+    else if (current && /^-{2,}\s*$/.test(line.trim())) { /* skip horizontal rules */ }
     else if (current && line.trim().startsWith('-')) current.bullets.push(line.replace(/^[-*]\s*/, '').trim());
     else if (current && line.trim() && !line.startsWith('#')) current.bullets.push(line.trim());
   }
