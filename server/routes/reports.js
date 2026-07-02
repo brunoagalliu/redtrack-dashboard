@@ -85,7 +85,7 @@ function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes, knownPartners
 //   →  listKey = "kn_billing_sweeps_att_mar2026_34k", listLastUsed = "23.03"
 const _LIST_NOISE = new Set(['own', 'upm']);
 function parseListFromTitle(rawTitle, knownRoutes, knownVerticals) {
-  let s = rawTitle.trim().replace(/\s*-?\s*COPY\s*$/i, '');
+  let s = rawTitle.trim().replace(/[_\s]*-?\s*COPY\s*$/i, '');
 
   // Extract trailing _DD.MM date stamp
   let listLastUsed = null;
