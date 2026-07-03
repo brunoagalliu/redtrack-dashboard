@@ -4,14 +4,14 @@ import { api } from '../lib/api';
 import CopyButton from './CopyButton';
 import SearchableSelect from './SearchableSelect';
 
-// ── Inline-add dropdown ──────────────────────────────────────────────────────
+// ── Inline-add dropdown ───────────────────────────────────────────────────────
 function CreatableSelect({ value, onChange, items = [], onAdd, addLabel, loading }) {
   const [adding, setAdding] = useState(false);
   const [draft,  setDraft]  = useState('');
 
   function handleChange(e) {
-    if (e.target.value === '__add__') { setAdding(true); }
-    else { onChange(e.target.value); }
+    if (e.target.value === '__add__') setAdding(true);
+    else onChange(e.target.value);
   }
   function commit() {
     const t = draft.trim();
@@ -40,260 +40,144 @@ function CreatableSelect({ value, onChange, items = [], onAdd, addLabel, loading
   );
 }
 
-// ── Inline-add dropdown for partners ────────────────────────────────────────
-function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading, onSearch }) {
-  const [adding, setAdding] = useState(false);
-  const [draft,  setDraft]  = useState('');
+// ── Parse an existing campaign name back into its parts ───────────────────────
+const BUYERS = ['TK', 'MA', 'DS'];
 
-  function handleChange(val) {
-    if (val === '__add__') { setAdding(true); }
-    else { onChange(val); }
-  }
-  function commit() {
-    const alias = draft.trim().toUpperCase();
-    if (alias) onAdd(alias);
-    setAdding(false); setDraft('');
-  }
-
-  if (adding) {
-    return (
-      <div className="flex gap-1">
-        <input autoFocus type="text" value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
-          className="input flex-1 uppercase text-sm" placeholder="Partner alias e.g. NEWCO" />
-        <button type="button" onClick={commit} className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white font-medium">Add</button>
-        <button type="button" onClick={() => { setAdding(false); setDraft(''); }} className="px-2 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600">✕</button>
-      </div>
-    );
-  }
-
-  const options = [
-    ...partners.map(p => ({ alias: p.alias, value: p.alias })),
-    // { alias: '＋ Add new partner…', value: '__add__' }
-  ];
-
-  return (
-    <SearchableSelect
-      options={options}
-      value={value}
-      onChange={handleChange}
-      onQueryChange={onSearch}
-      labelKey="alias"
-      valueKey="value"
-      disabled={loading}
-      placeholder="Search partner…"
-    />
-  );
-}
-
-// ── Parse a built name back into its parts ───────────────────────────────────
-function parseName(name, providers, routes, verticals, partners) {
-  // Strip copy/clone suffixes
+function parseName(name, sources, verticals) {
   const n = name.replace(/^Copy of\s+/i, '').replace(/[_\s]*-?\s*copy\s*$/i, '').trim();
 
-  // Convention: "{buyer/provider} - {route}_{vertical}_{list}_{date}"
-  // Split on first " - " to separate the prefix from the rest
+  // Split on first ' - ' to get buyer prefix and rest
   const dashIdx = n.indexOf(' - ');
-  let prefix = '';
+  let buyer  = '';
   let rest   = n;
   if (dashIdx !== -1) {
-    prefix = n.slice(0, dashIdx).trim();  // e.g. "TK" or "MA" or "Campaigner"
-    rest   = n.slice(dashIdx + 3).trim(); // e.g. "USMS_Cloud_kn_billing_sweeps_att_mar2026_34k_23.03"
+    const prefix = n.slice(0, dashIdx).trim();
+    if (BUYERS.includes(prefix)) buyer = prefix;
+    rest = n.slice(dashIdx + 3).trim();
   }
 
-  const providerSet = new Set(providers.map((p) => p.value));
-  const routeSet    = new Set(routes.map((r) => r.value));
+  const sourceSet   = new Set(sources.map((s) => s.value));
   const verticalSet = new Set(verticals.map((v) => v.value));
-  const partnerSet  = new Set(partners.map((p) => p.alias));
   const dateRegex   = /^\d{2}\.\d{2}$/;
-  const BUYERS      = new Set(['TK', 'MA', 'DS']);
 
-  // Prefix is buyer (TK/MA/DS) or external provider
-  const parsedBuyer    = BUYERS.has(prefix) ? prefix : '';
-  const parsedProvider = !parsedBuyer && providerSet.has(prefix) ? prefix : '';
-
-  // Parse the remainder by underscore
-  const parts        = rest.split('_');
-  let parsedRoute    = '';
-  let parsedVertical = '';
-  let parsedPartner  = '';
-  let parsedClickers = false;
-  const listParts    = [];
+  const parts      = rest.split('_');
+  let source       = '';
+  let vertical     = '';
+  const listParts  = [];
 
   for (const part of parts) {
-    if (!parsedRoute    && routeSet.has(part))    { parsedRoute = part; }
-    else if (!parsedVertical && verticalSet.has(part)) { parsedVertical = part; }
-    else if (!parsedPartner  && partnerSet.has(part))  { parsedPartner = part; }
-    else if (part.toLowerCase() === 'clickers')   { parsedClickers = true; }
-    else if (dateRegex.test(part))                { /* skip trailing date */ }
-    else                                          { listParts.push(part); }
+    if (!source   && sourceSet.has(part))   { source = part; }
+    else if (!vertical && verticalSet.has(part)) { vertical = part; }
+    else if (dateRegex.test(part))          { /* skip trailing date */ }
+    else                                    { listParts.push(part); }
   }
 
-  return { buyer: parsedBuyer, provider: parsedProvider, route: parsedRoute, vertical: parsedVertical, partner: parsedPartner, clickers: parsedClickers, listName: listParts.join('_') };
+  return { buyer, source, vertical, listName: listParts.join('_') };
 }
 
-const SIMPLIFIED_SOURCES = ['SMS - UPM', 'SMS - Ranhog'];
+function todayStr() {
+  const d = new Date();
+  return `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+}
 
-// ── Main component ───────────────────────────────────────────────────────────
-export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRoute, error, sourceName, domains = [], domainId, onDomainChange, loadingDomains }) {
-  const isSimplified = SIMPLIFIED_SOURCES.includes(sourceName);
+// ── Main component ────────────────────────────────────────────────────────────
+export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRoute, error, domains = [], domainId, onDomainChange, loadingDomains }) {
   const qc = useQueryClient();
 
-  const [partnerSearch, setPartnerSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(partnerSearch), 500);
-    return () => clearTimeout(timer);
-  }, [partnerSearch]);
-
-  const { data: providers = [], isLoading: loadingProviders } = useQuery({ queryKey: ['list', 'provider'], queryFn: () => api.getList('provider') });
-  const { data: routes    = [], isLoading: loadingRoutes    } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
+  const { data: sources   = [], isLoading: loadingSources   } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
   const { data: verticals = [], isLoading: loadingVerticals } = useQuery({ queryKey: ['list', 'vertical'], queryFn: () => api.getList('vertical') });
-  const { data: partnersData = { content: [] }, isLoading: loadingPartners } = useQuery({
-    queryKey: ['partners', debouncedSearch],
-    queryFn: () => api.searchDataSources(debouncedSearch, 0, 50, 'name,asc', 'name')
-  });
 
-  const partners = partnersData.content.map(p => ({
-    id: p.id,
-    alias: p.name,
-    code: p.name
-  }));
-
-  // Can't call hooks conditionally so define all four upfront
-  const addProvider = useMutation({ mutationFn: (v) => api.addListItem('provider', v), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'provider'] }) });
-  const addRoute    = useMutation({ mutationFn: (v) => api.addListItem('route', v),    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
+  const addSource   = useMutation({ mutationFn: (v) => api.addListItem('route', v),    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
   const addVertical = useMutation({ mutationFn: (v) => api.addListItem('vertical', v), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
-  const addPartner  = useMutation({ mutationFn: (alias) => api.addPartner(alias),       onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'partners'] }) });
 
-  const [buyer,    setBuyer]    = useState(''); // TK / MA / DS
-  const [provider, setProvider] = useState(''); // external provider
-  const [route,    setRoute]    = useState('');
+  const [buyer,    setBuyer]    = useState('');
+  const [source,   setSource]   = useState('');
   const [vertical, setVertical] = useState('');
-  const [partner,  setPartner]  = useState('');
-  const [clickers, setClickers] = useState(false);
   const [listName, setListName] = useState('');
+  const [date,     setDate]     = useState(todayStr);
   const [initialized, setInitialized] = useState(false);
 
-  function selectBuyer(b)    { setBuyer(b);    setProvider(''); }
-  function selectProvider(p) { setProvider(p); setBuyer(''); }
-
-  // Prefill structured fields from an existing campaign name (e.g. after clone/edit)
+  // Pre-fill from existing campaign name (edit mode)
   useEffect(() => {
-    if (initialized || !value || loadingProviders || loadingRoutes || loadingVerticals || loadingPartners) return;
-    const parsed = parseName(value, providers, routes, verticals, partners);
+    if (initialized || !value || loadingSources || loadingVerticals) return;
+    const parsed = parseName(value, sources, verticals);
     if (parsed.buyer)    setBuyer(parsed.buyer);
-    if (parsed.provider) setProvider(parsed.provider);
-    if (parsed.route)    setRoute(parsed.route);
+    if (parsed.source)   setSource(parsed.source);
     if (parsed.vertical) setVertical(parsed.vertical);
-    if (parsed.partner)  setPartner(parsed.partner);
-    setClickers(parsed.clickers);
     if (parsed.listName) setListName(parsed.listName);
     setInitialized(true);
-  }, [value, loadingProviders, loadingRoutes, loadingVerticals, loadingPartners, initialized, providers, routes, verticals, partners]);
-  const date = (() => {
-    const d = new Date();
-    return `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  })();
+  }, [value, loadingSources, loadingVerticals, initialized, sources, verticals]);
 
-  const selectedPartner = partners.find((p) => p.alias === partner);
+  // Build the campaign name from parts
+  const suffix = [source, vertical, listName, date].filter(Boolean).join('_');
+  const preview = buyer
+    ? (suffix ? `${buyer} - ${suffix}` : buyer)
+    : '';
 
-  function build(b, p, r, ve, pa, clk, ln, dt) {
-    const prefix = b || p; // buyer takes priority over provider
-    const suffix = [r, ve, pa, clk ? 'clickers' : '', ln, dt].filter(Boolean).join('_');
-    return prefix && suffix ? `${prefix} - ${suffix}` : prefix || '';
-  }
-
-  function buildSimplified(ve, pa, clk, ln, dt) {
-    const parts = [ve, pa, clk ? 'clickers' : '', ln, dt].filter(Boolean);
-    return ve ? parts.join('_') : '';
-  }
-
-  // Always derived from local state — never stale
-  const preview = isSimplified
-    ? buildSimplified(vertical, partner, clickers, listName, date)
-    : build(buyer, provider, route, vertical, partner, clickers, listName, date);
-  const urlParams = [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
-
-  // Keep form.name and urlParams in sync with local state
+  // Keep parent form in sync
   useEffect(() => {
     if (preview) onChange(preview);
-    if (onUrlParams) onUrlParams(urlParams);
-  }, [preview, urlParams]);
+  }, [preview]);
 
-  // Notify parent when route changes so it can filter/auto-select the domain
+  // Notify parent when source changes (used for domain auto-select)
   useEffect(() => {
-    if (onRoute) onRoute(route);
-  }, [route]);
+    if (onRoute) onRoute(source);
+  }, [source]);
+
+  // URL params (keep for compatibility)
+  useEffect(() => {
+    if (onUrlParams) onUrlParams(`clk=0`);
+  }, []);
 
   return (
     <div className="space-y-4">
-      {/* Simplified mode (UPM / Ranhog): Vertical + Partner */}
-      {isSimplified ? (
-        <div className="grid grid-cols-2 gap-3 max-w-sm">
-          <div>
-            <label className="label">Vertical</label>
-            <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
-              onChange={setVertical}
-              onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
-          </div>
-          <div>
-            <label className="label">Data Partner</label>
-            <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
-              onChange={setPartner}
-              onSearch={setPartnerSearch}
-              onAdd={(alias) => addPartner.mutate(alias)} />
-          </div>
+
+      {/* 1. Media Buyer */}
+      <div>
+        <label className="label">Media Buyer *</label>
+        <div className="flex gap-2">
+          {BUYERS.map((b) => (
+            <button key={b} type="button" onClick={() => setBuyer(buyer === b ? '' : b)}
+              className={`px-5 py-2 rounded-md text-sm font-semibold border-2 transition-colors ${
+                buyer === b
+                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-300'
+              }`}>
+              {b}
+            </button>
+          ))}
         </div>
-      ) : (
-        /* Full mode: Buyer · Provider · Route · Vertical · Partner */
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="label mb-0 shrink-0">Media Buyer</span>
-            <div className="flex gap-1.5">
-              {['TK', 'MA', 'DS'].map((b) => (
-                <button key={b} type="button" onClick={() => selectBuyer(buyer === b ? '' : b)}
-                  className={`px-4 py-1.5 rounded-md text-sm font-semibold border-2 transition-colors ${
-                    buyer === b
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-300'
-                  }`}>
-                  {b}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-4 gap-3">
-          <div>
-            <label className="label">External Provider</label>
-            <CreatableSelect value={provider} items={providers.filter(p => !['TK','MA','DS'].includes(p.value))} loading={loadingProviders}
-              onChange={(p) => selectProvider(provider === p ? '' : p)}
-              onAdd={(v) => addProvider.mutate(v)} addLabel="New provider…" />
-          </div>
-          <div>
-            <label className="label">Route</label>
-            <CreatableSelect value={route} items={routes} loading={loadingRoutes}
-              onChange={setRoute}
-              onAdd={(v) => addRoute.mutate(v)} addLabel="New route…" />
-          </div>
-          <div>
-              <label className="label">Vertical</label>
-            <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
-              onChange={setVertical}
-              onAdd={(v) => addVertical.mutate(v)} addLabel="New vertical…" />
-          </div>
-          <div>
-              <label className="label">Data Partner</label>
-            <CreatablePartnerSelect value={partner} partners={partners} loading={loadingPartners}
-              onChange={setPartner}
-                onSearch={setPartnerSearch}
-                onAdd={(alias) => addPartner.mutate(alias)} />
-          </div>
+      </div>
+
+      {/* 2–3. Traffic Source + Vertical */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label">Traffic Source / Route</label>
+          <CreatableSelect value={source} items={sources} loading={loadingSources}
+            onChange={setSource}
+            onAdd={(v) => addSource.mutate(v)} addLabel="Add new source…" />
         </div>
+        <div>
+          <label className="label">Vertical</label>
+          <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
+            onChange={setVertical}
+            onAdd={(v) => addVertical.mutate(v)} addLabel="Add new vertical…" />
         </div>
-      )}
+      </div>
+
+      {/* 4–5. List Name + Date */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="col-span-2">
+          <label className="label">List Name</label>
+          <input type="text" value={listName} onChange={(e) => setListName(e.target.value)}
+            className="input" placeholder="e.g. kn_billing_sweeps_att_mar2026_34k" />
+        </div>
+        <div>
+          <label className="label">Date</label>
+          <input type="text" value={date} onChange={(e) => setDate(e.target.value)}
+            className="input font-mono" placeholder="MM.DD" />
+        </div>
+      </div>
 
       {/* Domain */}
       <div className="max-w-xs">
@@ -307,52 +191,18 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
         />
       </div>
 
-      {/* Row 2: List Name · Clickers */}
-      <div className="flex gap-3 items-end">
-        <div className="flex-1">
-          <label className="label">List Name</label>
-          <input type="text" value={listName}
-            onChange={(e) => setListName(e.target.value)}
-            className="input" placeholder="e.g. healthcare_MAR_50k_mar31_vz_13k" />
-        </div>
-        <div className="pb-2">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <div className="relative">
-              <input type="checkbox" checked={clickers}
-                onChange={(e) => setClickers(e.target.checked)}
-                className="sr-only" />
-              <div className={`w-9 h-5 rounded-full transition-colors ${clickers ? 'bg-blue-600' : 'bg-gray-300'}`} />
-              <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${clickers ? 'translate-x-4' : ''}`} />
-            </div>
-            <span className="text-sm text-gray-700">Clickers</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-mono ${clickers ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-              clk={clickers ? 1 : 0}
-            </span>
-          </label>
-        </div>
-      </div>
-
       {/* Preview */}
       {preview ? (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 space-y-2">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-1">Campaign Name</p>
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-sm text-blue-900 flex-1 break-all">{preview}</span>
-              <CopyButton text={preview} />
-            </div>
-          </div>
-          <div className="border-t border-blue-200 pt-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-1">URL Parameters</p>
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-sm text-blue-800 flex-1">{urlParams}</span>
-              <CopyButton text={urlParams} />
-            </div>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-1">Campaign Name</p>
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-sm text-blue-900 flex-1 break-all">{preview}</span>
+            <CopyButton text={preview} />
           </div>
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-center">
-          <p className="text-xs text-gray-400">Select a provider and at least one field to preview the name.</p>
+          <p className="text-xs text-gray-400">Select a media buyer to start building the name.</p>
         </div>
       )}
 
