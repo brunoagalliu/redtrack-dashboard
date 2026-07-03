@@ -4,7 +4,8 @@ import CopyButton from '../components/CopyButton';
 
 // ── Default lists ────────────────────────────────────────────────────────────
 
-const DEFAULT_PROVIDERS = ['TK', 'Pineapple', 'CM', 'InfoBip', 'Mr.Messaging', 'Campaigner', 'SMS Gateway', 'Tells', 'IT Decision', 'BSG'];
+const BUYERS = ['TK', 'MA', 'DS'];
+const DEFAULT_PROVIDERS = ['Pineapple', 'CM', 'InfoBip', 'Mr.Messaging', 'Campaigner', 'SMS Gateway', 'Tells', 'IT Decision', 'BSG'];
 const DEFAULT_ROUTES    = ['USMS', 'ltsauto', 'cloudstorage4u', 'iphonetechzone', 'maxtechie', 'triallooks', 'dominantwire'];
 const DEFAULT_VERTICALS = ['CLOUD', 'AUTO', 'AV', 'DEBT', 'CLINICAL'];
 const DEFAULT_PARTNERS  = [
@@ -269,7 +270,7 @@ export default function CampaignNameBuilderPage() {
   const navigate = useNavigate();
 
   // Persisted lists
-  const [providers, setProviders] = useState(() => load('nb.providers', DEFAULT_PROVIDERS));
+  const [providers, setProviders] = useState(() => load('nb.providers', DEFAULT_PROVIDERS).filter(p => !BUYERS.includes(p)));
   const [routes,    setRoutes]    = useState(() => load('nb.routes',    DEFAULT_ROUTES));
   const [verticals, setVerticals] = useState(() => load('nb.verticals', DEFAULT_VERTICALS));
   const [partners,  setPartners]  = useState(() => load('nb.partners',  DEFAULT_PARTNERS));
@@ -328,7 +329,7 @@ export default function CampaignNameBuilderPage() {
         <div className="card p-6">
           <p className="section-title">Media Buyer</p>
           <div className="flex gap-2">
-            {['TK', 'MA', 'DS'].map((b) => (
+            {BUYERS.map((b) => (
               <button key={b} onClick={() => selectBuyer(buyer === b ? '' : b)}
                 className={`px-5 py-2 rounded-md text-sm font-semibold border-2 transition-colors ${
                   buyer === b
@@ -345,7 +346,7 @@ export default function CampaignNameBuilderPage() {
         <div className="card p-6">
           <p className="section-title">External Provider <span className="text-xs font-normal text-gray-400 ml-1">(clears buyer selection)</span></p>
           <CreatableButtonGroup
-            items={providers.filter(p => !['TK','MA','DS'].includes(p))}
+            items={providers}
             selected={provider}
             onSelect={(p) => selectProvider(provider === p ? '' : p)}
             onAdd={addProvider}
