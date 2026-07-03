@@ -303,8 +303,11 @@ export default function CampaignNameBuilderPage() {
     .filter(Boolean)
     .join('_');
 
-  const prefix = buyer || provider;
-  const campaignName = prefix && suffix ? `${prefix} - ${suffix}` : '';
+  // Buyer is always first and independent — shown even before the rest is filled in.
+  // External provider is only used when no buyer is set (non-buyer campaigns).
+  const campaignName = buyer
+    ? (suffix ? `${buyer} - ${suffix}` : buyer)
+    : (provider && suffix ? `${provider} - ${suffix}` : '');
 
   const urlParams = [
     selectedPartner ? `sourceid=${selectedPartner.id}` : null,
