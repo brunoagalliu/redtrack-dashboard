@@ -89,17 +89,32 @@ function CreatablePartnerSelect({ value, onChange, partners = [], onAdd, loading
 
 // ── Parse a built name back into its parts ───────────────────────────────────
 function parseName(name, providers, routes, verticals, partners) {
-  // Strip legacy "Copy of " prefix or "_copy" suffix added by clone
-  const n = name.replace(/^Copy of\s+/i, '').replace(/_copy$/i, '');
-  const parts = n.split('_');
+  // Strip copy/clone suffixes
+  const n = name.replace(/^Copy of\s+/i, '').replace(/[_\s]*-?\s*copy\s*$/i, '').trim();
 
-  const providerSet  = new Set(providers.map((p) => p.value));
-  const routeSet     = new Set(routes.map((r) => r.value));
-  const verticalSet  = new Set(verticals.map((v) => v.value));
-  const partnerSet   = new Set(partners.map((p) => p.alias));
-  const dateRegex    = /^\d{2}\.\d{2}$/;
+  // Convention: "{buyer/provider} - {route}_{vertical}_{list}_{date}"
+  // Split on first " - " to separate the prefix from the rest
+  const dashIdx = n.indexOf(' - ');
+  let prefix = '';
+  let rest   = n;
+  if (dashIdx !== -1) {
+    prefix = n.slice(0, dashIdx).trim();  // e.g. "TK" or "MA" or "Campaigner"
+    rest   = n.slice(dashIdx + 3).trim(); // e.g. "USMS_Cloud_kn_billing_sweeps_att_mar2026_34k_23.03"
+  }
 
-  let parsedProvider = '';
+  const providerSet = new Set(providers.map((p) => p.value));
+  const routeSet    = new Set(routes.map((r) => r.value));
+  const verticalSet = new Set(verticals.map((v) => v.value));
+  const partnerSet  = new Set(partners.map((p) => p.alias));
+  const dateRegex   = /^\d{2}\.\d{2}$/;
+  const BUYERS      = new Set(['TK', 'MA', 'DS']);
+
+  // Prefix is buyer (TK/MA/DS) or external provider
+  const parsedBuyer    = BUYERS.has(prefix) ? prefix : '';
+  const parsedProvider = !parsedBuyer && providerSet.has(prefix) ? prefix : '';
+
+  // Parse the remainder by underscore
+  const parts        = rest.split('_');
   let parsedRoute    = '';
   let parsedVertical = '';
   let parsedPartner  = '';
@@ -107,16 +122,15 @@ function parseName(name, providers, routes, verticals, partners) {
   const listParts    = [];
 
   for (const part of parts) {
-    if (!parsedProvider && providerSet.has(part)) { parsedProvider = part; }
-    else if (!parsedRoute && routeSet.has(part))  { parsedRoute = part; }
+    if (!parsedRoute    && routeSet.has(part))    { parsedRoute = part; }
     else if (!parsedVertical && verticalSet.has(part)) { parsedVertical = part; }
-    else if (!parsedPartner && partnerSet.has(part))   { parsedPartner = part; }
+    else if (!parsedPartner  && partnerSet.has(part))  { parsedPartner = part; }
     else if (part.toLowerCase() === 'clickers')   { parsedClickers = true; }
-    else if (dateRegex.test(part))                { /* skip date */ }
+    else if (dateRegex.test(part))                { /* skip trailing date */ }
     else                                          { listParts.push(part); }
   }
 
-  return { provider: parsedProvider, route: parsedRoute, vertical: parsedVertical, partner: parsedPartner, clickers: parsedClickers, listName: listParts.join('_') };
+  return { buyer: parsedBuyer, provider: parsedProvider, route: parsedRoute, vertical: parsedVertical, partner: parsedPartner, clickers: parsedClickers, listName: listParts.join('_') };
 }
 
 const SIMPLIFIED_SOURCES = ['SMS - UPM', 'SMS - Ranhog'];
@@ -154,7 +168,8 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
   const addVertical = useMutation({ mutationFn: (v) => api.addListItem('vertical', v), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
   const addPartner  = useMutation({ mutationFn: (alias) => api.addPartner(alias),       onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'partners'] }) });
 
-  const [provider, setProvider] = useState('');
+  const [buyer,    setBuyer]    = useState(''); // TK / MA / DS
+  const [provider, setProvider] = useState(''); // external provider
   const [route,    setRoute]    = useState('');
   const [vertical, setVertical] = useState('');
   const [partner,  setPartner]  = useState('');
@@ -162,10 +177,14 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
   const [listName, setListName] = useState('');
   const [initialized, setInitialized] = useState(false);
 
+  function selectBuyer(b)    { setBuyer(b);    setProvider(''); }
+  function selectProvider(p) { setProvider(p); setBuyer(''); }
+
   // Prefill structured fields from an existing campaign name (e.g. after clone/edit)
   useEffect(() => {
     if (initialized || !value || loadingProviders || loadingRoutes || loadingVerticals || loadingPartners) return;
     const parsed = parseName(value, providers, routes, verticals, partners);
+    if (parsed.buyer)    setBuyer(parsed.buyer);
     if (parsed.provider) setProvider(parsed.provider);
     if (parsed.route)    setRoute(parsed.route);
     if (parsed.vertical) setVertical(parsed.vertical);
@@ -181,9 +200,10 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
 
   const selectedPartner = partners.find((p) => p.alias === partner);
 
-  function build(p, r, ve, pa, clk, ln, dt) {
+  function build(b, p, r, ve, pa, clk, ln, dt) {
+    const prefix = b || p; // buyer takes priority over provider
     const suffix = [r, ve, pa, clk ? 'clickers' : '', ln, dt].filter(Boolean).join('_');
-    return p && suffix ? `${p}_${suffix}` : '';
+    return prefix && suffix ? `${prefix} - ${suffix}` : prefix || '';
   }
 
   function buildSimplified(ve, pa, clk, ln, dt) {
@@ -194,7 +214,7 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
   // Always derived from local state — never stale
   const preview = isSimplified
     ? buildSimplified(vertical, partner, clickers, listName, date)
-    : build(provider, route, vertical, partner, clickers, listName, date);
+    : build(buyer, provider, route, vertical, partner, clickers, listName, date);
   const urlParams = [selectedPartner ? `sourceid=${selectedPartner.code}` : null, `clk=${clickers ? 1 : 0}`].filter(Boolean).join('&');
 
   // Keep form.name and urlParams in sync with local state
@@ -228,12 +248,28 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
           </div>
         </div>
       ) : (
-        /* Full mode: Provider · Route · Vertical · Partner */
-        <div className="grid grid-cols-4 gap-3">
+        /* Full mode: Buyer · Provider · Route · Vertical · Partner */
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="label mb-0 shrink-0">Media Buyer</span>
+            <div className="flex gap-1.5">
+              {['TK', 'MA', 'DS'].map((b) => (
+                <button key={b} type="button" onClick={() => selectBuyer(buyer === b ? '' : b)}
+                  className={`px-4 py-1.5 rounded-md text-sm font-semibold border-2 transition-colors ${
+                    buyer === b
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-300'
+                  }`}>
+                  {b}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-3">
           <div>
-            <label className="label">SMS Provider</label>
-            <CreatableSelect value={provider} items={providers} loading={loadingProviders}
-              onChange={setProvider}
+            <label className="label">External Provider</label>
+            <CreatableSelect value={provider} items={providers.filter(p => !['TK','MA','DS'].includes(p.value))} loading={loadingProviders}
+              onChange={(p) => selectProvider(provider === p ? '' : p)}
               onAdd={(v) => addProvider.mutate(v)} addLabel="New provider…" />
           </div>
           <div>
@@ -255,6 +291,7 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
                 onSearch={setPartnerSearch}
                 onAdd={(alias) => addPartner.mutate(alias)} />
           </div>
+        </div>
         </div>
       )}
 
