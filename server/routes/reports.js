@@ -922,32 +922,7 @@ async function generateAIReport(days) {
     `);
     const hasOsData = osRows.length > 0;
 
-    // Data list performance — lists with enough volume, sorted by profit
-    const { rows: listRows } = await pool.query(`
-      SELECT
-        c.data_list                                                            AS list_key,
-        ARRAY_AGG(DISTINCT c.buyer)                                           AS buyers,
-        COALESCE(SUM(cs.clicks),0)::int                                       AS clicks,
-        COALESCE(SUM(cs.conversions),0)::int                                  AS conversions,
-        ROUND(SUM(cs.revenue)::numeric,2)                                     AS revenue,
-        ROUND(SUM(cs.profit)::numeric,2)                                      AS profit,
-        CASE WHEN SUM(cs.clicks) > 0
-             THEN ROUND(SUM(cs.revenue)::numeric/SUM(cs.clicks),4) ELSE 0
-             END                                                              AS epc,
-        CASE WHEN SUM(cs.cost) > 0
-             THEN ROUND(SUM(cs.profit)::numeric/SUM(cs.cost)*100,1) ELSE 0
-             END                                                              AS roi,
-        EXTRACT(DAY FROM NOW() - MAX(c.created_at::timestamptz))::int        AS days_since_last_use,
-        COUNT(DISTINCT c.id)                                                  AS campaign_count
-      FROM rt_campaigns c
-      JOIN rt_campaign_stats cs ON cs.campaign_id = c.id
-      WHERE c.data_list IS NOT NULL
-        AND cs.stat_date BETWEEN $1 AND $2
-      GROUP BY c.data_list
-      HAVING SUM(cs.clicks) > 200
-      ORDER BY SUM(cs.profit) DESC
-      LIMIT 30
-    `, [dateFrom, today]);
+    // List performance is handled separately by generateListReport — not included here
 
     // Per-buyer top and bottom combos (vertical × route × carrier)
     const { rows: buyerComboRows } = await pool.query(`
@@ -974,7 +949,7 @@ async function generateAIReport(days) {
     const dataJson = {
       period_days: days, date_from: dateFrom, date_to: today,
       combinations: combos, buyers: buyerRows, offer_combinations: offerRows,
-      os_combinations: osRows, list_performance: listRows,
+      os_combinations: osRows,
     };
 
     // Build compact iOS vs Android comparison for prompt
@@ -1010,11 +985,6 @@ async function generateAIReport(days) {
       return `${i+1}. "${r.offer}" | ${r.vertical} | ${r.route} | ${r.carrier} | Partner:${r.data_partner} | Buyer:${r.buyer} | Clicks:${r.clicks} | Conv:${r.conversions} | EPC:$${epc} | Profit:$${r.profit}* | ROI:${r.roi}%*`;
     }).join('\n');
 
-    // Build list performance table for prompt
-    const listTable = listRows.length > 0 ? listRows.map((r, i) => {
-      const status = r.days_since_last_use >= 28 ? '⏸ IDLE' : r.days_since_last_use >= 14 ? '🕐 COOLING' : '✅ ACTIVE';
-      return `${i+1}. "${r.list_key}" | Buyers:${(r.buyers||[]).join('+')} | Campaigns:${r.campaign_count} | Clicks:${r.clicks} | Conv:${r.conversions} | EPC:$${r.epc} | Profit:$${r.profit} | ROI:${r.roi}% | LastUsed:${r.days_since_last_use}d ago | ${status}`;
-    }).join('\n') : '';
 
     const diff = buildReportDiff(previous, combos, buyerRows);
     dataJson.changes_since_last = diff;
@@ -1053,7 +1023,6 @@ OFFER PERFORMANCE — offer × route × carrier × partner × buyer (sorted by p
 ${offerTable}
 ` : ''}${osPromptSection}
 ${diffSection}
-${listTable ? `DATA LIST PERFORMANCE — list name | buyers | campaigns run | clicks | conversions | EPC | profit | ROI | days since last used | status:\n${listTable}\n` : ''}
 PER-BUYER BREAKDOWN:
 ${buyerComboSections}
 
@@ -1113,12 +1082,7 @@ Same format. Action Type = Scale / Cut / Test / Launch.
 ## 👤 DS
 Same format. Action Type = Scale / Cut / Test / Launch.
 | Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
-|---|---|---|---|---|---|${listTable ? `
-
-## 📋 Data List Intelligence
-One row per list. Buyer = TK/MA/DS only.
-| List | Buyer | Status | All-time EPC | ROI | Idle Days | Note |
-|---|---|---|---|---|---|---|` : ''}`;
+|---|---|---|---|---|---|`;
 
 
 
@@ -1126,7 +1090,7 @@ One row per list. Buyer = TK/MA/DS only.
     const MODEL = 'claude-sonnet-4-6';
     const first = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 16000,
+      max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -1317,8 +1281,8 @@ Lists where recent EPC dropped >15% vs all-time, or ROI has gone negative.
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const first = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 10000,
+    model: 'claude-haiku-4-5',
+    max_tokens: 6000,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -1327,8 +1291,8 @@ Lists where recent EPC dropped >15% vs all-time, or ROI has gone negative.
   if (first.stop_reason === 'max_tokens') {
     console.warn('[ai-list] hit max_tokens — continuing...');
     const second = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 6000,
+      model: 'claude-haiku-4-5',
+      max_tokens: 4000,
       messages: [
         { role: 'user', content: prompt },
         { role: 'assistant', content },
