@@ -275,13 +275,17 @@ export default function CampaignNameBuilderPage() {
   const [partners,  setPartners]  = useState(() => load('nb.partners',  DEFAULT_PARTNERS));
 
   // Selections
-  const [provider, setProvider] = useState('');
+  const [buyer,    setBuyer]    = useState(''); // TK / MA / DS
+  const [provider, setProvider] = useState(''); // external provider (mutually exclusive with buyer)
   const [route,    setRoute]    = useState('');
   const [vertical, setVertical] = useState('');
   const [partner,  setPartner]  = useState('');
   const [clickers, setClickers] = useState(false);
   const [listName, setListName] = useState('');
   const [date,     setDate]     = useState(todayMMDD);
+
+  function selectBuyer(b)    { setBuyer(b); setProvider(''); }
+  function selectProvider(p) { setProvider(p); setBuyer(''); }
 
   // Adders
   function addProvider(v) { const next = [...providers, v]; setProviders(next); save('nb.providers', next); }
@@ -299,7 +303,8 @@ export default function CampaignNameBuilderPage() {
     .filter(Boolean)
     .join('_');
 
-  const campaignName = provider && suffix ? `${provider} - ${suffix}` : '';
+  const prefix = buyer || provider;
+  const campaignName = prefix && suffix ? `${prefix} - ${suffix}` : '';
 
   const urlParams = [
     selectedPartner ? `sourceid=${selectedPartner.id}` : null,
@@ -316,13 +321,30 @@ export default function CampaignNameBuilderPage() {
 
       <div className="space-y-5">
 
-        {/* Provider */}
+        {/* Media Buyer */}
         <div className="card p-6">
-          <p className="section-title">SMS Provider</p>
+          <p className="section-title">Media Buyer</p>
+          <div className="flex gap-2">
+            {['TK', 'MA', 'DS'].map((b) => (
+              <button key={b} onClick={() => selectBuyer(buyer === b ? '' : b)}
+                className={`px-5 py-2 rounded-md text-sm font-semibold border-2 transition-colors ${
+                  buyer === b
+                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-700 hover:border-indigo-300'
+                }`}>
+                {b}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* External Provider */}
+        <div className="card p-6">
+          <p className="section-title">External Provider <span className="text-xs font-normal text-gray-400 ml-1">(clears buyer selection)</span></p>
           <CreatableButtonGroup
-            items={providers}
+            items={providers.filter(p => !['TK','MA','DS'].includes(p))}
             selected={provider}
-            onSelect={setProvider}
+            onSelect={(p) => selectProvider(provider === p ? '' : p)}
             onAdd={addProvider}
             addLabel="New provider"
           />
