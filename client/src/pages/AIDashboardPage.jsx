@@ -152,7 +152,7 @@ const DAY_OPTIONS = [7, 14, 30, 60, 90];
 
 export default function AIDashboardPage() {
   const [buyer, setBuyer]               = useState('Overview');
-  const [days, setDays]                 = useState(14);
+  const [days, setDays]                 = useState(14);  // view-only selector
   const [generating, setGenerating]     = useState(false);
   const [error, setError]               = useState(null);
   const [genStartedAt, setGenStartedAt] = useState(null);
@@ -227,11 +227,13 @@ export default function AIDashboardPage() {
     retry: false,
   });
 
-  // Detect completion: both status.running = false AND a new history entry appeared after genStartedAt
   const campaignDone = generating && campaignStatus && !campaignStatus.running && genStartedAt &&
     new Date(campaignStatus.startedAt) >= genStartedAt;
   const listDone = generating && listStatus && !listStatus.running && genStartedAt &&
     new Date(listStatus.startedAt) >= genStartedAt;
+
+  const completedPeriods = campaignStatus?.completedPeriods || [];
+  const currentPeriod    = campaignStatus?.currentPeriod || null;
 
   if (campaignDone && listDone) {
     setGenerating(false);
@@ -298,7 +300,7 @@ export default function AIDashboardPage() {
             {generating ? (
               <><span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</>
             ) : (
-              <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Generate Analysis</>
+              <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Generate All</>
             )}
           </button>
         </div>
@@ -394,18 +396,28 @@ export default function AIDashboardPage() {
 
       {/* Generating */}
       {generating && (
-        <div className="card p-10 text-center space-y-4">
+        <div className="card p-8 text-center space-y-4">
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-          <p className="text-sm font-medium text-gray-700">Running campaign + list analysis…</p>
-          <div className="flex justify-center gap-6 text-xs">
-            <span className={campaignDone ? 'text-green-600' : 'text-gray-400'}>
-              {campaignDone ? '✓ Campaign done' : campaignStatus?.running ? '⏳ Campaign analyzing…' : '⏳ Campaign queued'}
-            </span>
-            <span className={listDone ? 'text-green-600' : 'text-gray-400'}>
-              {listDone ? '✓ Lists done' : listStatus?.running ? '⏳ Lists analyzing…' : '⏳ Lists queued'}
+          <p className="text-sm font-medium text-gray-700">Generating all date windows…</p>
+          <div className="flex justify-center gap-2 flex-wrap text-xs">
+            {[7, 14, 30, 60, 90].map(d => {
+              const done = completedPeriods.includes(d);
+              const active = currentPeriod === d;
+              return (
+                <span key={d} className={`px-2 py-1 rounded-full font-medium ${
+                  done   ? 'bg-green-100 text-green-700' :
+                  active ? 'bg-indigo-100 text-indigo-700' :
+                           'bg-gray-100 text-gray-400'
+                }`}>
+                  {done ? '✓ ' : active ? '⏳ ' : ''}{d}d
+                </span>
+              );
+            })}
+            <span className={`px-2 py-1 rounded-full font-medium ${listDone ? 'bg-green-100 text-green-700' : listStatus?.running ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-400'}`}>
+              {listDone ? '✓ ' : listStatus?.running ? '⏳ ' : ''}Lists
             </span>
           </div>
-          <p className="text-xs text-gray-400">Large windows (60d/90d) can take 45–60 seconds.</p>
+          <p className="text-xs text-gray-400">{completedPeriods.length}/5 periods done · ~2 min total</p>
         </div>
       )}
 

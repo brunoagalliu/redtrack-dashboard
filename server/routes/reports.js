@@ -806,8 +806,9 @@ function buildReportDiff(previous, combos, buyerRows) {
 
 // Core AI report generation — callable from the route handler or the weekly auto-trigger.
 // In-memory generation status — avoids concurrent runs and lets the frontend poll
+const ALL_PERIODS = [7, 14, 30, 60, 90];
 const aiStatus = {
-  campaign: { running: false, error: null, startedAt: null },
+  campaign: { running: false, error: null, startedAt: null, currentPeriod: null, completedPeriods: [] },
   list:     { running: false, error: null, startedAt: null },
 };
 
@@ -1126,17 +1127,32 @@ Same format. Action Type = Scale / Cut / Test / Launch.
     return { generated_at: generatedAt, period_days: days, content, data_json: dataJson };
 }
 
-// POST generate new AI campaign report — fire-and-forget to avoid proxy timeouts
+// POST generate campaign reports for all periods sequentially — fire-and-forget
 router.post('/ai-recommendations/generate', (req, res) => {
   if (aiStatus.campaign.running) return res.status(202).json({ status: 'already_running' });
-  const days = parseInt(req.body?.days) || 14;
-  aiStatus.campaign.running = true;
-  aiStatus.campaign.error   = null;
-  aiStatus.campaign.startedAt = new Date();
-  res.status(202).json({ status: 'started' });
-  generateAIReport(days)
-    .then(() => { aiStatus.campaign.running = false; console.log('[ai] Campaign report done'); })
-    .catch((err) => { aiStatus.campaign.running = false; aiStatus.campaign.error = err.message; console.error('[ai] Campaign report error:', err.message); });
+  aiStatus.campaign.running          = true;
+  aiStatus.campaign.error            = null;
+  aiStatus.campaign.startedAt        = new Date();
+  aiStatus.campaign.currentPeriod    = null;
+  aiStatus.campaign.completedPeriods = [];
+  res.status(202).json({ status: 'started', periods: ALL_PERIODS });
+
+  (async () => {
+    for (const days of ALL_PERIODS) {
+      aiStatus.campaign.currentPeriod = days;
+      await generateAIReport(days);
+      aiStatus.campaign.completedPeriods.push(days);
+      console.log(`[ai] ${days}d report done (${aiStatus.campaign.completedPeriods.length}/${ALL_PERIODS.length})`);
+    }
+    aiStatus.campaign.running       = false;
+    aiStatus.campaign.currentPeriod = null;
+    console.log('[ai] All campaign reports done');
+  })().catch((err) => {
+    aiStatus.campaign.running       = false;
+    aiStatus.campaign.currentPeriod = null;
+    aiStatus.campaign.error         = err.message;
+    console.error('[ai] Campaign report error:', err.message);
+  });
 });
 
 // GET campaign generation status
