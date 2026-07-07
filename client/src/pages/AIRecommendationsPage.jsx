@@ -342,7 +342,7 @@ function RawDataSection({ dataJson }) {
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Offer Performance</h3>
               <div className="card overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full" style={{ tableLayout: 'fixed', width: '100%', minWidth: offerTable.getTotalSize() }}>
+                  <table className="w-full" style={{ tableLayout: 'fixed', width: '100%' }}>
                     <thead>
                       {offerTable.getHeaderGroups().map((hg) => (
                         <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
@@ -379,7 +379,7 @@ function RawDataSection({ dataJson }) {
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Route × Vertical × Carrier</h3>
               <div className="card overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full" style={{ tableLayout: 'fixed', width: '100%', minWidth: comboTable.getTotalSize() }}>
+                  <table className="w-full" style={{ tableLayout: 'fixed', width: '100%' }}>
                     <thead>
                       {comboTable.getHeaderGroups().map((hg) => (
                         <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
@@ -886,7 +886,7 @@ export default function AIRecommendationsPage() {
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">iOS vs Android Performance</h2>
               <div className="card overflow-x-auto">
-                <table className="w-full" style={{ tableLayout: 'fixed', width: '100%', minWidth: osTable.getTotalSize() }}>
+                <table className="w-full" style={{ tableLayout: 'fixed', width: '100%' }}>
                   <thead>
                     {osTable.getHeaderGroups().map((hg) => (
                       <tr key={hg.id} className="border-b border-gray-100 bg-gray-50">

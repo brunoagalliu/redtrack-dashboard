@@ -370,7 +370,7 @@ export default function OffersPage() {
 
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize() }}>
+              <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%' }}>
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">

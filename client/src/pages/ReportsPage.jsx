@@ -629,6 +629,7 @@ export default function ReportsPage() {
     },
     onPaginationChange: setPagination,
     onExpandedChange: setExpanded,
+    getRowCanExpand: () => true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -746,7 +747,7 @@ export default function ReportsPage() {
           <div className="overflow-x-auto">
             <table
               className="w-full"
-              style={{ tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize() }}
+              style={{ tableLayout: 'fixed', width: '100%' }}
             >
               <thead className="sticky top-0 z-10">
                 {table.getHeaderGroups().map((headerGroup) => (
