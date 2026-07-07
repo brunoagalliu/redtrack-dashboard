@@ -74,7 +74,7 @@ const SELF_ROUTING_VALUES = new Set(Object.values(SELF_ROUTING));
 const TRAFFIC_SOURCES = ['UPM', 'Ranhog', 'TechStar', 'Internal'];
 
 // ── Parse an existing campaign name back into its parts ───────────────────────
-function parseName(name, sources, verticals, partners) {
+function parseName(name, sources, verticals) {
   const n = name.replace(/^Copy of\s+/i, '').replace(/[_\s]*-?\s*copy\s*$/i, '').trim();
 
   const dashIdx = n.indexOf(' - ');
@@ -88,21 +88,26 @@ function parseName(name, sources, verticals, partners) {
 
   const sourceSet   = new Set(sources.map((s) => s.value));
   const verticalSet = new Set(verticals.map((v) => v.value));
-  const partnerSet  = new Set(partners.map((p) => p.alias));
   const dateRegex   = /^\d{2}\.\d{2}$/;
+  // Size token like 34k, 17k, 100k — signals end of list name, not a partner
+  const sizeRegex   = /^\d+k$/i;
 
   const parts     = rest.split('_');
   let rawSource   = '';
   let vertical    = '';
   let partner     = '';
+  let listStarted = false;
   const listParts = [];
 
   for (const part of parts) {
-    if (!rawSource  && sourceSet.has(part))    { rawSource = part; }
+    if (!rawSource  && sourceSet.has(part))      { rawSource = part; }
     else if (!vertical && verticalSet.has(part)) { vertical = part; }
-    else if (!partner  && partnerSet.has(part))  { partner = part; }
-    else if (dateRegex.test(part))             { /* skip trailing date */ }
-    else                                       { listParts.push(part); }
+    else if (!listStarted && !sizeRegex.test(part) && /^[A-Z0-9]+$/.test(part) && part.length <= 10 && !dateRegex.test(part)) {
+      // Short all-caps token before the list content is likely a partner alias
+      partner = part; listStarted = true;
+    }
+    else if (dateRegex.test(part))               { /* skip trailing date */ }
+    else                                         { listParts.push(part); listStarted = true; }
   }
 
   // Map raw source back to trafficSource + route
@@ -127,14 +132,23 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
 
   const { data: sources   = [], isLoading: loadingSources   } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
   const { data: verticals = [], isLoading: loadingVerticals } = useQuery({ queryKey: ['list', 'vertical'], queryFn: () => api.getList('vertical') });
-  const { data: partners  = [], isLoading: loadingPartners  } = useQuery({ queryKey: ['partners'],         queryFn: () => api.getPartners() });
+
+  const [partnerSearch, setPartnerSearch] = useState('');
+  const [debouncedPartnerSearch, setDebouncedPartnerSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPartnerSearch(partnerSearch), 400);
+    return () => clearTimeout(t);
+  }, [partnerSearch]);
+  const { data: partnersData = { content: [] }, isLoading: loadingPartners } = useQuery({
+    queryKey: ['partners', debouncedPartnerSearch],
+    queryFn: () => api.searchDataSources(debouncedPartnerSearch, 0, 50, 'name,asc', 'name'),
+  });
+  const partners = (partnersData.content || []).map((p) => ({ label: p.name, value: p.name }));
 
   const addSource      = useMutation({ mutationFn: (v)  => api.addListItem('route', v),       onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
   const deleteSource   = useMutation({ mutationFn: (id) => api.deleteListItem('route', id),   onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
   const addVertical    = useMutation({ mutationFn: (v)  => api.addListItem('vertical', v),    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
   const deleteVertical = useMutation({ mutationFn: (id) => api.deleteListItem('vertical', id), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
-  const addPartner     = useMutation({ mutationFn: (alias) => api.addPartner(alias),           onSuccess: () => qc.invalidateQueries({ queryKey: ['partners'] }) });
-  const deletePartner  = useMutation({ mutationFn: (id)   => api.deletePartner(id),            onSuccess: () => qc.invalidateQueries({ queryKey: ['partners'] }) });
 
   const [buyer,         setBuyer]         = useState('');
   const [trafficSource, setTrafficSource] = useState('');
@@ -152,8 +166,8 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
 
   // Pre-fill from existing campaign name (edit mode)
   useEffect(() => {
-    if (initialized || !value || loadingSources || loadingVerticals || loadingPartners) return;
-    const parsed = parseName(value, sources, verticals, partners);
+    if (initialized || !value || loadingSources || loadingVerticals) return;
+    const parsed = parseName(value, sources, verticals);
     if (parsed.buyer)         setBuyer(parsed.buyer);
     if (parsed.trafficSource) setTrafficSource(parsed.trafficSource);
     if (parsed.route)         setRoute(parsed.route);
@@ -161,7 +175,7 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
     if (parsed.partner)       setPartner(parsed.partner);
     if (parsed.listName)      setListName(parsed.listName);
     setInitialized(true);
-  }, [value, loadingSources, loadingVerticals, loadingPartners, initialized, sources, verticals, partners]);
+  }, [value, loadingSources, loadingVerticals, initialized, sources, verticals]);
 
   // Build the campaign name from parts
   const suffix = [nameSource, vertical, partner, listName, date].filter(Boolean).join('_');
@@ -179,14 +193,13 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
     if (onRoute) onRoute(nameSource);
   }, [nameSource]);
 
-  // URL params — include partner sourceid when selected
+  // URL params — include partner sourceid (= partner name) when selected
   useEffect(() => {
     if (!onUrlParams) return;
-    const selectedPartner = partners.find((p) => p.alias === partner);
     const parts = ['clk=0'];
-    if (selectedPartner) parts.push(`sourceid=${selectedPartner.code}`);
+    if (partner) parts.push(`sourceid=${partner}`);
     onUrlParams(parts.join('&'));
-  }, [partner, partners]);
+  }, [partner]);
 
   return (
     <div className="space-y-4">
@@ -270,14 +283,13 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
       {/* 4. Data Partner */}
       <div className="max-w-xs">
         <label className="label">Data Partner</label>
-        <CreatableSelect
+        <SearchableSelect
+          options={partners}
           value={partner}
-          items={partners.map((p) => ({ id: p.id, value: p.alias }))}
-          loading={loadingPartners}
           onChange={setPartner}
-          onAdd={(alias) => addPartner.mutate(alias)}
-          onDelete={(id) => { if (partner === partners.find((p) => p.id === id)?.alias) setPartner(''); deletePartner.mutate(id); }}
-          addLabel="Add new partner…"
+          placeholder={loadingPartners ? 'Loading…' : 'Search partner…'}
+          onQueryChange={setPartnerSearch}
+          disabled={loadingPartners}
         />
       </div>
 
