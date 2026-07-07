@@ -31,11 +31,11 @@ function SortIcon({ col, sortKey, sortDir }) {
 
 export default function VerticalsPage() {
   const today = new Date().toISOString().slice(0, 10);
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [dateFrom, setDateFrom] = useState(ninetyDaysAgo);
+  const [dateFrom, setDateFrom] = useState(sixMonthsAgo);
   const [dateTo, setDateTo] = useState(today);
-  const [applied, setApplied] = useState({ date_from: ninetyDaysAgo, date_to: today });
+  const [applied, setApplied] = useState({ date_from: sixMonthsAgo, date_to: today });
   const [verticalFilter, setVerticalFilter] = useState('ALL');
   const [buyerFilter, setBuyerFilter] = useState('ALL');
   const [partnerFilter, setPartnerFilter] = useState('ALL');

@@ -7,7 +7,7 @@ const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i };
 const CALL_INTERVAL_MS = 3200; // 20 calls/min limit → ~3s between calls
-const MAX_HISTORY_DAYS = 90;
+const MAX_HISTORY_DAYS = 180;
 
 // ── Sync state (in-memory; reset on server restart) ─────────────────────────
 const sync = {
@@ -210,8 +210,8 @@ async function runSync(dateFrom, dateTo) {
     const { data } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
     const campaigns = data.items || [];
 
-    // 3. Filter to buyer campaigns created in last 90 days (active set)
-    const cutoff = new Date(new Date(dateFrom).getTime() - 90 * 86400000).toISOString().slice(0, 10);
+    // 3. Filter to buyer campaigns within the sync window
+    const cutoff = new Date(new Date(dateFrom).getTime() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
     const buyerCampaigns = [];
     for (const c of campaigns) {
       const title = c.title.trim();
@@ -1634,7 +1634,7 @@ router.get('/lists/campaigns', async (req, res) => {
     const listKey = req.query.list_key;
     if (!listKey) return res.status(400).json({ error: 'list_key required' });
 
-    const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 90);
+    const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), MAX_HISTORY_DAYS);
 
     const { rows } = await pool.query(`
       SELECT

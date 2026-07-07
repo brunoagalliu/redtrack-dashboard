@@ -114,7 +114,7 @@ export default function ListsPage() {
           <span className="text-xs text-gray-500">Campaign stats window</span>
           <select value={campaignDays} onChange={e => setCampaignDays(Number(e.target.value))}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white">
-            {[7, 14, 30, 60, 90].map(d => <option key={d} value={d}>Last {d} days</option>)}
+            {[7, 14, 30, 60, 90, 180].map(d => <option key={d} value={d}>Last {d} days</option>)}
           </select>
         </div>
       </div>
