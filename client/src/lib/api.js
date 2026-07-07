@@ -92,6 +92,7 @@ export const api = {
     const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))).toString();
     return request(`/reports/offers${qs ? `?${qs}` : ''}`);
   },
+  updateCampaignList: (id, data_list) => request(`/reports/campaigns/${id}/list`, { method: 'PATCH', body: JSON.stringify({ data_list }) }),
   getCampaignOffers: (id, params = {}) => {
     const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
     return request(`/reports/campaigns/${id}/offers${qs ? `?${qs}` : ''}`);

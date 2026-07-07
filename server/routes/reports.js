@@ -383,6 +383,14 @@ router.post('/cleanup', async (_req, res) => {
 });
 
 
+// Update list name for a campaign (manual correction)
+router.patch('/campaigns/:id/list', async (req, res) => {
+  const { data_list } = req.body;
+  if (data_list === undefined) return res.status(400).json({ message: 'data_list required' });
+  await pool.query(`UPDATE rt_campaigns SET data_list=$1 WHERE id=$2`, [data_list || null, req.params.id]);
+  res.json({ ok: true });
+});
+
 // Media buyer report — reads from DB
 router.get('/media-buyers', async (req, res) => {
   try {
@@ -399,6 +407,7 @@ router.get('/media-buyers', async (req, res) => {
          c.route,
          c.carrier,
          c.data_partner,
+         c.data_list,
          COALESCE(SUM(s.clicks),0)::int       AS clicks,
          COALESCE(SUM(s.conversions),0)::int  AS conversions,
          COALESCE(SUM(s.cost),0)              AS cost,
@@ -408,7 +417,7 @@ router.get('/media-buyers', async (req, res) => {
        JOIN rt_campaign_stats s ON s.campaign_id = c.id
        WHERE c.buyer IS NOT NULL
          AND s.stat_date BETWEEN $1 AND $2
-       GROUP BY c.buyer, c.id, c.title, c.vertical, c.route, c.carrier, c.data_partner
+       GROUP BY c.buyer, c.id, c.title, c.vertical, c.route, c.carrier, c.data_partner, c.data_list
        ORDER BY c.buyer, clicks DESC`,
       [dateFrom, dateTo]
     );
@@ -419,7 +428,7 @@ router.get('/media-buyers', async (req, res) => {
       if (!buyers[r.buyer]) buyers[r.buyer] = { campaigns: [], totals: { clicks:0, conversions:0, cost:0, revenue:0, profit:0 } };
       const stats = {
         id: r.id, title: r.title,
-        vertical: r.vertical, route: r.route, carrier: r.carrier, data_partner: r.data_partner,
+        vertical: r.vertical, route: r.route, carrier: r.carrier, data_partner: r.data_partner, data_list: r.data_list,
         clicks: Number(r.clicks), conversions: Number(r.conversions),
         cost: Number(r.cost), revenue: Number(r.revenue), profit: Number(r.profit),
       };

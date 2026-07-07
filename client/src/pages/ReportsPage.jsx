@@ -1,6 +1,40 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '../lib/api';
+
+// ── Column definitions ────────────────────────────────────────────────────────
+const ALL_COLUMNS = [
+  { key: 'title',        label: 'Campaign', type: 'title',  sortable: true,  defaultVisible: true  },
+  { key: 'data_list',    label: 'List',     type: 'list',   sortable: true,  defaultVisible: true  },
+  { key: 'data_partner', label: 'Partner',  type: 'badge',  sortable: false, defaultVisible: true  },
+  { key: 'route',        label: 'Route',    type: 'text',   sortable: false, defaultVisible: false },
+  { key: 'carrier',      label: 'Carrier',  type: 'text',   sortable: false, defaultVisible: false },
+  { key: 'vertical',     label: 'Vertical', type: 'text',   sortable: false, defaultVisible: false },
+  { key: 'clicks',       label: 'Clicks',   type: 'number', sortable: true,  defaultVisible: true  },
+  { key: 'conversions',  label: 'Conv.',    type: 'number', sortable: true,  defaultVisible: true  },
+  { key: 'cost',         label: 'Spend',    type: 'money',  sortable: true,  defaultVisible: true  },
+  { key: 'revenue',      label: 'Revenue',  type: 'money',  sortable: true,  defaultVisible: true  },
+  { key: 'profit',       label: 'Profit',   type: 'profit', sortable: true,  defaultVisible: true  },
+  { key: 'cpc',          label: 'CPC',      type: 'rate',   sortable: false, defaultVisible: true  },
+  { key: 'epc',          label: 'EPC',      type: 'rate',   sortable: false, defaultVisible: true  },
+];
+
+const STORAGE_KEY = 'rt_report_col_config';
+
+function loadColConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved?.order && saved?.visible) return saved;
+  } catch {}
+  return {
+    order:   ALL_COLUMNS.map((c) => c.key),
+    visible: Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, c.defaultVisible])),
+  };
+}
+
+function saveColConfig(config) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+}
 
 const BUYERS = ['TK', 'MA', 'DS'];
 
@@ -111,12 +145,12 @@ function OsRows({ campaignId, offerId, dateFrom, dateTo }) {
 
   if (isLoading) return (
     <tr>
-      <td colSpan={10} className="px-4 py-1 text-xs text-gray-400 text-center bg-violet-50/20">Loading OS…</td>
+      <td colSpan={20} className="px-4 py-1 text-xs text-gray-400 text-center bg-violet-50/20">Loading OS…</td>
     </tr>
   );
   if (!osStats?.length) return (
     <tr>
-      <td colSpan={10} className="px-12 py-1 text-xs text-gray-400 bg-violet-50/20">No OS data yet — run a sync first.</td>
+      <td colSpan={20} className="px-12 py-1 text-xs text-gray-400 bg-violet-50/20">No OS data yet — run a sync first.</td>
     </tr>
   );
 
@@ -164,7 +198,7 @@ function OfferRows({ campaignId, dateFrom, dateTo }) {
 
   if (isLoading) return (
     <tr>
-      <td colSpan={10} className="px-4 py-2 text-xs text-gray-400 text-center bg-gray-50/50">
+      <td colSpan={20} className="px-4 py-2 text-xs text-gray-400 text-center bg-gray-50/50">
         Loading offers…
       </td>
     </tr>
@@ -172,7 +206,7 @@ function OfferRows({ campaignId, dateFrom, dateTo }) {
 
   if (!offers?.length) return (
     <tr>
-      <td colSpan={10} className="px-8 py-2 text-xs text-gray-400 bg-gray-50/50">
+      <td colSpan={20} className="px-8 py-2 text-xs text-gray-400 bg-gray-50/50">
         No offer data yet — run a sync first.
       </td>
     </tr>
@@ -219,6 +253,92 @@ function OfferRows({ campaignId, dateFrom, dateTo }) {
   });
 }
 
+// ── Inline list name editor ───────────────────────────────────────────────────
+function ListCell({ campaignId, value, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || '');
+  const inputRef = useRef(null);
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (v) => api.updateCampaignList(campaignId, v),
+    onSuccess: (_, v) => { onSaved(campaignId, v); setEditing(false); },
+  });
+
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1 min-w-[160px]">
+        <input ref={inputRef} value={draft} onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') mutate(draft); if (e.key === 'Escape') setEditing(false); }}
+          className="border border-indigo-300 rounded px-1.5 py-0.5 text-xs font-mono w-full outline-none focus:ring-1 focus:ring-indigo-400"
+          disabled={isPending} />
+        <button type="button" onClick={() => mutate(draft)} disabled={isPending}
+          className="text-indigo-600 hover:text-indigo-800 text-xs font-medium shrink-0">✓</button>
+        <button type="button" onClick={() => setEditing(false)}
+          className="text-gray-400 hover:text-gray-600 text-xs shrink-0">✕</button>
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" onClick={() => { setDraft(value || ''); setEditing(true); }}
+      className="group flex items-center gap-1 text-left text-xs font-mono text-gray-600 hover:text-indigo-700 max-w-[200px] truncate"
+      title={value || 'Click to set list name'}>
+      <span className="truncate">{value || <span className="text-gray-300 italic">—</span>}</span>
+      <span className="opacity-0 group-hover:opacity-100 text-gray-300 text-[10px] shrink-0">✎</span>
+    </button>
+  );
+}
+
+// ── Column picker panel ───────────────────────────────────────────────────────
+function ColumnPicker({ config, onChange, onClose }) {
+  const { order, visible } = config;
+
+  function toggleVisible(key) {
+    onChange({ ...config, visible: { ...visible, [key]: !visible[key] } });
+  }
+
+  function move(key, dir) {
+    const idx = order.indexOf(key);
+    const next = [...order];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= next.length) return;
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    onChange({ ...config, order: next });
+  }
+
+  return (
+    <div className="absolute right-0 top-10 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-56 py-2">
+      <div className="px-3 pb-2 border-b border-gray-100 flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Columns</span>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+      </div>
+      <div className="max-h-72 overflow-y-auto">
+        {order.map((key) => {
+          const col = ALL_COLUMNS.find((c) => c.key === key);
+          if (!col) return null;
+          return (
+            <div key={key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50">
+              <input type="checkbox" checked={!!visible[key]} onChange={() => toggleVisible(key)}
+                className="rounded text-indigo-600 cursor-pointer" />
+              <span className="text-sm text-gray-700 flex-1">{col.label}</span>
+              <div className="flex flex-col">
+                <button onClick={() => move(key, -1)} className="text-gray-300 hover:text-gray-600 text-[10px] leading-none">▲</button>
+                <button onClick={() => move(key, 1)}  className="text-gray-300 hover:text-gray-600 text-[10px] leading-none">▼</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="px-3 pt-2 border-t border-gray-100">
+        <button onClick={() => onChange({ order: ALL_COLUMNS.map((c) => c.key), visible: Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, c.defaultVisible])) })}
+          className="text-xs text-gray-400 hover:text-gray-600">Reset to default</button>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -232,8 +352,20 @@ export default function ReportsPage() {
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(50);
   const [expandedId, setExpandedId] = useState(null);
+  const [colConfig, setColConfig] = useState(loadColConfig);
+  const [showColPicker, setShowColPicker] = useState(false);
+  const [listOverrides, setListOverrides] = useState({});
 
   const queryClient = useQueryClient();
+
+  useEffect(() => saveColConfig(colConfig), [colConfig]);
+
+  const handleColConfigChange = useCallback((cfg) => setColConfig(cfg), []);
+  const handleListSaved = useCallback((id, val) => setListOverrides((prev) => ({ ...prev, [id]: val })), []);
+
+  const visibleCols = colConfig.order
+    .map((key) => ALL_COLUMNS.find((c) => c.key === key))
+    .filter((c) => c && colConfig.visible[c.key]);
 
   const { data: syncStatus } = useQuery({
     queryKey: ['reports', 'sync-status'],
@@ -392,103 +524,126 @@ export default function ReportsPage() {
       {/* Table */}
       {!isLoading && !noData && filtered.length > 0 && (
         <div className="card overflow-hidden">
-          {/* Summary chips */}
+          {/* Summary chips + column picker */}
           <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3 flex-wrap">
             {(buyerFilter === 'ALL' ? BUYERS : [buyerFilter]).map((b) => {
               const campaigns = allCampaigns.filter((c) => c.buyer === b);
               if (!campaigns.length) return null;
               return (
-                <button
-                  key={b}
-                  onClick={() => handleBuyerFilter(buyerFilter === b ? 'ALL' : b)}
+                <button key={b} onClick={() => handleBuyerFilter(buyerFilter === b ? 'ALL' : b)}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                    buyerFilter === b || buyerFilter === 'ALL'
-                      ? BUYER_COLORS[b] + ' border-transparent'
-                      : 'bg-gray-50 text-gray-400 border-gray-200'
-                  }`}
-                >
-                  <span>{b}</span>
-                  <span className="opacity-70">{campaigns.length}</span>
+                    buyerFilter === b || buyerFilter === 'ALL' ? BUYER_COLORS[b] + ' border-transparent' : 'bg-gray-50 text-gray-400 border-gray-200'
+                  }`}>
+                  <span>{b}</span><span className="opacity-70">{campaigns.length}</span>
                 </button>
               );
             })}
             <span className="ml-auto text-xs text-gray-400">{filtered.length} campaigns</span>
+            <div className="relative">
+              <button onClick={() => setShowColPicker((v) => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50 transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" /></svg>
+                Columns
+              </button>
+              {showColPicker && <ColumnPicker config={colConfig} onChange={handleColConfigChange} onClose={() => setShowColPicker(false)} />}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" style={{ tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '44px' }} /> {/* buyer avatar */}
+                <col style={{ width: '24px' }} /> {/* expand toggle */}
+                {visibleCols.map((col) => (
+                  <col key={col.key} style={{
+                    width: col.key === 'title' ? '260px'
+                         : col.key === 'data_list' ? '180px'
+                         : col.key === 'data_partner' ? '90px'
+                         : ['route','carrier','vertical'].includes(col.key) ? '90px'
+                         : '100px'
+                  }} />
+                ))}
+              </colgroup>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Buyer</th>
-                  <Th col="title" label="Campaign" />
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Partner</th>
-                  <Th col="clicks" label="Clicks" right />
-                  <Th col="conversions" label="Conv." right />
-                  <Th col="cost" label="Spend" right />
-                  <Th col="revenue" label="Revenue" right />
-                  <Th col="profit" label="Profit" right />
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider" title="Cost per click">CPC</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider" title="Revenue per click">EPC</th>
+                  <th className="px-2 py-3 w-11" />
+                  <th className="px-1 py-3 w-6" />
+                  {visibleCols.map((col) => {
+                    const right = !['title','data_list','data_partner','route','carrier','vertical'].includes(col.key);
+                    return col.sortable
+                      ? <Th key={col.key} col={col.key === 'cpc' ? '__cpc' : col.key === 'epc' ? '__epc' : col.key} label={col.label} right={right} />
+                      : <th key={col.key} className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider ${right ? 'text-right' : 'text-left'}`}>{col.label}</th>;
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {paged.map((c) => (
+                {paged.map((c) => {
+                  const listVal = listOverrides[c.id] !== undefined ? listOverrides[c.id] : c.data_list;
+                  return (
                   <>
                   <tr key={`${c.buyer}-${c.id}`} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${BUYER_COLORS[c.buyer]}`}>
-                        {c.buyer}
-                      </span>
+                    <td className="px-2 py-2.5">
+                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${BUYER_COLORS[c.buyer]}`}>{c.buyer}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-sm text-gray-700 max-w-xs">
-                      <button
-                        onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
-                        className="mr-1.5 text-gray-300 hover:text-indigo-500 transition-colors text-xs select-none"
-                        title="Show offers"
-                      >
+                    <td className="px-1 py-2.5">
+                      <button onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                        className="text-gray-300 hover:text-indigo-500 transition-colors text-xs select-none" title="Show offers">
                         {expandedId === c.id ? '▼' : '▶'}
                       </button>
-                      <span className="truncate" title={c.title}>{c.title}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-left">
-                      {c.data_partner
-                        ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700">{c.data_partner}</span>
-                        : <span className="text-gray-300 text-xs">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.clicks)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.conversions)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.cost)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.revenue)}</td>
-                    <td className={`px-4 py-2.5 text-right tabular-nums text-sm font-medium ${Number(c.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                      {fmtMoney(c.profit)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-600">{fmtRate(perClick(c.cost, c.clicks))}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm font-medium text-gray-700">{fmtRate(perClick(c.revenue, c.clicks))}</td>
+                    {visibleCols.map((col) => {
+                      if (col.key === 'title') return (
+                        <td key="title" className="px-3 py-2.5 overflow-hidden">
+                          <span className="block truncate text-sm text-gray-700" title={c.title}>{c.title}</span>
+                        </td>
+                      );
+                      if (col.key === 'data_list') return (
+                        <td key="data_list" className="px-3 py-2.5 overflow-hidden">
+                          <ListCell campaignId={c.id} value={listVal} onSaved={handleListSaved} />
+                        </td>
+                      );
+                      if (col.key === 'data_partner') return (
+                        <td key="data_partner" className="px-3 py-2.5 overflow-hidden">
+                          {c.data_partner
+                            ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 truncate max-w-full">{c.data_partner}</span>
+                            : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
+                      );
+                      if (['route','carrier','vertical'].includes(col.key)) return (
+                        <td key={col.key} className="px-3 py-2.5 text-xs text-gray-500 overflow-hidden truncate">{c[col.key] || '—'}</td>
+                      );
+                      if (col.key === 'clicks')      return <td key="clicks"      className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.clicks)}</td>;
+                      if (col.key === 'conversions') return <td key="conversions" className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.conversions)}</td>;
+                      if (col.key === 'cost')        return <td key="cost"        className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.cost)}</td>;
+                      if (col.key === 'revenue')     return <td key="revenue"     className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.revenue)}</td>;
+                      if (col.key === 'profit')      return <td key="profit"      className={`px-3 py-2.5 text-right tabular-nums text-sm font-medium ${Number(c.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(c.profit)}</td>;
+                      if (col.key === 'cpc')         return <td key="cpc"         className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-600">{fmtRate(perClick(c.cost, c.clicks))}</td>;
+                      if (col.key === 'epc')         return <td key="epc"         className="px-3 py-2.5 text-right tabular-nums text-sm font-medium text-gray-700">{fmtRate(perClick(c.revenue, c.clicks))}</td>;
+                      return null;
+                    })}
                   </tr>
                   {expandedId === c.id && (
-                    <OfferRows
-                      campaignId={c.id}
-                      dateFrom={applied.date_from}
-                      dateTo={applied.date_to}
-                    />
+                    <OfferRows campaignId={c.id} dateFrom={applied.date_from} dateTo={applied.date_to} />
                   )}
                   </>
-                ))}
+                  );
+                })}
 
                 {/* Totals */}
                 <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
-                  <td className="px-4 py-3" />
-                  <td className="px-4 py-3 text-sm text-gray-700">Total</td>
-                  <td className="px-4 py-3" />
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.revenue)}</td>
-                  <td className={`px-4 py-3 text-right tabular-nums text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                    {fmtMoney(totals.profit)}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.cost, totals.clicks))}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.revenue, totals.clicks))}</td>
+                  <td className="px-2 py-3" />
+                  <td className="px-1 py-3" />
+                  {visibleCols.map((col, i) => {
+                    if (i === 0) return <td key={col.key} className="px-3 py-3 text-sm text-gray-700">Total</td>;
+                    if (col.key === 'clicks')      return <td key="clicks"      className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>;
+                    if (col.key === 'conversions') return <td key="conversions" className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>;
+                    if (col.key === 'cost')        return <td key="cost"        className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>;
+                    if (col.key === 'revenue')     return <td key="revenue"     className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.revenue)}</td>;
+                    if (col.key === 'profit')      return <td key="profit"      className={`px-3 py-3 text-right tabular-nums text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(totals.profit)}</td>;
+                    if (col.key === 'cpc')         return <td key="cpc"         className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.cost, totals.clicks))}</td>;
+                    if (col.key === 'epc')         return <td key="epc"         className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.revenue, totals.clicks))}</td>;
+                    return <td key={col.key} className="px-3 py-3" />;
+                  })}
                 </tr>
               </tbody>
             </table>
