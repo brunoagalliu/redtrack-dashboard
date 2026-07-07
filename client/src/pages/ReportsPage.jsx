@@ -6,7 +6,7 @@ import { api } from '../lib/api';
 const ALL_COLUMNS = [
   { key: 'title',        label: 'Campaign', type: 'title',  sortable: true,  defaultVisible: true  },
   { key: 'data_list',    label: 'List',     type: 'list',   sortable: true,  defaultVisible: true  },
-  { key: 'data_partner', label: 'Partner',  type: 'badge',  sortable: false, defaultVisible: true  },
+  { key: 'data_partner', label: 'Partner',  type: 'partner', sortable: false, defaultVisible: true  },
   { key: 'route',        label: 'Route',    type: 'text',   sortable: false, defaultVisible: false },
   { key: 'carrier',      label: 'Carrier',  type: 'text',   sortable: false, defaultVisible: false },
   { key: 'vertical',     label: 'Vertical', type: 'text',   sortable: false, defaultVisible: false },
@@ -291,6 +291,46 @@ function ListCell({ campaignId, value, onSaved }) {
   );
 }
 
+// ── Inline data partner editor ────────────────────────────────────────────────
+function PartnerCell({ campaignId, value, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || '');
+  const inputRef = useRef(null);
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (v) => api.updateCampaignPartner(campaignId, v),
+    onSuccess: (_, v) => { onSaved(campaignId, v); setEditing(false); },
+  });
+
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1 min-w-[120px]">
+        <input ref={inputRef} value={draft} onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') mutate(draft); if (e.key === 'Escape') setEditing(false); }}
+          className="border border-amber-300 rounded px-1.5 py-0.5 text-xs w-full outline-none focus:ring-1 focus:ring-amber-400"
+          disabled={isPending} />
+        <button type="button" onClick={() => mutate(draft)} disabled={isPending}
+          className="text-amber-600 hover:text-amber-800 text-xs font-medium shrink-0">✓</button>
+        <button type="button" onClick={() => setEditing(false)}
+          className="text-gray-400 hover:text-gray-600 text-xs shrink-0">✕</button>
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" onClick={() => { setDraft(value || ''); setEditing(true); }}
+      className="group flex items-center gap-1 text-left"
+      title={value || 'Click to set partner'}>
+      {value
+        ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 truncate max-w-full">{value}</span>
+        : <span className="text-gray-300 text-xs italic">—</span>}
+      <span className="opacity-0 group-hover:opacity-100 text-gray-300 text-[10px] shrink-0">✎</span>
+    </button>
+  );
+}
+
 // ── Column picker panel ───────────────────────────────────────────────────────
 function ColumnPicker({ config, onChange, onClose }) {
   const { order, visible } = config;
@@ -354,14 +394,16 @@ export default function ReportsPage() {
   const [expandedId, setExpandedId] = useState(null);
   const [colConfig, setColConfig] = useState(loadColConfig);
   const [showColPicker, setShowColPicker] = useState(false);
-  const [listOverrides, setListOverrides] = useState({});
+  const [listOverrides,    setListOverrides]    = useState({});
+  const [partnerOverrides, setPartnerOverrides] = useState({});
 
   const queryClient = useQueryClient();
 
   useEffect(() => saveColConfig(colConfig), [colConfig]);
 
   const handleColConfigChange = useCallback((cfg) => setColConfig(cfg), []);
-  const handleListSaved = useCallback((id, val) => setListOverrides((prev) => ({ ...prev, [id]: val })), []);
+  const handleListSaved    = useCallback((id, val) => setListOverrides((prev)    => ({ ...prev, [id]: val })), []);
+  const handlePartnerSaved = useCallback((id, val) => setPartnerOverrides((prev) => ({ ...prev, [id]: val })), []);
 
   const visibleCols = colConfig.order
     .map((key) => ALL_COLUMNS.find((c) => c.key === key))
@@ -578,7 +620,8 @@ export default function ReportsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {paged.map((c) => {
-                  const listVal = listOverrides[c.id] !== undefined ? listOverrides[c.id] : c.data_list;
+                  const listVal    = listOverrides[c.id]    !== undefined ? listOverrides[c.id]    : c.data_list;
+                  const partnerVal = partnerOverrides[c.id] !== undefined ? partnerOverrides[c.id] : c.data_partner;
                   return (
                   <>
                   <tr key={`${c.buyer}-${c.id}`} className="hover:bg-gray-50 transition-colors">
@@ -604,9 +647,7 @@ export default function ReportsPage() {
                       );
                       if (col.key === 'data_partner') return (
                         <td key="data_partner" className="px-3 py-2.5 overflow-hidden">
-                          {c.data_partner
-                            ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 truncate max-w-full">{c.data_partner}</span>
-                            : <span className="text-gray-300 text-xs">—</span>}
+                          <PartnerCell campaignId={c.id} value={partnerVal} onSaved={handlePartnerSaved} />
                         </td>
                       );
                       if (['route','carrier','vertical'].includes(col.key)) return (

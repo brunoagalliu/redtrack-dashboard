@@ -391,6 +391,14 @@ router.patch('/campaigns/:id/list', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Update data partner for a campaign (manual correction)
+router.patch('/campaigns/:id/partner', async (req, res) => {
+  const { data_partner } = req.body;
+  if (data_partner === undefined) return res.status(400).json({ message: 'data_partner required' });
+  await pool.query(`UPDATE rt_campaigns SET data_partner=$1 WHERE id=$2`, [data_partner || null, req.params.id]);
+  res.json({ ok: true });
+});
+
 // Media buyer report — reads from DB
 router.get('/media-buyers', async (req, res) => {
   try {
