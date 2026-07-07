@@ -69,7 +69,6 @@ function TabBar({ tabs, active, onChange }) {
 
 function TagInput({ value, onChange }) {
   const [input, setInput] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef(null);
 
   const { data: allTags = [] } = useQuery({
@@ -110,6 +109,8 @@ function TagInput({ value, onChange }) {
   return (
     <div>
       <label className="label">Tags</label>
+
+      {/* Selected tags + text input */}
       <div
         className="input flex flex-wrap gap-1.5 min-h-[38px] cursor-text p-1.5"
         onClick={() => inputRef.current?.focus()}
@@ -125,21 +126,20 @@ function TagInput({ value, onChange }) {
           ref={inputRef}
           type="text"
           value={input}
-          onChange={(e) => { setInput(e.target.value); setShowSuggestions(true); }}
+          onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          onFocus={() => setShowSuggestions(true)}
-          onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
           className="border-none outline-none text-sm flex-1 min-w-[120px] bg-transparent p-0.5"
-          placeholder={current.length ? '' : 'Type or pick a tag…'}
+          placeholder={current.length ? 'Add more…' : 'Type a tag or pick below…'}
         />
       </div>
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {suggestions.slice(0, 20).map((tag) => (
-            <button key={tag} type="button"
-              onMouseDown={(e) => { e.preventDefault(); addTag(tag); }}
+
+      {/* Always-visible suggestions */}
+      {suggestions.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {suggestions.map((tag) => (
+            <button key={tag} type="button" onClick={() => addTag(tag)}
               className="px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">
-              {tag}
+              + {tag}
             </button>
           ))}
         </div>
