@@ -133,17 +133,30 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
   const { data: sources   = [], isLoading: loadingSources   } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
   const { data: verticals = [], isLoading: loadingVerticals } = useQuery({ queryKey: ['list', 'vertical'], queryFn: () => api.getList('vertical') });
 
+  // All partners loaded once for auto-detection
+  const { data: allPartnersData = { content: [] } } = useQuery({
+    queryKey: ['partners', '__all__'],
+    queryFn: () => api.searchDataSources('', 0, 200, 'name,asc', 'name'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const allPartners = (allPartnersData.content || []).map((p) => p.name);
+  const allPartnerSet = new Set(allPartners.map((n) => n.toLowerCase()));
+
+  // Separate search state for the manual dropdown fallback
   const [partnerSearch, setPartnerSearch] = useState('');
   const [debouncedPartnerSearch, setDebouncedPartnerSearch] = useState('');
   useEffect(() => {
     const t = setTimeout(() => setDebouncedPartnerSearch(partnerSearch), 400);
     return () => clearTimeout(t);
   }, [partnerSearch]);
-  const { data: partnersData = { content: [] }, isLoading: loadingPartners } = useQuery({
+  const { data: searchPartnersData = { content: [] }, isLoading: loadingPartners } = useQuery({
     queryKey: ['partners', debouncedPartnerSearch],
     queryFn: () => api.searchDataSources(debouncedPartnerSearch, 0, 50, 'name,asc', 'name'),
+    enabled: !!debouncedPartnerSearch,
   });
-  const partners = (partnersData.content || []).map((p) => ({ label: p.name, value: p.name }));
+  const searchPartners = (searchPartnersData.content || []).map((p) => ({ label: p.name, value: p.name }));
+
+  const [partnerAutoDetected, setPartnerAutoDetected] = useState(false);
 
   const addSource      = useMutation({ mutationFn: (v)  => api.addListItem('route', v),       onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
   const deleteSource   = useMutation({ mutationFn: (id) => api.deleteListItem('route', id),   onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
@@ -172,10 +185,30 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
     if (parsed.trafficSource) setTrafficSource(parsed.trafficSource);
     if (parsed.route)         setRoute(parsed.route);
     if (parsed.vertical)      setVertical(parsed.vertical);
-    if (parsed.partner)       setPartner(parsed.partner);
+    if (parsed.partner)       { setPartner(parsed.partner); setPartnerAutoDetected(false); }
     if (parsed.listName)      setListName(parsed.listName);
     setInitialized(true);
   }, [value, loadingSources, loadingVerticals, initialized, sources, verticals]);
+
+  // Auto-detect partner from list name tokens (only when not manually overridden)
+  useEffect(() => {
+    if (!initialized || allPartners.length === 0) return;
+    // Don't overwrite a manually chosen partner
+    if (partner && !partnerAutoDetected) return;
+    const tokens = listName.toLowerCase().split('_');
+    const match = tokens.find((t) => allPartnerSet.has(t));
+    if (match) {
+      const canonical = allPartners.find((n) => n.toLowerCase() === match);
+      if (canonical && canonical !== partner) {
+        setPartner(canonical);
+        setPartnerAutoDetected(true);
+      }
+    } else if (partnerAutoDetected) {
+      // List name changed and no longer contains the partner — clear it
+      setPartner('');
+      setPartnerAutoDetected(false);
+    }
+  }, [listName, allPartners.length]);
 
   // Build the campaign name from parts
   const suffix = [nameSource, vertical, partner, listName, date].filter(Boolean).join('_');
@@ -283,14 +316,22 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
       {/* 4. Data Partner */}
       <div className="max-w-xs">
         <label className="label">Data Partner</label>
-        <SearchableSelect
-          options={partners}
-          value={partner}
-          onChange={setPartner}
-          placeholder={loadingPartners ? 'Loading…' : 'Search partner…'}
-          onQueryChange={setPartnerSearch}
-          disabled={loadingPartners}
-        />
+        {partnerAutoDetected ? (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-50 border border-emerald-200">
+            <span className="text-sm font-medium text-emerald-800 flex-1">{partner}</span>
+            <span className="text-xs text-emerald-500 shrink-0">auto-detected</span>
+            <button type="button" onClick={() => { setPartner(''); setPartnerAutoDetected(false); }}
+              className="text-emerald-400 hover:text-red-500 text-xs leading-none ml-1">✕</button>
+          </div>
+        ) : (
+          <SearchableSelect
+            options={searchPartners}
+            value={partner}
+            onChange={(v) => { setPartner(v); setPartnerAutoDetected(false); }}
+            placeholder={loadingPartners ? 'Loading…' : 'Search partner…'}
+            onQueryChange={setPartnerSearch}
+          />
+        )}
       </div>
 
       {/* 5–6. List Name + Date */}
