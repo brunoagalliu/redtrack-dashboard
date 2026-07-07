@@ -4,52 +4,82 @@ import { api } from '../lib/api';
 import CopyButton from './CopyButton';
 import SearchableSelect from './SearchableSelect';
 
-// ── Inline-add dropdown ───────────────────────────────────────────────────────
-function CreatableSelect({ value, onChange, items = [], onAdd, addLabel, loading }) {
-  const [adding, setAdding] = useState(false);
-  const [draft,  setDraft]  = useState('');
+// ── Inline-add/manage dropdown ────────────────────────────────────────────────
+function CreatableSelect({ value, onChange, items = [], onAdd, onDelete, addLabel, loading }) {
+  const [mode,  setMode]  = useState('idle'); // idle | adding | managing
+  const [draft, setDraft] = useState('');
 
   function handleChange(e) {
-    if (e.target.value === '__add__') setAdding(true);
+    if (e.target.value === '__add__')    { setMode('adding'); }
+    else if (e.target.value === '__manage__') { setMode('managing'); }
     else onChange(e.target.value);
   }
   function commit() {
     const t = draft.trim();
     if (t) onAdd(t);
-    setAdding(false); setDraft('');
+    setMode('idle'); setDraft('');
   }
 
-  if (adding) {
+  if (mode === 'adding') {
     return (
       <div className="flex gap-1">
         <input autoFocus type="text" value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') { setMode('idle'); setDraft(''); } }}
           className="input flex-1 text-sm" placeholder={addLabel} />
         <button type="button" onClick={commit} className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white font-medium">Add</button>
-        <button type="button" onClick={() => { setAdding(false); setDraft(''); }} className="px-2 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600">✕</button>
+        <button type="button" onClick={() => { setMode('idle'); setDraft(''); }} className="px-2 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600">✕</button>
       </div>
     );
   }
+
+  if (mode === 'managing') {
+    return (
+      <div className="border border-gray-200 rounded-md bg-white">
+        <div className="max-h-40 overflow-y-auto divide-y divide-gray-100">
+          {items.length === 0 && (
+            <p className="px-3 py-2 text-xs text-gray-400">No items yet.</p>
+          )}
+          {items.map((o) => (
+            <div key={o.id} className="flex items-center justify-between px-3 py-1.5">
+              <span className="text-sm text-gray-700">{o.value}</span>
+              <button type="button" onClick={() => { if (value === o.value) onChange(''); onDelete(o.id); }}
+                className="text-gray-400 hover:text-red-500 transition-colors text-xs font-bold leading-none ml-2">✕</button>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-gray-200 px-3 py-1.5">
+          <button type="button" onClick={() => setMode('idle')} className="text-xs text-gray-500 hover:text-gray-700">← Done</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <select value={value} onChange={handleChange} className="input" disabled={loading}>
       <option value="">{loading ? 'Loading…' : 'Select…'}</option>
       {items.map((o) => <option key={o.id} value={o.value}>{o.value}</option>)}
       <option value="__add__">＋ {addLabel}</option>
+      {items.length > 0 && <option value="__manage__">✏ Manage / delete…</option>}
     </select>
   );
 }
 
-// ── Parse an existing campaign name back into its parts ───────────────────────
+// ── Traffic source constants ──────────────────────────────────────────────────
 const BUYERS = ['TK', 'MA', 'DS'];
 
+// Self-routing sources: selecting them auto-sets the name segment; no sub-picker
+const SELF_ROUTING = { UPM: 'USMS', Ranhog: 'Ranhog', TechStar: 'TechStar' };
+const SELF_ROUTING_VALUES = new Set(Object.values(SELF_ROUTING));
+const TRAFFIC_SOURCES = ['UPM', 'Ranhog', 'TechStar', 'Internal'];
+
+// ── Parse an existing campaign name back into its parts ───────────────────────
 function parseName(name, sources, verticals) {
   const n = name.replace(/^Copy of\s+/i, '').replace(/[_\s]*-?\s*copy\s*$/i, '').trim();
 
-  // Split on first ' - ' to get buyer prefix and rest
   const dashIdx = n.indexOf(' - ');
-  let buyer  = '';
-  let rest   = n;
+  let buyer = '';
+  let rest  = n;
   if (dashIdx !== -1) {
     const prefix = n.slice(0, dashIdx).trim();
     if (BUYERS.includes(prefix)) buyer = prefix;
@@ -60,19 +90,27 @@ function parseName(name, sources, verticals) {
   const verticalSet = new Set(verticals.map((v) => v.value));
   const dateRegex   = /^\d{2}\.\d{2}$/;
 
-  const parts      = rest.split('_');
-  let source       = '';
-  let vertical     = '';
-  const listParts  = [];
+  const parts     = rest.split('_');
+  let rawSource   = '';
+  let vertical    = '';
+  const listParts = [];
 
   for (const part of parts) {
-    if (!source   && sourceSet.has(part))   { source = part; }
+    if (!rawSource  && sourceSet.has(part))    { rawSource = part; }
     else if (!vertical && verticalSet.has(part)) { vertical = part; }
-    else if (dateRegex.test(part))          { /* skip trailing date */ }
-    else                                    { listParts.push(part); }
+    else if (dateRegex.test(part))             { /* skip trailing date */ }
+    else                                       { listParts.push(part); }
   }
 
-  return { buyer, source, vertical, listName: listParts.join('_') };
+  // Map raw source back to trafficSource + route
+  let trafficSource = '';
+  let route = '';
+  if (rawSource === 'USMS')      { trafficSource = 'UPM'; }
+  else if (rawSource === 'Ranhog')   { trafficSource = 'Ranhog'; }
+  else if (rawSource === 'TechStar') { trafficSource = 'TechStar'; }
+  else if (rawSource)            { trafficSource = 'Internal'; route = rawSource; }
+
+  return { buyer, trafficSource, route, vertical, listName: listParts.join('_') };
 }
 
 function todayStr() {
@@ -87,29 +125,38 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
   const { data: sources   = [], isLoading: loadingSources   } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
   const { data: verticals = [], isLoading: loadingVerticals } = useQuery({ queryKey: ['list', 'vertical'], queryFn: () => api.getList('vertical') });
 
-  const addSource   = useMutation({ mutationFn: (v) => api.addListItem('route', v),    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
-  const addVertical = useMutation({ mutationFn: (v) => api.addListItem('vertical', v), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
+  const addSource      = useMutation({ mutationFn: (v)  => api.addListItem('route', v),       onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
+  const deleteSource   = useMutation({ mutationFn: (id) => api.deleteListItem('route', id),   onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
+  const addVertical    = useMutation({ mutationFn: (v)  => api.addListItem('vertical', v),    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
+  const deleteVertical = useMutation({ mutationFn: (id) => api.deleteListItem('vertical', id), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
 
-  const [buyer,    setBuyer]    = useState('');
-  const [source,   setSource]   = useState('');
-  const [vertical, setVertical] = useState('');
-  const [listName, setListName] = useState('');
-  const [date,     setDate]     = useState(todayStr);
-  const [initialized, setInitialized] = useState(false);
+  const [buyer,         setBuyer]         = useState('');
+  const [trafficSource, setTrafficSource] = useState('');
+  const [route,         setRoute]         = useState('');
+  const [vertical,      setVertical]      = useState('');
+  const [listName,      setListName]      = useState('');
+  const [date,          setDate]          = useState(todayStr);
+  const [initialized,   setInitialized]   = useState(false);
+
+  // Derived: the segment that goes into the campaign name
+  const nameSource = trafficSource in SELF_ROUTING
+    ? SELF_ROUTING[trafficSource]
+    : (trafficSource === 'Internal' ? route : '');
 
   // Pre-fill from existing campaign name (edit mode)
   useEffect(() => {
     if (initialized || !value || loadingSources || loadingVerticals) return;
     const parsed = parseName(value, sources, verticals);
-    if (parsed.buyer)    setBuyer(parsed.buyer);
-    if (parsed.source)   setSource(parsed.source);
-    if (parsed.vertical) setVertical(parsed.vertical);
-    if (parsed.listName) setListName(parsed.listName);
+    if (parsed.buyer)         setBuyer(parsed.buyer);
+    if (parsed.trafficSource) setTrafficSource(parsed.trafficSource);
+    if (parsed.route)         setRoute(parsed.route);
+    if (parsed.vertical)      setVertical(parsed.vertical);
+    if (parsed.listName)      setListName(parsed.listName);
     setInitialized(true);
   }, [value, loadingSources, loadingVerticals, initialized, sources, verticals]);
 
   // Build the campaign name from parts
-  const suffix = [source, vertical, listName, date].filter(Boolean).join('_');
+  const suffix = [nameSource, vertical, listName, date].filter(Boolean).join('_');
   const preview = buyer
     ? (suffix ? `${buyer} - ${suffix}` : buyer)
     : '';
@@ -119,10 +166,10 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
     if (preview) onChange(preview);
   }, [preview]);
 
-  // Notify parent when source changes (used for domain auto-select)
+  // Notify parent when effective route changes (used for domain auto-select)
   useEffect(() => {
-    if (onRoute) onRoute(source);
-  }, [source]);
+    if (onRoute) onRoute(nameSource);
+  }, [nameSource]);
 
   // URL params (keep for compatibility)
   useEffect(() => {
@@ -149,21 +196,64 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
         </div>
       </div>
 
-      {/* 2–3. Traffic Source + Vertical */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="label">Traffic Source / Route</label>
-          <CreatableSelect value={source} items={sources} loading={loadingSources}
-            onChange={setSource}
-            onAdd={(v) => addSource.mutate(v)} addLabel="Add new source…" />
+      {/* 2. Traffic Source */}
+      <div>
+        <label className="label">Traffic Source</label>
+        <div className="flex gap-2 flex-wrap">
+          {TRAFFIC_SOURCES.map((ts) => (
+            <button key={ts} type="button"
+              onClick={() => {
+                setTrafficSource(trafficSource === ts ? '' : ts);
+                setRoute('');
+              }}
+              className={`px-4 py-2 rounded-md text-sm font-semibold border-2 transition-colors ${
+                trafficSource === ts
+                  ? 'bg-violet-600 border-violet-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-700 hover:border-violet-300'
+              }`}>
+              {ts}
+            </button>
+          ))}
         </div>
-        <div>
+      </div>
+
+      {/* 3. Route sub-picker — only for Internal */}
+      {trafficSource === 'Internal' && (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Route</label>
+            <CreatableSelect
+              value={route}
+              items={sources.filter((s) => !SELF_ROUTING_VALUES.has(s.value))}
+              loading={loadingSources}
+              onChange={setRoute}
+              onAdd={(v) => addSource.mutate(v)}
+              onDelete={(id) => deleteSource.mutate(id)}
+              addLabel="Add new route…"
+            />
+          </div>
+          <div>
+            <label className="label">Vertical</label>
+            <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
+              onChange={setVertical}
+              onAdd={(v) => addVertical.mutate(v)}
+              onDelete={(id) => deleteVertical.mutate(id)}
+              addLabel="Add new vertical…" />
+          </div>
+        </div>
+      )}
+
+      {/* Vertical (when not Internal — Internal shows it inline above) */}
+      {trafficSource !== 'Internal' && (
+        <div className="max-w-xs">
           <label className="label">Vertical</label>
           <CreatableSelect value={vertical} items={verticals} loading={loadingVerticals}
             onChange={setVertical}
-            onAdd={(v) => addVertical.mutate(v)} addLabel="Add new vertical…" />
+            onAdd={(v) => addVertical.mutate(v)}
+            onDelete={(id) => deleteVertical.mutate(id)}
+            addLabel="Add new vertical…" />
         </div>
-      </div>
+      )}
 
       {/* 4–5. List Name + Date */}
       <div className="grid grid-cols-3 gap-3">
