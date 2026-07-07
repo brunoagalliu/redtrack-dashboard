@@ -61,7 +61,7 @@ export default function OffersPage() {
       size: 240,
       enableSorting: false,
       cell: ({ getValue }) => (
-        <span className="block truncate text-xs font-medium text-gray-800" title={getValue()}>
+        <span className="block line-clamp-2 text-xs font-medium text-gray-800" title={getValue()}>
           {getValue()}
         </span>
       ),

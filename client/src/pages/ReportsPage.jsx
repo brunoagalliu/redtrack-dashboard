@@ -487,7 +487,7 @@ export default function ReportsPage() {
       enableResizing: true,
       enableSorting: true,
       cell: ({ getValue }) => (
-        <span className="block truncate text-sm text-gray-700" title={String(getValue() ?? '')}>{getValue()}</span>
+        <span className="block line-clamp-2 text-sm text-gray-700" title={String(getValue() ?? '')}>{getValue()}</span>
       ),
     },
     {

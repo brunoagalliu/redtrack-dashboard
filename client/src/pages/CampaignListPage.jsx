@@ -132,7 +132,7 @@ export default function CampaignListPage() {
         const c = row.original;
         return (
           <div className="flex items-center gap-2">
-            <Link to={`/campaigns/${c.id}/edit`} className="hover:text-blue-600 truncate">
+            <Link to={`/campaigns/${c.id}/edit`} className="hover:text-blue-600 min-w-0 flex-1 line-clamp-2">
               {c.title}
             </Link>
             <button

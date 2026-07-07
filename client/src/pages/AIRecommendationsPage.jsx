@@ -359,7 +359,7 @@ function RawDataSection({ dataJson }) {
                             return (
                               <td key={cell.id}
                                 style={{ width: cell.column.getSize() }}
-                                className={`px-3 py-1.5 text-xs tabular-nums overflow-hidden ${right ? 'text-right' : left ? 'text-left' : 'text-right'} ${cell.column.id === 'offer' ? 'truncate text-gray-800' : 'text-gray-600'}`}
+                                className={`px-3 py-1.5 text-xs tabular-nums overflow-hidden ${right ? 'text-right' : left ? 'text-left' : 'text-right'} ${cell.column.id === 'offer' ? 'line-clamp-2 text-gray-800' : 'text-gray-600'}`}
                                 title={cell.column.id === 'offer' ? row.original.offer : undefined}
                               >
                                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -420,7 +420,7 @@ const OS_COLS = [
   {
     id: 'offer', accessorKey: 'offer', header: 'Offer', size: 180, enableSorting: true, enableResizing: true, meta: { left: true },
     cell: ({ getValue }) => (
-      <span className="text-xs text-gray-800 max-w-[200px] truncate block" title={getValue()}>{getValue()}</span>
+      <span className="text-xs text-gray-800 line-clamp-2" title={getValue()}>{getValue()}</span>
     ),
   },
   {

@@ -138,7 +138,7 @@ export default function VerticalsPage() {
       size: 260,
       enableSorting: true,
       cell: ({ getValue }) => (
-        <span className="text-sm text-gray-700 max-w-xs truncate block" title={getValue()}>{getValue()}</span>
+        <span className="text-sm text-gray-700 line-clamp-2" title={getValue()}>{getValue()}</span>
       ),
     },
     {

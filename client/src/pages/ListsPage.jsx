@@ -55,7 +55,7 @@ function CampaignRows({ listKey, days, colSpan }) {
       <tr key={c.id} className="bg-indigo-50/40 border-b border-indigo-100/60">
         <td className="w-8 border-r border-indigo-100" />
         <td className="px-3 py-2" colSpan={2}>
-          <div className="font-mono text-xs text-gray-600 truncate max-w-xs" title={c.title}>{c.title}</div>
+          <div className="font-mono text-xs text-gray-600 line-clamp-2" title={c.title}>{c.title}</div>
           <div className="text-xs text-gray-400 mt-0.5">{fmtDate(c.created_at)}{i === 0 ? ' · first use' : ''}</div>
         </td>
         <td className="px-3 py-2 text-xs text-center">
@@ -285,7 +285,7 @@ export default function ListsPage() {
                         <td
                           key={cell.id}
                           style={{ width: cell.column.getSize() }}
-                          className={`px-3 py-2.5 text-xs tabular-nums overflow-hidden ${right ? 'text-right text-gray-600' : 'text-left'} ${cell.column.id === 'list_key' ? 'font-mono text-gray-700 truncate' : ''}`}
+                          className={`px-3 py-2.5 text-xs tabular-nums overflow-hidden ${right ? 'text-right text-gray-600' : 'text-left'} ${cell.column.id === 'list_key' ? 'font-mono text-gray-700 line-clamp-2' : ''}`}
                           title={cell.column.id === 'list_key' ? row.original.list_key : undefined}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
