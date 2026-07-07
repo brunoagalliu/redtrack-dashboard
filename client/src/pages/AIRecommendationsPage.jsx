@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  flexRender,
+} from '@tanstack/react-table';
 import { api } from '../lib/api';
 
 const BUYER_STYLES = {
@@ -25,11 +31,15 @@ function fmtClicks(n) {
   return v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v.toLocaleString();
 }
 
+function SortIcon({ sorted }) {
+  if (!sorted) return <span className="text-gray-300 ml-1 text-[10px]">↕</span>;
+  return <span className="text-blue-500 ml-1 text-[10px]">{sorted === 'asc' ? '▲' : '▼'}</span>;
+}
+
 function boldify(text) {
   return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
 }
 
-// Extract only action bullets from AI text (skips summaries, wins/losses sub-sections)
 function extractActions(text) {
   if (!text) return '';
   const lines = text.split('\n');
@@ -51,7 +61,6 @@ function extractActions(text) {
 
     const clean = trimmed.replace(/^[-*•]\s*/, '').replace(/^\d+\.\s*/, '').trim();
     if (!clean) continue;
-    // Skip sub-header remnants like "His Wins:**" or "3-5 Actions This Week:**"
     if (clean.match(/:\*{0,2}$/) && clean.length < 60) continue;
     if (inActions) actionLines.push(clean);
     allBullets.push(clean);
@@ -64,7 +73,6 @@ function extractActions(text) {
   }).join('\n');
 }
 
-// Render a body of AI text as clean bullet points, stripping headings
 function BulletBlock({ text, limit = 0 }) {
   if (!text) return null;
   const lines = text.split('\n');
@@ -93,7 +101,6 @@ function BulletBlock({ text, limit = 0 }) {
   );
 }
 
-// Visual horizontal profit bars for a list of combos
 function ProfitBars({ combos, color }) {
   if (!combos.length) return null;
   const maxAbs = Math.max(...combos.map((c) => Math.abs(c.profit)), 1);
@@ -121,7 +128,6 @@ function ProfitBars({ combos, color }) {
   );
 }
 
-// Detect color scheme from section title emoji
 function sectionStyle(title) {
   if (title.includes('💰') || /scale|best/i.test(title))
     return { bg: 'bg-emerald-50', border: 'border-emerald-200', title: 'text-emerald-800' };
@@ -134,7 +140,6 @@ function sectionStyle(title) {
   return { bg: 'bg-gray-50', border: 'border-gray-200', title: 'text-gray-800' };
 }
 
-// Split AI content into per-buyer sections + overall ## sections
 function parseContent(content) {
   if (!content) return { buyers: {}, sections: [] };
 
@@ -150,7 +155,6 @@ function parseContent(content) {
     if (m) buyers[m[1]] = part.replace(/^.*\n/, '').trim();
   }
 
-  // Split overall into ## sections
   const sections = [];
   let current = null;
   for (const line of overall.split('\n')) {
@@ -182,10 +186,128 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
+const OFFER_COLS = [
+  { id: 'offer', accessorKey: 'offer', header: 'Offer', enableSorting: false, meta: { left: true } },
+  { id: 'route', accessorKey: 'route', header: 'Route', enableSorting: true },
+  { id: 'carrier', accessorKey: 'carrier', header: 'Carrier', enableSorting: true },
+  {
+    id: 'vertical', accessorKey: 'vertical', header: 'Vertical', enableSorting: true,
+    cell: ({ getValue }) => <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">{getValue()}</span>,
+  },
+  {
+    id: 'data_partner', accessorKey: 'data_partner', header: 'Partner', enableSorting: true,
+    cell: ({ getValue }) => {
+      const v = getValue();
+      return v && v !== 'Unknown'
+        ? <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">{v}</span>
+        : <span className="text-gray-300">—</span>;
+    },
+  },
+  { id: 'buyer', accessorKey: 'buyer', header: 'Buyer', enableSorting: true },
+  {
+    id: 'clicks', accessorKey: 'clicks', header: 'Clicks', enableSorting: true, meta: { right: true },
+    cell: ({ getValue }) => Number(getValue()).toLocaleString(),
+  },
+  {
+    id: 'epc', header: 'EPC', enableSorting: true, meta: { right: true },
+    accessorFn: (r) => Number(r.clicks) > 0 ? Number(r.revenue) / Number(r.clicks) : 0,
+    cell: ({ getValue }) => <span className="font-medium text-gray-700">${getValue().toFixed(4)}</span>,
+  },
+  {
+    id: 'profit', accessorKey: 'profit', header: 'Profit*', enableSorting: true, meta: { right: true },
+    cell: ({ getValue }) => {
+      const v = Number(getValue());
+      return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        ${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+      </span>;
+    },
+  },
+  {
+    id: 'roi', accessorKey: 'roi', header: 'ROI*', enableSorting: true, meta: { right: true },
+    cell: ({ getValue }) => {
+      const v = Number(getValue());
+      return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{getValue()}%</span>;
+    },
+  },
+];
+
+const COMBO_COLS = [
+  {
+    id: 'vertical', accessorKey: 'vertical', header: 'Vertical', enableSorting: true, meta: { left: true },
+    cell: ({ getValue }) => <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-medium">{getValue()}</span>,
+  },
+  { id: 'carrier', accessorKey: 'carrier', header: 'Carrier', enableSorting: true },
+  { id: 'route', accessorKey: 'route', header: 'Route', enableSorting: true },
+  {
+    id: 'clicks', accessorKey: 'clicks', header: 'Clicks', enableSorting: true, meta: { right: true },
+    cell: ({ getValue }) => Number(getValue()).toLocaleString(),
+  },
+  {
+    id: 'profit', accessorKey: 'profit', header: 'Profit', enableSorting: true, meta: { right: true },
+    cell: ({ getValue }) => {
+      const v = Number(getValue());
+      return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        ${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+      </span>;
+    },
+  },
+  {
+    id: 'roi', accessorKey: 'roi', header: 'ROI', enableSorting: true, meta: { right: true },
+    cell: ({ getValue }) => {
+      const v = Number(getValue());
+      return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{getValue()}%</span>;
+    },
+  },
+];
+
+function SortableTableHeader({ header }) {
+  const right = header.column.columnDef.meta?.right;
+  const left = header.column.columnDef.meta?.left;
+  return (
+    <th
+      onClick={header.column.getToggleSortingHandler()}
+      className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap
+        ${right ? 'text-right' : left ? 'text-left' : 'text-right'}
+        ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
+      title={header.id === 'epc' ? 'Revenue per click — directly reported' : header.id.includes('profit') || header.id.includes('roi') ? 'Estimate — cost is prorated by click share' : undefined}
+    >
+      {flexRender(header.column.columnDef.header, header.getContext())}
+      {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+    </th>
+  );
+}
+
 function RawDataSection({ dataJson }) {
   const [open, setOpen] = useState(false);
   const hasOffers = dataJson?.offer_combinations?.length > 0;
   const hasCombos = dataJson?.combinations?.length > 0;
+
+  const [offerSorting, setOfferSorting] = useState([{ id: 'profit', desc: true }]);
+  const [comboSorting, setComboSorting] = useState([{ id: 'profit', desc: true }]);
+
+  const offerData = useMemo(() => dataJson?.offer_combinations || [], [dataJson]);
+  const comboData = useMemo(() => dataJson?.combinations || [], [dataJson]);
+
+  const offerTable = useReactTable({
+    data: offerData,
+    columns: OFFER_COLS,
+    state: { sorting: offerSorting },
+    onSortingChange: setOfferSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (_row, idx) => String(idx),
+  });
+
+  const comboTable = useReactTable({
+    data: comboData,
+    columns: COMBO_COLS,
+    state: { sorting: comboSorting },
+    onSortingChange: setComboSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (_row, idx) => String(idx),
+  });
+
   if (!hasOffers && !hasCombos) return null;
 
   return (
@@ -209,35 +331,27 @@ function RawDataSection({ dataJson }) {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50">
-                        {['Offer', 'Route', 'Carrier', 'Vertical', 'Partner', 'Buyer', 'Clicks', 'EPC', 'Profit*', 'ROI*'].map((h) => (
-                          <th key={h} className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Offer' ? 'text-left' : 'text-right'}`} title={h.endsWith('*') ? 'Estimate — cost is prorated by click share' : h === 'EPC' ? 'Revenue per click — directly reported' : undefined}>{h}</th>
-                        ))}
-                      </tr>
+                      {offerTable.getHeaderGroups().map((hg) => (
+                        <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
+                          {hg.headers.map((header) => <SortableTableHeader key={header.id} header={header} />)}
+                        </tr>
+                      ))}
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {dataJson.offer_combinations.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-3 py-1.5 text-xs text-gray-800 max-w-[200px] truncate" title={r.offer}>{r.offer}</td>
-                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.route}</td>
-                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.carrier}</td>
-                          <td className="px-3 py-1.5 text-right text-xs"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">{r.vertical}</span></td>
-                          <td className="px-3 py-1.5 text-right text-xs">
-                            {r.data_partner && r.data_partner !== 'Unknown'
-                              ? <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">{r.data_partner}</span>
-                              : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.buyer}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums text-xs font-medium text-gray-700">
-                            ${Number(r.clicks) > 0 ? (Number(r.revenue) / Number(r.clicks)).toFixed(4) : '0.0000'}
-                          </td>
-                          <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {r.roi}%
-                          </td>
+                      {offerTable.getRowModel().rows.map((row) => (
+                        <tr key={row.id} className="hover:bg-gray-50">
+                          {row.getVisibleCells().map((cell) => {
+                            const right = cell.column.columnDef.meta?.right;
+                            const left = cell.column.columnDef.meta?.left;
+                            return (
+                              <td key={cell.id}
+                                className={`px-3 py-1.5 text-xs tabular-nums ${right ? 'text-right' : left ? 'text-left' : 'text-right'} ${cell.column.id === 'offer' ? 'max-w-[200px] truncate text-gray-800' : 'text-gray-600'}`}
+                                title={cell.column.id === 'offer' ? row.original.offer : undefined}
+                              >
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -253,25 +367,26 @@ function RawDataSection({ dataJson }) {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50">
-                        {['Vertical', 'Carrier', 'Route', 'Clicks', 'Profit', 'ROI'].map((h) => (
-                          <th key={h} className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === 'Vertical' ? 'text-left' : 'text-right'}`}>{h}</th>
-                        ))}
-                      </tr>
+                      {comboTable.getHeaderGroups().map((hg) => (
+                        <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
+                          {hg.headers.map((header) => <SortableTableHeader key={header.id} header={header} />)}
+                        </tr>
+                      ))}
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {dataJson.combinations.map((r, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-3 py-1.5 text-xs"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-medium">{r.vertical}</span></td>
-                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.carrier}</td>
-                          <td className="px-3 py-1.5 text-right text-xs text-gray-600">{r.route}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-700">{Number(r.clicks).toLocaleString()}</td>
-                          <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            ${Number(r.profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(r.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {r.roi}%
-                          </td>
+                      {comboTable.getRowModel().rows.map((row) => (
+                        <tr key={row.id} className="hover:bg-gray-50">
+                          {row.getVisibleCells().map((cell) => {
+                            const right = cell.column.columnDef.meta?.right;
+                            const left = cell.column.columnDef.meta?.left;
+                            return (
+                              <td key={cell.id}
+                                className={`px-3 py-1.5 text-xs tabular-nums ${right ? 'text-right' : left ? 'text-left' : 'text-right'} text-gray-600`}
+                              >
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -286,13 +401,131 @@ function RawDataSection({ dataJson }) {
   );
 }
 
+const OS_COLS = [
+  {
+    id: 'offer', accessorKey: 'offer', header: 'Offer', enableSorting: true, meta: { left: true },
+    cell: ({ getValue }) => (
+      <span className="text-xs text-gray-800 max-w-[200px] truncate block" title={getValue()}>{getValue()}</span>
+    ),
+  },
+  {
+    id: 'buyer', accessorKey: 'buyer', header: 'Buyer', enableSorting: true, meta: { center: true },
+    cell: ({ getValue }) => {
+      const b = getValue();
+      return (
+        <div className="text-center">
+          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+            b === 'TK' ? 'bg-blue-100 text-blue-700' :
+            b === 'MA' ? 'bg-purple-100 text-purple-700' :
+            'bg-orange-100 text-orange-700'
+          }`}>{b}</span>
+        </div>
+      );
+    },
+  },
+  {
+    id: 'ios_epc', header: 'iOS EPC', enableSorting: true, meta: { right: true },
+    accessorFn: (o) => {
+      const ios = o.iOS;
+      return ios && Number(ios.clicks) > 0 ? Number(ios.revenue) / Number(ios.clicks) : 0;
+    },
+    cell: ({ getValue, row }) => {
+      const ios = row.original.iOS;
+      const v = getValue();
+      return ios && Number(ios.clicks) > 0
+        ? <span className="text-xs font-medium text-gray-700">${v.toFixed(4)}</span>
+        : <span className="text-gray-300">—</span>;
+    },
+  },
+  {
+    id: 'ios_profit', header: 'iOS Profit*', enableSorting: true, meta: { right: true },
+    accessorFn: (o) => Number(o.iOS?.profit || 0),
+    cell: ({ getValue, row }) => {
+      const ios = row.original.iOS;
+      const v = getValue();
+      return ios
+        ? <span className={`text-xs ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(v)}</span>
+        : <span className="text-gray-300">—</span>;
+    },
+  },
+  {
+    id: 'ios_clicks', header: 'iOS Clicks', enableSorting: true, meta: { right: true },
+    accessorFn: (o) => Number(o.iOS?.clicks || 0),
+    cell: ({ getValue, row }) => {
+      const ios = row.original.iOS;
+      return ios
+        ? <span className="text-xs text-gray-500">{fmtClicks(getValue())}</span>
+        : <span className="text-gray-300">—</span>;
+    },
+  },
+  {
+    id: 'android_epc', header: 'Android EPC', enableSorting: true, meta: { right: true },
+    accessorFn: (o) => {
+      const and = o.Android;
+      return and && Number(and.clicks) > 0 ? Number(and.revenue) / Number(and.clicks) : 0;
+    },
+    cell: ({ getValue, row }) => {
+      const and = row.original.Android;
+      const v = getValue();
+      return and && Number(and.clicks) > 0
+        ? <span className="text-xs font-medium text-gray-700">${v.toFixed(4)}</span>
+        : <span className="text-gray-300">—</span>;
+    },
+  },
+  {
+    id: 'android_profit', header: 'Android Profit*', enableSorting: true, meta: { right: true },
+    accessorFn: (o) => Number(o.Android?.profit || 0),
+    cell: ({ getValue, row }) => {
+      const and = row.original.Android;
+      const v = getValue();
+      return and
+        ? <span className={`text-xs ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(v)}</span>
+        : <span className="text-gray-300">—</span>;
+    },
+  },
+  {
+    id: 'android_clicks', header: 'Android Clicks', enableSorting: true, meta: { right: true },
+    accessorFn: (o) => Number(o.Android?.clicks || 0),
+    cell: ({ getValue, row }) => {
+      const and = row.original.Android;
+      return and
+        ? <span className="text-xs text-gray-500">{fmtClicks(getValue())}</span>
+        : <span className="text-gray-300">—</span>;
+    },
+  },
+  {
+    id: 'winner', header: 'Winner', enableSorting: false, meta: { center: true },
+    accessorFn: (o) => {
+      const ios = o.iOS;
+      const and = o.Android;
+      const iosEpc = ios && Number(ios.clicks) > 0 ? Number(ios.revenue) / Number(ios.clicks) : null;
+      const andEpc = and && Number(and.clicks) > 0 ? Number(and.revenue) / Number(and.clicks) : null;
+      if (iosEpc != null && andEpc != null) {
+        if (iosEpc > andEpc * 1.2) return 'iOS';
+        if (andEpc > iosEpc * 1.2) return 'Android';
+        return 'Equal';
+      }
+      return iosEpc != null ? 'iOS' : 'Android';
+    },
+    cell: ({ getValue }) => {
+      const w = getValue();
+      return (
+        <div className="text-center">
+          {w === 'iOS'     && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">iOS</span>}
+          {w === 'Android' && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Android</span>}
+          {w === 'Equal'   && <span className="text-xs text-gray-400">—</span>}
+        </div>
+      );
+    },
+  },
+];
+
 export default function AIRecommendationsPage() {
   const [days, setDays] = useState(14);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
-  // null = "show the freshest report for the selected period" — set to a specific
-  // history id when the user picks an older entry from the Viewing dropdown.
   const [selectedHistoryId, setSelectedHistoryId] = useState(null);
+  const [osSorting, setOsSorting] = useState([{ id: 'ios_epc', desc: true }]);
   const queryClient = useQueryClient();
 
   const { data: history = [], isLoading: isLoadingHistory } = useQuery({
@@ -302,7 +535,6 @@ export default function AIRecommendationsPage() {
     retry: false,
   });
 
-  // Only the reports generated with the currently-selected day window
   const periodHistory = history.filter((h) => h.period_days === days);
   const effectiveHistoryId = selectedHistoryId ?? periodHistory[0]?.id ?? null;
   const viewingHistory = effectiveHistoryId != null && effectiveHistoryId !== periodHistory[0]?.id;
@@ -333,7 +565,6 @@ export default function AIRecommendationsPage() {
     retry: false,
   });
 
-  // Freshness check — against the freshest report for the selected period
   const syncRunning = Boolean(syncStatus?.running || offerSyncStatus?.running);
   const lastSyncAt = [syncStatus?.completed_at, offerSyncStatus?.completed_at]
     .filter(Boolean)
@@ -371,18 +602,28 @@ export default function AIRecommendationsPage() {
   const offerCombos = dataJson.offer_combinations || [];
   const combinations = dataJson.combinations || [];
 
-  // OS comparison: group osRows by offer → { offer, buyer, iOS: {...}, Android: {...} }
   const osRows = dataJson.os_combinations || [];
   const osOfferMap = {};
   for (const r of osRows) {
     if (!osOfferMap[r.offer]) osOfferMap[r.offer] = { offer: r.offer, buyer: r.buyer };
     osOfferMap[r.offer][r.os] = r;
   }
-  const osOffers = Object.values(osOfferMap)
-    .filter((o) => o.iOS || o.Android)
-    .slice(0, 8);
+  const osOffers = useMemo(
+    () => Object.values(osOfferMap).filter((o) => o.iOS || o.Android).slice(0, 8),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [report]
+  );
 
-  // Bar chart data
+  const osTable = useReactTable({
+    data: osOffers,
+    columns: OS_COLS,
+    state: { sorting: osSorting },
+    onSortingChange: setOsSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (row) => row.offer,
+  });
+
   const chartData = ['TK', 'MA', 'DS'].map((b) => {
     const row = buyerRows.find((r) => r.buyer === b) || {};
     return {
@@ -392,7 +633,6 @@ export default function AIRecommendationsPage() {
     };
   }).filter((d) => d.Profit !== 0 || d.Spend !== 0);
 
-  // Horizontal profit bars: prefer offer combos, fall back to route combos
   const topCombos = (offerCombos.length ? offerCombos : combinations).slice(0, 8).map((r) => ({
     label: offerCombos.length
       ? (r.offer?.length > 32 ? r.offer.slice(0, 32) + '…' : r.offer)
@@ -576,8 +816,6 @@ export default function AIRecommendationsPage() {
           {/* ── 2. Charts row ── */}
           {(chartData.length > 0 || topCombos.length > 0) && (
             <div className="grid grid-cols-2 gap-4">
-
-              {/* Bar chart: profit vs spend per buyer */}
               {chartData.length > 0 && (
                 <div className="card p-4">
                   <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Profit vs Spend</h3>
@@ -596,8 +834,6 @@ export default function AIRecommendationsPage() {
                   </ResponsiveContainer>
                 </div>
               )}
-
-              {/* Horizontal bars: top combos by profit */}
               {topCombos.length > 0 && (
                 <div className="card p-4">
                   <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
@@ -636,75 +872,55 @@ export default function AIRecommendationsPage() {
               <div className="card overflow-hidden">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Offer</th>
-                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Buyer</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-purple-500 uppercase tracking-wider" title="Revenue per click — directly reported">iOS EPC</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-purple-500 uppercase tracking-wider" title="Estimate — cost is prorated by click share"> iOS Profit*</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">iOS Clicks</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-green-600 uppercase tracking-wider" title="Revenue per click — directly reported">Android EPC</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-green-600 uppercase tracking-wider" title="Estimate — cost is prorated by click share">Android Profit*</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Android Clicks</th>
-                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider" title="Based on EPC, the trustworthy signal">Winner</th>
-                    </tr>
+                    {osTable.getHeaderGroups().map((hg) => (
+                      <tr key={hg.id} className="border-b border-gray-100 bg-gray-50">
+                        {hg.headers.map((header) => {
+                          const right = header.column.columnDef.meta?.right;
+                          const center = header.column.columnDef.meta?.center;
+                          const left = header.column.columnDef.meta?.left;
+                          const isIos = header.id.startsWith('ios_');
+                          const isAndroid = header.id.startsWith('android_');
+                          return (
+                            <th
+                              key={header.id}
+                              onClick={header.column.getToggleSortingHandler()}
+                              className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap
+                                ${right ? 'text-right' : center ? 'text-center' : left ? 'text-left' : 'text-left'}
+                                ${isIos ? 'text-purple-500' : isAndroid ? 'text-green-600' : 'text-gray-500'}
+                                ${header.column.getCanSort() ? 'cursor-pointer select-none hover:opacity-70' : ''}`}
+                              title={header.id.includes('epc') ? 'Revenue per click — directly reported' : header.id.includes('profit') ? 'Estimate — cost is prorated by click share' : undefined}
+                            >
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                              {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    ))}
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {osOffers.map((o, i) => {
-                      const ios = o.iOS;
-                      const and = o.Android;
-                      const iosPft  = Number(ios?.profit  || 0);
-                      const andPft  = Number(and?.profit  || 0);
-                      const iosEpc  = ios && Number(ios.clicks) > 0 ? Number(ios.revenue) / Number(ios.clicks) : null;
-                      const andEpc  = and && Number(and.clicks) > 0 ? Number(and.revenue) / Number(and.clicks) : null;
-                      const winner  = iosEpc != null && andEpc != null
-                        ? (iosEpc > andEpc * 1.2 ? 'iOS' : andEpc > iosEpc * 1.2 ? 'Android' : 'Equal')
-                        : iosEpc != null ? 'iOS' : 'Android';
-                      return (
-                        <tr key={i} className="hover:bg-gray-50/50">
-                          <td className="px-4 py-2 text-xs text-gray-800 max-w-[200px] truncate" title={o.offer}>{o.offer}</td>
-                          <td className="px-4 py-2 text-center">
-                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                              o.buyer === 'TK' ? 'bg-blue-100 text-blue-700' :
-                              o.buyer === 'MA' ? 'bg-purple-100 text-purple-700' :
-                              'bg-orange-100 text-orange-700'
-                            }`}>{o.buyer}</span>
-                          </td>
-                          {/* iOS */}
-                          <td className="px-4 py-2 text-right tabular-nums text-xs font-medium text-gray-700">
-                            {iosEpc != null ? `$${iosEpc.toFixed(4)}` : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className={`px-4 py-2 text-right tabular-nums text-xs ${iosPft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {ios ? fmtMoney(iosPft) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-500">
-                            {ios ? fmtClicks(ios.clicks) : <span className="text-gray-300">—</span>}
-                          </td>
-                          {/* Android */}
-                          <td className="px-4 py-2 text-right tabular-nums text-xs font-medium text-gray-700">
-                            {andEpc != null ? `$${andEpc.toFixed(4)}` : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className={`px-4 py-2 text-right tabular-nums text-xs ${andPft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {and ? fmtMoney(andPft) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-500">
-                            {and ? fmtClicks(and.clicks) : <span className="text-gray-300">—</span>}
-                          </td>
-                          {/* Winner badge */}
-                          <td className="px-4 py-2 text-center">
-                            {winner === 'iOS'     && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">iOS</span>}
-                            {winner === 'Android' && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Android</span>}
-                            {winner === 'Equal'   && <span className="text-xs text-gray-400">—</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {osTable.getRowModel().rows.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50/50">
+                        {row.getVisibleCells().map((cell) => {
+                          const right = cell.column.columnDef.meta?.right;
+                          const center = cell.column.columnDef.meta?.center;
+                          return (
+                            <td key={cell.id}
+                              className={`px-4 py-2 tabular-nums ${right ? 'text-right' : center ? 'text-center' : 'text-left'}`}
+                            >
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* ── 5. Per-buyer action cards ── */}
+          {/* ── 4. Per-buyer action cards ── */}
           {(hasBuyerSections || offerCombos.length > 0) && (
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Actions Per Buyer</h2>
@@ -763,7 +979,7 @@ export default function AIRecommendationsPage() {
             </div>
           )}
 
-          {/* ── 6. Overall analysis → 2×2 color-coded cards ── */}
+          {/* ── 5. Overall analysis → 2×2 color-coded cards ── */}
           {sections.length > 0 && (
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Analysis</h2>

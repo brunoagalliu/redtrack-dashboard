@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  flexRender,
+} from '@tanstack/react-table';
 import { api } from '../lib/api';
 import CopyButton from '../components/CopyButton';
-
-const PAGE_SIZE = 50;
 
 function replaceParams(url, params) {
   if (!url) return url;
@@ -32,12 +37,10 @@ function appendParams(url, params) {
   }
 }
 
-// Returns { tracking: string|null, impression: string|null } per channel
 function buildUrlParams(title, partners, sourceTitle) {
   if (sourceTitle === 'SMS - Internal') {
     return { tracking: null, impression: null };
   }
-
   if (sourceTitle === 'SMS - UPM') {
     const parts = title ? title.split('_') : [];
     const hasClickers = parts.some((p) => p.toLowerCase() === 'clickers');
@@ -51,7 +54,6 @@ function buildUrlParams(title, partners, sourceTitle) {
       impression: 'phone={PHONE}&firstname={FIRST_NAME}&templateid={TEMPLATE_ID}',
     };
   }
-
   if (sourceTitle === 'SMS - Ranhog') {
     if (!title || !partners?.length) return { tracking: null, impression: null };
     const parts = title.split('_');
@@ -59,8 +61,6 @@ function buildUrlParams(title, partners, sourceTitle) {
     const matchedCode = parts.map((p) => partnerAliasSet.get(p)).find(Boolean);
     return { tracking: matchedCode ? `sourceid=${matchedCode}` : null, impression: null, replace: true };
   }
-
-  // Default: sourceid + clk derived from campaign name
   if (!title || !partners?.length) return { tracking: null, impression: null };
   const parts = title.split('_');
   const hasClickers = parts.some((p) => p.toLowerCase() === 'clickers');
@@ -71,9 +71,15 @@ function buildUrlParams(title, partners, sourceTitle) {
   return { tracking, impression: null };
 }
 
+function SortIcon({ sorted }) {
+  if (!sorted) return <span className="text-gray-300 ml-1 text-[10px]">↕</span>;
+  return <span className="text-indigo-500 ml-1 text-[10px]">{sorted === 'asc' ? '▲' : '▼'}</span>;
+}
+
 export default function CampaignListPage() {
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [sorting, setSorting] = useState([{ id: 'serial_number', desc: true }]);
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -87,24 +93,130 @@ export default function CampaignListPage() {
     queryFn: () => api.getPartners(),
   });
 
-  const sorted = [...(Array.isArray(data) ? data : (data?.items ?? []))]
-    .sort((a, b) => (b.serial_number ?? 0) - (a.serial_number ?? 0));
-
-  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
-  const campaigns = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const allCampaigns = useMemo(
+    () => (Array.isArray(data) ? data : (data?.items ?? [])),
+    [data]
+  );
 
   const cloneMutation = useMutation({
     mutationFn: (id) => api.cloneCampaign(id),
-    onSuccess: (data) => {
+    onSuccess: (cloned) => {
       qc.invalidateQueries({ queryKey: ['campaigns'] });
-      navigate(`/campaigns/${data.id}/edit`);
+      navigate(`/campaigns/${cloned.id}/edit`);
     },
   });
 
   function handleSearch(value) {
     setSearch(value);
-    setPage(1);
+    setPagination((p) => ({ ...p, pageIndex: 0 }));
   }
+
+  const columns = useMemo(() => [
+    {
+      id: 'serial_number',
+      accessorKey: 'serial_number',
+      header: '#',
+      size: 56,
+      enableSorting: true,
+      meta: { tdClass: 'px-4 py-3 text-sm text-gray-400 w-12' },
+    },
+    {
+      id: 'title',
+      accessorKey: 'title',
+      header: 'Campaign Name',
+      size: 360,
+      enableSorting: true,
+      meta: { tdClass: 'px-4 py-3 text-sm font-medium text-gray-900 max-w-xs' },
+      cell: ({ row }) => {
+        const c = row.original;
+        return (
+          <div className="flex items-center gap-2">
+            <Link to={`/campaigns/${c.id}/edit`} className="hover:text-blue-600 truncate">
+              {c.title}
+            </Link>
+            <button
+              type="button"
+              onClick={() => cloneMutation.mutate(c.id)}
+              disabled={cloneMutation.isPending}
+              title="Clone campaign"
+              className="shrink-0 px-2 py-1 text-xs rounded border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-medium disabled:opacity-50"
+            >
+              Clone
+            </button>
+            <CopyButton text={c.title} />
+          </div>
+        );
+      },
+    },
+    {
+      id: 'tracking_url',
+      header: 'Tracking Link',
+      size: 300,
+      enableSorting: false,
+      meta: { tdClass: 'px-4 py-3 text-xs text-gray-500 max-w-sm font-mono' },
+      cell: ({ row }) => {
+        const c = row.original;
+        const { tracking: trackingParams, replace } = buildUrlParams(c.title, partners, c.source_title);
+        const applyParams = replace ? replaceParams : appendParams;
+        const trackingUrl = applyParams(c.trackback_url, trackingParams);
+        return trackingUrl ? (
+          <div className="flex items-center gap-2">
+            <span className="truncate">{trackingUrl}</span>
+            <CopyButton text={trackingUrl} />
+          </div>
+        ) : '—';
+      },
+    },
+    {
+      id: 'impression_url',
+      header: 'Impression Link',
+      size: 300,
+      enableSorting: false,
+      meta: { tdClass: 'px-4 py-3 text-xs text-gray-500 max-w-sm font-mono' },
+      cell: ({ row }) => {
+        const c = row.original;
+        const { impression: impressionParams, replace } = buildUrlParams(c.title, partners, c.source_title);
+        const applyParams = replace ? replaceParams : appendParams;
+        const impressionUrl = applyParams(c.impression_url, impressionParams);
+        return impressionUrl ? (
+          <div className="flex items-center gap-2">
+            <span className="truncate">{impressionUrl}</span>
+            <CopyButton text={impressionUrl} />
+          </div>
+        ) : '—';
+      },
+    },
+    {
+      id: 'actions',
+      header: '',
+      size: 60,
+      enableSorting: false,
+      meta: { tdClass: 'px-4 py-3 text-right text-sm' },
+      cell: ({ row }) => (
+        <Link
+          to={`/campaigns/${row.original.id}/edit`}
+          className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+        >
+          Edit
+        </Link>
+      ),
+    },
+  ], [partners, cloneMutation.isPending, cloneMutation.mutate]);
+
+  const table = useReactTable({
+    data: allCampaigns,
+    columns,
+    state: { sorting, pagination },
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getRowId: (row) => String(row.id),
+  });
+
+  const { pageIndex, pageSize } = table.getState().pagination;
+  const totalCount = allCampaigns.length;
 
   return (
     <div className="p-6">
@@ -136,119 +248,70 @@ export default function CampaignListPage() {
           <div className="p-8 text-center text-sm text-gray-500">Loading campaigns...</div>
         ) : isError ? (
           <div className="p-8 text-center text-sm text-red-500">Failed to load campaigns.</div>
-        ) : sorted.length === 0 ? (
+        ) : totalCount === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">No campaigns found.</div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {['#', 'Campaign Name', 'Tracking Link', 'Impression Link', ''].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
-              {campaigns.map((c) => {
-                const { tracking: trackingParams, impression: impressionParams, replace } = buildUrlParams(c.title, partners, c.source_title);
-                const applyParams = replace ? replaceParams : appendParams;
-                const trackingUrl = applyParams(c.trackback_url, trackingParams);
-                const impressionUrl = applyParams(c.impression_url, impressionParams);
-                return (
-                <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-400 w-12">{c.serial_number}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-xs">
-                    <div className="flex items-center gap-2">
-                      <Link to={`/campaigns/${c.id}/edit`} className="hover:text-blue-600 truncate">
-                        {c.title}
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => cloneMutation.mutate(c.id)}
-                        disabled={cloneMutation.isPending}
-                        title="Clone campaign"
-                        className="shrink-0 px-2 py-1 text-xs rounded border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-medium disabled:opacity-50"
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                {table.getHeaderGroups().map((hg) => (
+                  <tr key={hg.id}>
+                    {hg.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        onClick={header.column.getToggleSortingHandler()}
+                        className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap
+                          ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
                       >
-                        Clone
-                      </button>
-                      <CopyButton text={c.title} />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 max-w-sm font-mono">
-                    {trackingUrl ? (
-                      <div className="flex items-center gap-2">
-                        <span className="truncate">{trackingUrl}</span>
-                        <CopyButton text={trackingUrl} />
-                      </div>
-                    ) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 max-w-sm font-mono">
-                    {impressionUrl ? (
-                      <div className="flex items-center gap-2">
-                        <span className="truncate">{impressionUrl}</span>
-                        <CopyButton text={impressionUrl} />
-                      </div>
-                    ) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm">
-                    <Link
-                      to={`/campaigns/${c.id}/edit`}
-                      className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getCanSort() && (
+                          <SortIcon sorted={header.column.getIsSorted()} />
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50">
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className={cell.column.columnDef.meta?.tdClass ?? 'px-4 py-3 text-sm text-gray-900'}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {totalPages > 1 && (
+      {/* Pagination */}
+      {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between mt-4">
           <p className="text-xs text-gray-400">
-            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, sorted.length)} of {sorted.length} campaigns
+            Showing {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, totalCount)} of {totalCount} campaigns
           </p>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage(1)}
-              disabled={page === 1}
-              className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              «
-            </button>
-            <button
-              onClick={() => setPage((p) => p - 1)}
-              disabled={page === 1}
-              className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              ‹
-            </button>
-            <span className="px-3 py-1 text-xs text-gray-600">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page === totalPages}
-              className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              ›
-            </button>
-            <button
-              onClick={() => setPage(totalPages)}
-              disabled={page === totalPages}
-              className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              »
-            </button>
+            <button onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}
+              className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">«</button>
+            <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
+              className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
+            <span className="px-3 py-1 text-xs text-gray-600">Page {pageIndex + 1} of {table.getPageCount()}</span>
+            <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
+              className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+            <button onClick={() => table.setPageIndex(table.getPageCount() - 1)} disabled={!table.getCanNextPage()}
+              className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">»</button>
           </div>
         </div>
       )}
-      {totalPages <= 1 && sorted.length > 0 && (
-        <p className="mt-3 text-xs text-gray-400">Showing all {sorted.length} campaigns</p>
+      {table.getPageCount() <= 1 && totalCount > 0 && (
+        <p className="mt-3 text-xs text-gray-400">Showing all {totalCount} campaigns</p>
       )}
     </div>
   );

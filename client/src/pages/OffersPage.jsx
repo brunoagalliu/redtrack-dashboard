@@ -1,5 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  flexRender,
+} from '@tanstack/react-table';
 import { api } from '../lib/api';
 
 const BUYERS = ['TK', 'MA', 'DS'];
@@ -9,9 +16,9 @@ function fmtMoney(n) { return '$' + Number(n).toLocaleString('en-US', { minimumF
 function fmtPct(n)   { return Number(n).toFixed(2) + '%'; }
 function fmtRate(n)  { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
 
-function SortIcon({ col, sortCol, sortDir }) {
-  if (sortCol !== col) return <span className="text-gray-300 ml-1">↕</span>;
-  return <span className="text-blue-500 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
+function SortIcon({ sorted }) {
+  if (!sorted) return <span className="text-gray-300 ml-1 text-[10px]">↕</span>;
+  return <span className="text-blue-500 ml-1 text-[10px]">{sorted === 'asc' ? '▲' : '▼'}</span>;
 }
 
 export default function OffersPage() {
@@ -21,14 +28,12 @@ export default function OffersPage() {
   const [dateFrom, setDateFrom] = useState(weekAgo);
   const [dateTo,   setDateTo]   = useState(today);
   const [buyer,       setBuyer]       = useState('');
-  const [vertical,   setVertical]   = useState('');
-  const [route,      setRoute]      = useState('');
-  const [carrier,    setCarrier]    = useState('');
+  const [vertical,    setVertical]    = useState('');
+  const [route,       setRoute]       = useState('');
+  const [carrier,     setCarrier]     = useState('');
   const [dataPartner, setDataPartner] = useState('');
-  const [sortCol,  setSortCol]  = useState('profit');
-  const [sortDir,  setSortDir]  = useState('desc');
-  const [page,     setPage]     = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [sorting, setSorting] = useState([{ id: 'profit', desc: true }]);
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['reports', 'offers', dateFrom, dateTo, buyer, vertical, route, carrier, dataPartner],
@@ -46,43 +51,198 @@ export default function OffersPage() {
   const syncRunning = mainSync?.status === 'running';
   const syncPhase   = mainSync?.phase;
 
-  function toggleSort(col) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortCol(col); setSortDir('desc'); }
-    setPage(1);
-  }
+  const rows = useMemo(() => data?.rows || [], [data]);
 
-  const rows = data?.rows || [];
+  const columns = useMemo(() => [
+    {
+      id: 'offer_name',
+      accessorKey: 'offer_name',
+      header: 'Offer',
+      size: 240,
+      enableSorting: false,
+      cell: ({ getValue }) => (
+        <span className="block truncate text-xs font-medium text-gray-800" title={getValue()}>
+          {getValue()}
+        </span>
+      ),
+    },
+    {
+      id: 'buyer',
+      accessorKey: 'buyer',
+      header: 'Buyer',
+      size: 64,
+      enableSorting: false,
+      cell: ({ getValue }) => {
+        const b = getValue();
+        return b ? (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700">{b}</span>
+        ) : null;
+      },
+    },
+    {
+      id: 'vertical',
+      accessorKey: 'vertical',
+      header: 'Vertical',
+      size: 80,
+      enableSorting: false,
+      cell: ({ getValue }) => {
+        const v = getValue();
+        return v ? (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700">{v}</span>
+        ) : null;
+      },
+    },
+    {
+      id: 'route',
+      accessorKey: 'route',
+      header: 'Route',
+      size: 80,
+      enableSorting: false,
+      cell: ({ getValue }) => <span className="text-xs text-gray-600">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'carrier',
+      accessorKey: 'carrier',
+      header: 'Carrier',
+      size: 72,
+      enableSorting: false,
+      cell: ({ getValue }) => <span className="text-xs text-gray-600">{getValue() || 'All'}</span>,
+    },
+    {
+      id: 'data_partner',
+      accessorKey: 'data_partner',
+      header: 'Data Partner',
+      size: 96,
+      enableSorting: false,
+      cell: ({ getValue }) => {
+        const p = getValue();
+        return p
+          ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700">{p}</span>
+          : <span className="text-gray-300 text-xs">—</span>;
+      },
+    },
+    {
+      id: 'campaigns',
+      accessorKey: 'campaigns',
+      header: 'Campaigns',
+      size: 80,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => <span className="text-xs text-gray-700">{getValue()}</span>,
+    },
+    {
+      id: 'clicks',
+      accessorKey: 'clicks',
+      header: 'Clicks',
+      size: 80,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmt(getValue())}</span>,
+    },
+    {
+      id: 'conversions',
+      accessorKey: 'conversions',
+      header: 'Conv',
+      size: 64,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmt(getValue())}</span>,
+    },
+    {
+      id: 'cvr',
+      accessorKey: 'cvr',
+      header: 'CVR',
+      size: 64,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmtPct(getValue())}</span>,
+    },
+    {
+      id: 'cost',
+      accessorKey: 'cost',
+      header: 'Cost',
+      size: 88,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmtMoney(getValue())}</span>,
+    },
+    {
+      id: 'revenue',
+      accessorKey: 'revenue',
+      header: 'Revenue',
+      size: 88,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmtMoney(getValue())}</span>,
+    },
+    {
+      id: 'profit',
+      accessorKey: 'profit',
+      header: 'Profit',
+      size: 88,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => {
+        const v = Number(getValue());
+        return <span className={`text-xs font-semibold ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(v)}</span>;
+      },
+    },
+    {
+      id: 'roi',
+      accessorKey: 'roi',
+      header: 'ROI',
+      size: 72,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => {
+        const v = Number(getValue());
+        return <span className={`text-xs font-semibold ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{getValue()}%</span>;
+      },
+    },
+    {
+      id: 'cpc',
+      accessorKey: 'cpc',
+      header: 'CPC',
+      size: 72,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => (
+        <span className="text-xs text-gray-400" title="Estimated — cost is prorated by click share">
+          {fmtRate(getValue())}
+        </span>
+      ),
+    },
+    {
+      id: 'epc',
+      accessorKey: 'epc',
+      header: 'EPC',
+      size: 72,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => (
+        <span className="text-xs font-medium text-gray-700" title="Revenue per click — directly reported, not prorated">
+          {fmtRate(getValue())}
+        </span>
+      ),
+    },
+  ], []);
 
-  // Client-side sort
-  const sorted = [...rows].sort((a, b) => {
-    const av = Number(a[sortCol]) || 0;
-    const bv = Number(b[sortCol]) || 0;
-    return sortDir === 'asc' ? av - bv : bv - av;
+  const table = useReactTable({
+    data: rows,
+    columns,
+    state: { sorting, pagination },
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      setPagination((p) => ({ ...p, pageIndex: 0 }));
+    },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getRowId: (_row, idx) => String(idx),
   });
 
-  // Pagination
-  const totalPages = Math.ceil(sorted.length / pageSize);
-  const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
-
-  const cols = [
-    { key: 'offer_name',   label: 'Offer',        align: 'left',  sortable: false },
-    { key: 'buyer',        label: 'Buyer',        align: 'left',  sortable: false },
-    { key: 'vertical',     label: 'Vertical',     align: 'left',  sortable: false },
-    { key: 'route',        label: 'Route',        align: 'left',  sortable: false },
-    { key: 'carrier',      label: 'Carrier',      align: 'left',  sortable: false },
-    { key: 'data_partner', label: 'Data Partner', align: 'left',  sortable: false },
-    { key: 'campaigns',    label: 'Campaigns',    align: 'right', sortable: true  },
-    { key: 'clicks',       label: 'Clicks',       align: 'right', sortable: true  },
-    { key: 'conversions',  label: 'Conv',         align: 'right', sortable: true  },
-    { key: 'cvr',          label: 'CVR',          align: 'right', sortable: true  },
-    { key: 'cost',         label: 'Cost',         align: 'right', sortable: true  },
-    { key: 'revenue',      label: 'Revenue',      align: 'right', sortable: true  },
-    { key: 'profit',       label: 'Profit',       align: 'right', sortable: true  },
-    { key: 'roi',          label: 'ROI',          align: 'right', sortable: true  },
-    { key: 'cpc',          label: 'CPC',          align: 'right', sortable: true  },
-    { key: 'epc',          label: 'EPC',          align: 'right', sortable: true  },
-  ];
+  const { pageIndex, pageSize } = table.getState().pagination;
 
   return (
     <div className="p-8 max-w-full space-y-4">
@@ -106,17 +266,17 @@ export default function OffersPage() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">From</label>
-          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">To</label>
-          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }}
+          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">Buyer</label>
-          <select value={buyer} onChange={e => { setBuyer(e.target.value); setPage(1); }}
+          <select value={buyer} onChange={e => { setBuyer(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[80px]">
             <option value="">All</option>
             {BUYERS.map(b => <option key={b} value={b}>{b}</option>)}
@@ -124,7 +284,7 @@ export default function OffersPage() {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">Vertical</label>
-          <select value={vertical} onChange={e => { setVertical(e.target.value); setPage(1); }}
+          <select value={vertical} onChange={e => { setVertical(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
             <option value="">All</option>
             {(data?.verticals || []).map(v => <option key={v} value={v}>{v}</option>)}
@@ -132,7 +292,7 @@ export default function OffersPage() {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">Route</label>
-          <select value={route} onChange={e => { setRoute(e.target.value); setPage(1); }}
+          <select value={route} onChange={e => { setRoute(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
             <option value="">All</option>
             {(data?.routes || []).map(r => <option key={r} value={r}>{r}</option>)}
@@ -140,7 +300,7 @@ export default function OffersPage() {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">Carrier</label>
-          <select value={carrier} onChange={e => { setCarrier(e.target.value); setPage(1); }}
+          <select value={carrier} onChange={e => { setCarrier(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
             <option value="">All</option>
             {(data?.carriers || []).map(c => <option key={c} value={c}>{c}</option>)}
@@ -148,7 +308,7 @@ export default function OffersPage() {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">Data Partner</label>
-          <select value={dataPartner} onChange={e => { setDataPartner(e.target.value); setPage(1); }}
+          <select value={dataPartner} onChange={e => { setDataPartner(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
             <option value="">All</option>
             {(data?.dataPartners || []).map(p => <option key={p} value={p}>{p}</option>)}
@@ -156,14 +316,14 @@ export default function OffersPage() {
         </div>
         <div className="flex flex-col gap-1 ml-auto">
           <label className="text-xs text-gray-500 font-medium">Rows</label>
-          <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+          <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
             className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white">
             {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Empty state — no data synced yet */}
+      {/* Empty state */}
       {!isLoading && !isError && rows.length === 0 && !syncRunning && (
         <div className="card p-10 text-center">
           <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-blue-50 flex items-center justify-center">
@@ -196,12 +356,12 @@ export default function OffersPage() {
         <>
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>{rows.length} combinations</span>
-            {totalPages > 1 && (
+            {table.getPageCount() > 1 && (
               <div className="flex items-center gap-1">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
                   className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">‹</button>
-                <span className="px-2">Page {page} / {totalPages}</span>
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                <span className="px-2">Page {pageIndex + 1} / {table.getPageCount()}</span>
+                <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
                   className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">›</button>
               </div>
             )}
@@ -211,66 +371,37 @@ export default function OffersPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    {cols.map(col => (
-                      <th key={col.key}
-                        onClick={col.sortable ? () => toggleSort(col.key) : undefined}
-                        className={`px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap
-                          ${col.align === 'right' ? 'text-right' : 'text-left'}
-                          ${col.sortable ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}>
-                        {col.label}
-                        {col.sortable && <SortIcon col={col.key} sortCol={sortCol} sortDir={sortDir} />}
-                      </th>
-                    ))}
-                  </tr>
+                  {table.getHeaderGroups().map((hg) => (
+                    <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
+                      {hg.headers.map((header) => {
+                        const right = header.column.columnDef.meta?.right;
+                        return (
+                          <th
+                            key={header.id}
+                            onClick={header.column.getToggleSortingHandler()}
+                            className={`px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap
+                              ${right ? 'text-right' : 'text-left'}
+                              ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  ))}
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {paged.map((row, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 max-w-[260px]">
-                        <span className="block truncate text-xs font-medium text-gray-800" title={row.offer_name}>
-                          {row.offer_name}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.buyer && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700">
-                            {row.buyer}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.vertical && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700">
-                            {row.vertical}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-gray-600">{row.route || '—'}</td>
-                      <td className="px-3 py-2 text-xs text-gray-600">{row.carrier || 'All'}</td>
-                      <td className="px-3 py-2">
-                        {row.data_partner
-                          ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700">{row.data_partner}</span>
-                          : <span className="text-gray-300 text-xs">—</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{row.campaigns}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{fmt(row.clicks)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{fmt(row.conversions)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{fmtPct(row.cvr)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{fmtMoney(row.cost)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-700">{fmtMoney(row.revenue)}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums text-xs font-semibold ${Number(row.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {fmtMoney(row.profit)}
-                      </td>
-                      <td className={`px-3 py-2 text-right tabular-nums text-xs font-semibold ${Number(row.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {row.roi}%
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-400" title="Estimated — cost is prorated by click share">
-                        {fmtRate(row.cpc)}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs font-medium text-gray-700" title="Revenue per click — directly reported, not prorated">
-                        {fmtRate(row.epc)}
-                      </td>
+                  {table.getRowModel().rows.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50">
+                      {row.getVisibleCells().map((cell) => {
+                        const right = cell.column.columnDef.meta?.right;
+                        return (
+                          <td key={cell.id} className={`px-3 py-2 ${right ? 'text-right tabular-nums' : ''}`}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -278,12 +409,12 @@ export default function OffersPage() {
             </div>
           </div>
 
-          {totalPages > 1 && (
+          {table.getPageCount() > 1 && (
             <div className="flex items-center justify-end gap-1 text-xs text-gray-500">
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+              <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
                 className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">‹ Prev</button>
-              <span className="px-2">Page {page} / {totalPages}</span>
-              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+              <span className="px-2">Page {pageIndex + 1} / {table.getPageCount()}</span>
+              <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
                 className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">Next ›</button>
             </div>
           )}

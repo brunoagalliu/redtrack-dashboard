@@ -1,5 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getExpandedRowModel,
+  flexRender,
+} from '@tanstack/react-table';
 import { api } from '../lib/api';
 
 function fmtMoney(n) {
@@ -18,12 +25,12 @@ function StatusBadge({ days }) {
   return <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">Idle {d}d</span>;
 }
 
-function SortIcon({ col, sortCol, sortDir }) {
-  if (sortCol !== col) return <span className="text-gray-300 ml-0.5">↕</span>;
-  return <span className="text-indigo-500 ml-0.5">{sortDir === 'asc' ? '↑' : '↓'}</span>;
+function SortIcon({ sorted }) {
+  if (!sorted) return <span className="text-gray-300 ml-0.5 text-[10px]">↕</span>;
+  return <span className="text-indigo-500 ml-0.5 text-[10px]">{sorted === 'asc' ? '▲' : '▼'}</span>;
 }
 
-function CampaignRows({ listKey, days }) {
+function CampaignRows({ listKey, days, colSpan }) {
   const { data, isLoading } = useQuery({
     queryKey: ['reports', 'lists', 'campaigns', listKey, days],
     queryFn: () => api.getListCampaigns(listKey, days),
@@ -32,14 +39,14 @@ function CampaignRows({ listKey, days }) {
   });
 
   if (isLoading) return (
-    <tr><td colSpan={10} className="px-4 py-4 bg-gray-50 text-center">
+    <tr><td colSpan={colSpan} className="px-4 py-4 bg-gray-50 text-center">
       <span className="inline-block w-4 h-4 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
     </td></tr>
   );
 
   const rows = data?.rows || [];
   if (!rows.length) return (
-    <tr><td colSpan={10} className="px-4 py-3 bg-gray-50 text-xs text-gray-400 text-center">No campaigns found for this list.</td></tr>
+    <tr><td colSpan={colSpan} className="px-4 py-3 bg-gray-50 text-xs text-gray-400 text-center">No campaigns found for this list.</td></tr>
   );
 
   return rows.map((c, i) => {
@@ -66,11 +73,10 @@ function CampaignRows({ listKey, days }) {
 }
 
 export default function ListsPage() {
-  const [expandedList, setExpandedList] = useState(null);
   const [campaignDays, setCampaignDays] = useState(30);
-  const [sortCol, setSortCol] = useState('profit');
-  const [sortDir, setSortDir] = useState('desc');
-  const [search, setSearch]   = useState('');
+  const [search, setSearch] = useState('');
+  const [sorting, setSorting] = useState([{ id: 'profit', desc: true }]);
+  const [expanded, setExpanded] = useState({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['reports', 'lists'],
@@ -79,24 +85,127 @@ export default function ListsPage() {
     retry: false,
   });
 
-  function toggleSort(col) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortCol(col); setSortDir('desc'); }
-  }
+  const rows = data?.rows || [];
+  const filtered = useMemo(
+    () => rows.filter((r) => !search || r.list_key?.toLowerCase().includes(search.toLowerCase())),
+    [rows, search]
+  );
 
-  const rows     = data?.rows || [];
-  const filtered = rows.filter(r => !search || r.list_key?.toLowerCase().includes(search.toLowerCase()));
-  const sorted   = [...filtered].sort((a, b) => {
-    const av = Number(a[sortCol]) || 0, bv = Number(b[sortCol]) || 0;
-    return sortDir === 'asc' ? av - bv : bv - av;
+  const columns = useMemo(() => [
+    {
+      id: 'expand',
+      header: '',
+      size: 32,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <button
+          onClick={() => row.toggleExpanded()}
+          className="px-2 text-center text-gray-400 text-xs select-none"
+        >
+          {row.getIsExpanded() ? '▾' : '▸'}
+        </button>
+      ),
+    },
+    {
+      id: 'list_key',
+      accessorKey: 'list_key',
+      header: 'List',
+      size: 280,
+      enableSorting: false,
+    },
+    {
+      id: 'campaign_count',
+      accessorKey: 'campaign_count',
+      header: 'Camps',
+      size: 64,
+      enableSorting: true,
+      meta: { right: true },
+    },
+    {
+      id: 'clicks',
+      accessorKey: 'clicks',
+      header: 'Clicks',
+      size: 80,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => fmt(getValue()),
+    },
+    {
+      id: 'conversions',
+      accessorKey: 'conversions',
+      header: 'Conv',
+      size: 64,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => fmt(getValue()),
+    },
+    {
+      id: 'epc',
+      accessorKey: 'epc',
+      header: 'EPC',
+      size: 80,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => fmtRate(getValue()),
+    },
+    {
+      id: 'profit',
+      accessorKey: 'profit',
+      header: 'Profit',
+      size: 96,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => {
+        const v = Number(getValue());
+        return <span className={v >= 0 ? 'text-green-700 font-medium' : 'text-red-600 font-medium'}>{fmtMoney(v)}</span>;
+      },
+    },
+    {
+      id: 'roi',
+      accessorKey: 'roi',
+      header: 'ROI',
+      size: 72,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => {
+        const v = Number(getValue());
+        return <span className={v >= 0 ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>{getValue()}%</span>;
+      },
+    },
+    {
+      id: 'days_since_last_use',
+      accessorKey: 'days_since_last_use',
+      header: 'Idle',
+      size: 64,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => {
+        const v = getValue();
+        return <span className="text-gray-400">{v != null ? `${v}d` : '—'}</span>;
+      },
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      size: 80,
+      enableSorting: false,
+      cell: ({ row }) => <StatusBadge days={row.original.days_since_last_use} />,
+    },
+  ], []);
+
+  const table = useReactTable({
+    data: filtered,
+    columns,
+    state: { sorting, expanded },
+    onSortingChange: setSorting,
+    onExpandedChange: setExpanded,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
+    getRowId: (row) => row.list_key,
   });
 
-  const TH = ({ col, label, right }) => (
-    <th onClick={() => toggleSort(col)}
-      className={`px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-gray-700 ${right ? 'text-right' : 'text-left'}`}>
-      {label}<SortIcon col={col} sortCol={sortCol} sortDir={sortDir} />
-    </th>
-  );
+  const visibleLeafCount = table.getVisibleLeafColumns().length;
 
   return (
     <div className="p-8 max-w-screen-2xl space-y-5">
@@ -109,7 +218,7 @@ export default function ListsPage() {
       <div className="flex flex-wrap items-center gap-3">
         <input type="text" placeholder="Search list…" value={search} onChange={e => setSearch(e.target.value)}
           className="border border-gray-200 rounded px-3 py-1.5 text-sm w-64" />
-        <span className="text-xs text-gray-400">{sorted.length} lists</span>
+        <span className="text-xs text-gray-400">{table.getRowModel().rows.length} lists</span>
         <div className="flex items-center gap-1.5 ml-auto">
           <span className="text-xs text-gray-500">Campaign stats window</span>
           <select value={campaignDays} onChange={e => setCampaignDays(Number(e.target.value))}
@@ -121,49 +230,57 @@ export default function ListsPage() {
 
       {isLoading && <div className="card p-10 text-center"><div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>}
 
-      {!isLoading && sorted.length === 0 && (
+      {!isLoading && filtered.length === 0 && (
         <div className="card p-10 text-center text-sm text-gray-400">No lists found — run a sync to populate list data.</div>
       )}
 
-      {!isLoading && sorted.length > 0 && (
+      {!isLoading && filtered.length > 0 && (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/60">
-                <th className="w-8" />
-                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">List</th>
-                <TH col="campaign_count"      label="Camps"  right />
-                <TH col="clicks"              label="Clicks" right />
-                <TH col="conversions"         label="Conv"   right />
-                <TH col="epc"                 label="EPC"    right />
-                <TH col="profit"              label="Profit" right />
-                <TH col="roi"                 label="ROI"    right />
-                <TH col="days_since_last_use" label="Idle"   right />
-                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-              </tr>
+              {table.getHeaderGroups().map((hg) => (
+                <tr key={hg.id} className="border-b border-gray-100 bg-gray-50/60">
+                  {hg.headers.map((header) => {
+                    const right = header.column.columnDef.meta?.right;
+                    return (
+                      <th
+                        key={header.id}
+                        onClick={header.column.getToggleSortingHandler()}
+                        className={`px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap
+                          ${right ? 'text-right' : 'text-left'}
+                          ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                      </th>
+                    );
+                  })}
+                </tr>
+              ))}
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {sorted.map((row) => {
-                const isOpen = expandedList === row.list_key;
-                const profit = Number(row.profit);
-                return [
-                  <tr key={row.list_key}
-                    onClick={() => setExpandedList(isOpen ? null : row.list_key)}
-                    className="hover:bg-indigo-50/30 cursor-pointer transition-colors">
-                    <td className="px-2 text-center text-gray-400 text-xs select-none">{isOpen ? '▾' : '▸'}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-700 max-w-xs truncate" title={row.list_key}>{row.list_key}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-gray-500 text-xs">{fmt(row.campaign_count)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{fmt(row.clicks)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{fmt(row.conversions)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium text-gray-700">{fmtRate(row.epc)}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums font-medium ${profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(profit)}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums text-xs font-medium ${Number(row.roi) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{row.roi}%</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-xs text-gray-400">{row.days_since_last_use != null ? `${row.days_since_last_use}d` : '—'}</td>
-                    <td className="px-3 py-2.5"><StatusBadge days={row.days_since_last_use} /></td>
-                  </tr>,
-                  isOpen && (
-                    <tr key={`${row.list_key}-expanded`}>
-                      <td colSpan={10} className="p-0">
+              {table.getRowModel().rows.map((row) => (
+                <Fragment key={row.id}>
+                  <tr
+                    onClick={() => row.toggleExpanded()}
+                    className="hover:bg-indigo-50/30 cursor-pointer transition-colors"
+                  >
+                    {row.getVisibleCells().map((cell) => {
+                      const right = cell.column.columnDef.meta?.right;
+                      return (
+                        <td
+                          key={cell.id}
+                          className={`px-3 py-2.5 text-xs tabular-nums ${right ? 'text-right text-gray-600' : 'text-left'} ${cell.column.id === 'list_key' ? 'font-mono text-gray-700 max-w-xs truncate' : ''}`}
+                          title={cell.column.id === 'list_key' ? row.original.list_key : undefined}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {row.getIsExpanded() && (
+                    <tr key={`${row.id}-expanded`}>
+                      <td colSpan={visibleLeafCount} className="p-0">
                         <table className="w-full text-xs border-t border-indigo-100">
                           <thead>
                             <tr className="bg-indigo-50 border-b border-indigo-100">
@@ -179,14 +296,14 @@ export default function ListsPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            <CampaignRows listKey={row.list_key} days={campaignDays} />
+                            <CampaignRows listKey={row.id} days={campaignDays} colSpan={visibleLeafCount} />
                           </tbody>
                         </table>
                       </td>
                     </tr>
-                  ),
-                ];
-              })}
+                  )}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>

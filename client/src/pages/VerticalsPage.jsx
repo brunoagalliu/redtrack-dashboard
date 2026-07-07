@@ -1,5 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  flexRender,
+} from '@tanstack/react-table';
 import { api } from '../lib/api';
 
 const BUYER_COLORS = {
@@ -18,13 +25,13 @@ function fmtMoney(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function SortIcon({ col, sortKey, sortDir }) {
-  if (sortKey !== col) return (
+function SortIcon({ sorted }) {
+  if (!sorted) return (
     <svg className="w-3.5 h-3.5 text-gray-300 ml-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
     </svg>
   );
-  return sortDir === 'asc'
+  return sorted === 'asc'
     ? <svg className="w-3.5 h-3.5 text-blue-500 ml-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
     : <svg className="w-3.5 h-3.5 text-blue-500 ml-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>;
 }
@@ -39,10 +46,8 @@ export default function VerticalsPage() {
   const [verticalFilter, setVerticalFilter] = useState('ALL');
   const [buyerFilter, setBuyerFilter] = useState('ALL');
   const [partnerFilter, setPartnerFilter] = useState('ALL');
-  const [sortKey, setSortKey] = useState('clicks');
-  const [sortDir, setSortDir] = useState('desc');
-  const [page, setPage] = useState(0);
-  const [perPage, setPerPage] = useState(50);
+  const [sorting, setSorting] = useState([{ id: 'clicks', desc: true }]);
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
 
   const { data: syncStatus } = useQuery({
     queryKey: ['reports', 'sync-status'],
@@ -62,16 +67,9 @@ export default function VerticalsPage() {
 
   function applyRange() {
     setApplied({ date_from: dateFrom, date_to: dateTo });
-    setPage(0);
+    setPagination((p) => ({ ...p, pageIndex: 0 }));
   }
 
-  function handleSort(col) {
-    if (sortKey === col) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(col); setSortDir('desc'); }
-    setPage(0);
-  }
-
-  // Flatten all campaigns from all verticals
   const allCampaigns = useMemo(() => {
     if (!data?.verticals) return [];
     return Object.entries(data.verticals).flatMap(([vertical, group]) =>
@@ -91,13 +89,8 @@ export default function VerticalsPage() {
     if (verticalFilter !== 'ALL') list = list.filter((c) => c.vertical === verticalFilter);
     if (buyerFilter !== 'ALL') list = list.filter((c) => c.buyer === buyerFilter);
     if (partnerFilter !== 'ALL') list = list.filter((c) => c.data_partner === partnerFilter);
-    return [...list].sort((a, b) => {
-      const av = a[sortKey] ?? 0;
-      const bv = b[sortKey] ?? 0;
-      if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-      return sortDir === 'asc' ? av - bv : bv - av;
-    });
-  }, [allCampaigns, verticalFilter, buyerFilter, sortKey, sortDir]);
+    return list;
+  }, [allCampaigns, verticalFilter, buyerFilter, partnerFilter]);
 
   const totals = useMemo(() => filtered.reduce(
     (acc, c) => ({
@@ -110,19 +103,111 @@ export default function VerticalsPage() {
     { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }
   ), [filtered]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
-  const paged = filtered.slice(page * perPage, page * perPage + perPage);
+  const columns = useMemo(() => [
+    {
+      id: 'vertical',
+      accessorKey: 'vertical',
+      header: 'Vertical',
+      size: 120,
+      enableSorting: true,
+      cell: ({ getValue }) => (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700">
+          {getValue()}
+        </span>
+      ),
+    },
+    {
+      id: 'buyer',
+      accessorKey: 'buyer',
+      header: 'Buyer',
+      size: 64,
+      enableSorting: true,
+      cell: ({ getValue }) => {
+        const b = getValue();
+        return (
+          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${BUYER_COLORS[b] || 'bg-gray-100 text-gray-600'}`}>
+            {b}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'title',
+      accessorKey: 'title',
+      header: 'Campaign',
+      size: 260,
+      enableSorting: true,
+      cell: ({ getValue }) => (
+        <span className="text-sm text-gray-700 max-w-xs truncate block" title={getValue()}>{getValue()}</span>
+      ),
+    },
+    {
+      id: 'clicks',
+      accessorKey: 'clicks',
+      header: 'Clicks',
+      size: 88,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => fmt(getValue()),
+    },
+    {
+      id: 'conversions',
+      accessorKey: 'conversions',
+      header: 'Conv.',
+      size: 72,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => fmt(getValue()),
+    },
+    {
+      id: 'cost',
+      accessorKey: 'cost',
+      header: 'Spend',
+      size: 96,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => fmtMoney(getValue()),
+    },
+    {
+      id: 'revenue',
+      accessorKey: 'revenue',
+      header: 'Revenue',
+      size: 96,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => fmtMoney(getValue()),
+    },
+    {
+      id: 'profit',
+      accessorKey: 'profit',
+      header: 'Profit',
+      size: 96,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => {
+        const v = Number(getValue());
+        return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(v)}</span>;
+      },
+    },
+  ], []);
 
+  const table = useReactTable({
+    data: filtered,
+    columns,
+    state: { sorting, pagination },
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      setPagination((p) => ({ ...p, pageIndex: 0 }));
+    },
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getRowId: (row) => `${row.vertical}-${row.id}`,
+  });
+
+  const { pageIndex, pageSize } = table.getState().pagination;
   const noData = !isLoading && data && allCampaigns.length === 0;
-
-  function Th({ col, label, right }) {
-    return (
-      <th onClick={() => handleSort(col)}
-        className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100 transition-colors ${right ? 'text-right' : 'text-left'}`}>
-        {label}<SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
-      </th>
-    );
-  }
 
   return (
     <div className="p-8 max-w-7xl">
@@ -145,21 +230,21 @@ export default function VerticalsPage() {
         </div>
         <div>
           <label className="label">Vertical</label>
-          <select value={verticalFilter} onChange={(e) => { setVerticalFilter(e.target.value); setPage(0); }} className="input">
+          <select value={verticalFilter} onChange={(e) => { setVerticalFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }} className="input">
             <option value="ALL">All verticals</option>
             {verticalNames.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
         <div>
           <label className="label">Buyer</label>
-          <select value={buyerFilter} onChange={(e) => { setBuyerFilter(e.target.value); setPage(0); }} className="input">
+          <select value={buyerFilter} onChange={(e) => { setBuyerFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }} className="input">
             <option value="ALL">All buyers</option>
             {['TK', 'MA', 'DS'].map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
         </div>
         <div>
           <label className="label">Data Partner</label>
-          <select value={partnerFilter} onChange={(e) => { setPartnerFilter(e.target.value); setPage(0); }} className="input">
+          <select value={partnerFilter} onChange={(e) => { setPartnerFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }} className="input">
             <option value="ALL">All partners</option>
             {allPartners.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
@@ -210,7 +295,7 @@ export default function VerticalsPage() {
               const count = allCampaigns.filter((c) => c.vertical === v).length;
               return (
                 <button key={v}
-                  onClick={() => { setVerticalFilter(verticalFilter === v ? 'ALL' : v); setPage(0); }}
+                  onClick={() => { setVerticalFilter(verticalFilter === v ? 'ALL' : v); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
                   className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
                     verticalFilter === v
                       ? 'bg-indigo-100 text-indigo-700 border-transparent'
@@ -228,43 +313,46 @@ export default function VerticalsPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Vertical</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Buyer</th>
-                  <Th col="title" label="Campaign" />
-                  <Th col="clicks" label="Clicks" right />
-                  <Th col="conversions" label="Conv." right />
-                  <Th col="cost" label="Spend" right />
-                  <Th col="revenue" label="Revenue" right />
-                  <Th col="profit" label="Profit" right />
-                </tr>
+                {table.getHeaderGroups().map((hg) => (
+                  <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
+                    {hg.headers.map((header) => {
+                      const right = header.column.columnDef.meta?.right;
+                      return (
+                        <th
+                          key={header.id}
+                          onClick={header.column.getToggleSortingHandler()}
+                          className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider select-none whitespace-nowrap
+                            ${right ? 'text-right' : 'text-left'}
+                            ${header.column.getCanSort() ? 'cursor-pointer hover:text-gray-800 hover:bg-gray-100 transition-colors' : ''}`}
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                ))}
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {paged.map((c) => (
-                  <tr key={`${c.vertical}-${c.id}`} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700">
-                        {c.vertical}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${BUYER_COLORS[c.buyer] || 'bg-gray-100 text-gray-600'}`}>
-                        {c.buyer}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-sm text-gray-700 max-w-xs truncate" title={c.title}>{c.title}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.clicks)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.conversions)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.cost)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.revenue)}</td>
-                    <td className={`px-4 py-2.5 text-right tabular-nums text-sm font-medium ${Number(c.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                      {fmtMoney(c.profit)}
-                    </td>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+                    {row.getVisibleCells().map((cell) => {
+                      const right = cell.column.columnDef.meta?.right;
+                      return (
+                        <td
+                          key={cell.id}
+                          className={`px-4 py-2.5 text-sm tabular-nums ${right ? 'text-right text-gray-800' : ''}`}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
 
+                {/* Totals row */}
                 <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
-                  <td className="px-4 py-3" colSpan={3} ><span className="text-sm text-gray-700">Total</span></td>
+                  <td className="px-4 py-3" colSpan={3}><span className="text-sm text-gray-700">Total</span></td>
                   <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>
@@ -277,6 +365,7 @@ export default function VerticalsPage() {
             </table>
           </div>
 
+          {/* Footer: date range + pagination */}
           <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <span>{applied.date_from} → {applied.date_to}</span>
@@ -286,22 +375,24 @@ export default function VerticalsPage() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 text-xs text-gray-500">
                 <span>Rows</span>
-                <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(0); }}
+                <select value={pageSize} onChange={(e) => { table.setPageSize(Number(e.target.value)); }}
                   className="border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-700 bg-white">
                   {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setPage(0)} disabled={page === 0}
-                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">«</button>
-                <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
-                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">‹</button>
-                <span className="px-3 py-1 text-xs text-gray-600">{page + 1} / {totalPages}</span>
-                <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">›</button>
-                <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}
-                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">»</button>
-              </div>
+              {table.getPageCount() > 1 && (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}
+                    className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">«</button>
+                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
+                    className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">‹</button>
+                  <span className="px-3 py-1 text-xs text-gray-600">{pageIndex + 1} / {table.getPageCount()}</span>
+                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
+                    className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">›</button>
+                  <button onClick={() => table.setPageIndex(table.getPageCount() - 1)} disabled={!table.getCanNextPage()}
+                    className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">»</button>
+                </div>
+              )}
             </div>
           </div>
         </div>
