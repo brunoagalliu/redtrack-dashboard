@@ -23,6 +23,24 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Unique tags used across all campaigns (must be before /:id)
+router.get('/tags', async (req, res) => {
+  try {
+    const { data } = await redtrack.get('/campaigns');
+    const camps = Array.isArray(data) ? data : [];
+    const seen = new Map();
+    for (const c of camps) {
+      for (const tag of c.tags || []) {
+        const key = tag.toLowerCase();
+        if (!seen.has(key)) seen.set(key, tag);
+      }
+    }
+    res.json([...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())));
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
+  }
+});
+
 // Get single campaign (with stream details enriched)
 router.get('/:id', async (req, res) => {
   try {
@@ -149,24 +167,6 @@ router.post('/:id/clone', async (req, res) => {
       streams: resolvedStreams.length ? resolvedStreams : undefined,
     });
     res.status(201).json(data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
-  }
-});
-
-// Unique tags used across all campaigns
-router.get('/tags', async (req, res) => {
-  try {
-    const { data } = await redtrack.get('/campaigns');
-    const camps = Array.isArray(data) ? data : [];
-    const seen = new Map();
-    for (const c of camps) {
-      for (const tag of c.tags || []) {
-        const key = tag.toLowerCase();
-        if (!seen.has(key)) seen.set(key, tag);
-      }
-    }
-    res.json([...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())));
   } catch (err) {
     res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
   }
