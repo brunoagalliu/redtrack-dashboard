@@ -140,7 +140,7 @@ function AppLayout() {
   return (
     <div className="flex">
       <Sidebar />
-      <main className="flex-1 min-h-screen">
+      <main className="flex-1 min-h-screen min-w-0 overflow-x-hidden">
         <Routes>
           <Route path="/" element={<Navigate to="/campaigns" replace />} />
           <Route path="/campaigns" element={<CampaignListPage />} />

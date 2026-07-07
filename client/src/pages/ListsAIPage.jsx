@@ -81,7 +81,7 @@ export default function ListsAIPage() {
   const sections = parseContent(report?.content);
 
   return (
-    <div className="p-8 max-w-7xl space-y-6">
+    <div className="p-8 space-y-6">
 
       <div className="flex items-start justify-between">
         <div>
