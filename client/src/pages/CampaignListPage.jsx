@@ -118,7 +118,8 @@ export default function CampaignListPage() {
       header: '#',
       size: 56,
       enableSorting: true,
-      meta: { tdClass: 'px-4 py-3 text-sm text-gray-400 w-12' },
+      enableResizing: false,
+      meta: { tdClass: 'px-4 py-3 text-sm text-gray-400' },
     },
     {
       id: 'title',
@@ -191,6 +192,7 @@ export default function CampaignListPage() {
       header: '',
       size: 60,
       enableSorting: false,
+      enableResizing: false,
       meta: { tdClass: 'px-4 py-3 text-right text-sm' },
       cell: ({ row }) => (
         <Link
@@ -212,6 +214,7 @@ export default function CampaignListPage() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    columnResizeMode: 'onChange',
     getRowId: (row) => String(row.id),
   });
 
@@ -252,20 +255,30 @@ export default function CampaignListPage() {
           <div className="p-8 text-center text-sm text-gray-400">No campaigns found.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full" style={{ tableLayout: 'fixed', width: table.getTotalSize() }}>
               <thead className="bg-gray-50">
                 {table.getHeaderGroups().map((hg) => (
-                  <tr key={hg.id}>
+                  <tr key={hg.id} className="divide-y divide-gray-200">
                     {hg.headers.map((header) => (
                       <th
                         key={header.id}
                         onClick={header.column.getToggleSortingHandler()}
-                        className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap
+                        style={{ width: header.getSize(), position: 'relative' }}
+                        className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap overflow-hidden
                           ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {header.column.getCanSort() && (
                           <SortIcon sorted={header.column.getIsSorted()} />
+                        )}
+                        {header.column.getCanResize() && (
+                          <div
+                            onMouseDown={header.getResizeHandler()}
+                            onTouchStart={header.getResizeHandler()}
+                            className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
+                              header.column.getIsResizing() ? 'bg-blue-400' : 'bg-transparent hover:bg-gray-300'
+                            }`}
+                          />
                         )}
                       </th>
                     ))}
@@ -278,7 +291,8 @@ export default function CampaignListPage() {
                     {row.getVisibleCells().map((cell) => (
                       <td
                         key={cell.id}
-                        className={cell.column.columnDef.meta?.tdClass ?? 'px-4 py-3 text-sm text-gray-900'}
+                        style={{ width: cell.column.getSize() }}
+                        className={`overflow-hidden ${cell.column.columnDef.meta?.tdClass ?? 'px-4 py-3 text-sm text-gray-900'}`}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>

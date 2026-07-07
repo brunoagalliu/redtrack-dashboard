@@ -97,6 +97,7 @@ export default function ListsPage() {
       header: '',
       size: 32,
       enableSorting: false,
+      enableResizing: false,
       cell: ({ row }) => (
         <button
           onClick={() => row.toggleExpanded()}
@@ -189,6 +190,7 @@ export default function ListsPage() {
       header: 'Status',
       size: 80,
       enableSorting: false,
+      enableResizing: false,
       cell: ({ row }) => <StatusBadge days={row.original.days_since_last_use} />,
     },
   ], []);
@@ -202,6 +204,7 @@ export default function ListsPage() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
+    columnResizeMode: 'onChange',
     getRowId: (row) => row.list_key,
   });
 
@@ -236,7 +239,7 @@ export default function ListsPage() {
 
       {!isLoading && filtered.length > 0 && (
         <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: table.getTotalSize() }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id} className="border-b border-gray-100 bg-gray-50/60">
@@ -246,12 +249,22 @@ export default function ListsPage() {
                       <th
                         key={header.id}
                         onClick={header.column.getToggleSortingHandler()}
-                        className={`px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap
+                        style={{ width: header.getSize(), position: 'relative' }}
+                        className={`px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap overflow-hidden
                           ${right ? 'text-right' : 'text-left'}
                           ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                        {header.column.getCanResize() && (
+                          <div
+                            onMouseDown={header.getResizeHandler()}
+                            onTouchStart={header.getResizeHandler()}
+                            className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
+                              header.column.getIsResizing() ? 'bg-blue-400' : 'bg-transparent hover:bg-gray-300'
+                            }`}
+                          />
+                        )}
                       </th>
                     );
                   })}
@@ -270,7 +283,8 @@ export default function ListsPage() {
                       return (
                         <td
                           key={cell.id}
-                          className={`px-3 py-2.5 text-xs tabular-nums ${right ? 'text-right text-gray-600' : 'text-left'} ${cell.column.id === 'list_key' ? 'font-mono text-gray-700 max-w-xs truncate' : ''}`}
+                          style={{ width: cell.column.getSize() }}
+                          className={`px-3 py-2.5 text-xs tabular-nums overflow-hidden ${right ? 'text-right text-gray-600' : 'text-left'} ${cell.column.id === 'list_key' ? 'font-mono text-gray-700 truncate' : ''}`}
                           title={cell.column.id === 'list_key' ? row.original.list_key : undefined}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}

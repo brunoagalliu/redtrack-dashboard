@@ -187,15 +187,15 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 const OFFER_COLS = [
-  { id: 'offer', accessorKey: 'offer', header: 'Offer', enableSorting: false, meta: { left: true } },
-  { id: 'route', accessorKey: 'route', header: 'Route', enableSorting: true },
-  { id: 'carrier', accessorKey: 'carrier', header: 'Carrier', enableSorting: true },
+  { id: 'offer', accessorKey: 'offer', header: 'Offer', size: 180, enableSorting: false, enableResizing: true, meta: { left: true } },
+  { id: 'route', accessorKey: 'route', header: 'Route', size: 80, enableSorting: true, enableResizing: true },
+  { id: 'carrier', accessorKey: 'carrier', header: 'Carrier', size: 80, enableSorting: true, enableResizing: true },
   {
-    id: 'vertical', accessorKey: 'vertical', header: 'Vertical', enableSorting: true,
+    id: 'vertical', accessorKey: 'vertical', header: 'Vertical', size: 80, enableSorting: true, enableResizing: true,
     cell: ({ getValue }) => <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">{getValue()}</span>,
   },
   {
-    id: 'data_partner', accessorKey: 'data_partner', header: 'Partner', enableSorting: true,
+    id: 'data_partner', accessorKey: 'data_partner', header: 'Partner', size: 80, enableSorting: true, enableResizing: true,
     cell: ({ getValue }) => {
       const v = getValue();
       return v && v !== 'Unknown'
@@ -203,18 +203,18 @@ const OFFER_COLS = [
         : <span className="text-gray-300">—</span>;
     },
   },
-  { id: 'buyer', accessorKey: 'buyer', header: 'Buyer', enableSorting: true },
+  { id: 'buyer', accessorKey: 'buyer', header: 'Buyer', size: 56, enableSorting: true, enableResizing: false },
   {
-    id: 'clicks', accessorKey: 'clicks', header: 'Clicks', enableSorting: true, meta: { right: true },
+    id: 'clicks', accessorKey: 'clicks', header: 'Clicks', size: 80, enableSorting: true, enableResizing: true, meta: { right: true },
     cell: ({ getValue }) => Number(getValue()).toLocaleString(),
   },
   {
-    id: 'epc', header: 'EPC', enableSorting: true, meta: { right: true },
+    id: 'epc', header: 'EPC', size: 80, enableSorting: true, enableResizing: false, meta: { right: true },
     accessorFn: (r) => Number(r.clicks) > 0 ? Number(r.revenue) / Number(r.clicks) : 0,
     cell: ({ getValue }) => <span className="font-medium text-gray-700">${getValue().toFixed(4)}</span>,
   },
   {
-    id: 'profit', accessorKey: 'profit', header: 'Profit*', enableSorting: true, meta: { right: true },
+    id: 'profit', accessorKey: 'profit', header: 'Profit*', size: 88, enableSorting: true, enableResizing: false, meta: { right: true },
     cell: ({ getValue }) => {
       const v = Number(getValue());
       return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>
@@ -223,7 +223,7 @@ const OFFER_COLS = [
     },
   },
   {
-    id: 'roi', accessorKey: 'roi', header: 'ROI*', enableSorting: true, meta: { right: true },
+    id: 'roi', accessorKey: 'roi', header: 'ROI*', size: 72, enableSorting: true, enableResizing: false, meta: { right: true },
     cell: ({ getValue }) => {
       const v = Number(getValue());
       return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{getValue()}%</span>;
@@ -233,17 +233,17 @@ const OFFER_COLS = [
 
 const COMBO_COLS = [
   {
-    id: 'vertical', accessorKey: 'vertical', header: 'Vertical', enableSorting: true, meta: { left: true },
+    id: 'vertical', accessorKey: 'vertical', header: 'Vertical', size: 100, enableSorting: true, enableResizing: true, meta: { left: true },
     cell: ({ getValue }) => <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-medium">{getValue()}</span>,
   },
-  { id: 'carrier', accessorKey: 'carrier', header: 'Carrier', enableSorting: true },
-  { id: 'route', accessorKey: 'route', header: 'Route', enableSorting: true },
+  { id: 'carrier', accessorKey: 'carrier', header: 'Carrier', size: 80, enableSorting: true, enableResizing: true },
+  { id: 'route', accessorKey: 'route', header: 'Route', size: 80, enableSorting: true, enableResizing: true },
   {
-    id: 'clicks', accessorKey: 'clicks', header: 'Clicks', enableSorting: true, meta: { right: true },
+    id: 'clicks', accessorKey: 'clicks', header: 'Clicks', size: 80, enableSorting: true, enableResizing: false, meta: { right: true },
     cell: ({ getValue }) => Number(getValue()).toLocaleString(),
   },
   {
-    id: 'profit', accessorKey: 'profit', header: 'Profit', enableSorting: true, meta: { right: true },
+    id: 'profit', accessorKey: 'profit', header: 'Profit', size: 96, enableSorting: true, enableResizing: false, meta: { right: true },
     cell: ({ getValue }) => {
       const v = Number(getValue());
       return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>
@@ -252,7 +252,7 @@ const COMBO_COLS = [
     },
   },
   {
-    id: 'roi', accessorKey: 'roi', header: 'ROI', enableSorting: true, meta: { right: true },
+    id: 'roi', accessorKey: 'roi', header: 'ROI', size: 72, enableSorting: true, enableResizing: false, meta: { right: true },
     cell: ({ getValue }) => {
       const v = Number(getValue());
       return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{getValue()}%</span>;
@@ -266,13 +266,23 @@ function SortableTableHeader({ header }) {
   return (
     <th
       onClick={header.column.getToggleSortingHandler()}
-      className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap
+      style={{ width: header.getSize(), position: 'relative' }}
+      className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap overflow-hidden
         ${right ? 'text-right' : left ? 'text-left' : 'text-right'}
         ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
       title={header.id === 'epc' ? 'Revenue per click — directly reported' : header.id.includes('profit') || header.id.includes('roi') ? 'Estimate — cost is prorated by click share' : undefined}
     >
       {flexRender(header.column.columnDef.header, header.getContext())}
       {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+      {header.column.getCanResize() && (
+        <div
+          onMouseDown={header.getResizeHandler()}
+          onTouchStart={header.getResizeHandler()}
+          className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
+            header.column.getIsResizing() ? 'bg-blue-400' : 'bg-transparent hover:bg-gray-300'
+          }`}
+        />
+      )}
     </th>
   );
 }
@@ -295,6 +305,7 @@ function RawDataSection({ dataJson }) {
     onSortingChange: setOfferSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    columnResizeMode: 'onChange',
     getRowId: (_row, idx) => String(idx),
   });
 
@@ -305,6 +316,7 @@ function RawDataSection({ dataJson }) {
     onSortingChange: setComboSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    columnResizeMode: 'onChange',
     getRowId: (_row, idx) => String(idx),
   });
 
@@ -329,7 +341,7 @@ function RawDataSection({ dataJson }) {
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Offer Performance</h3>
               <div className="card overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full" style={{ tableLayout: 'fixed', width: offerTable.getTotalSize() }}>
                     <thead>
                       {offerTable.getHeaderGroups().map((hg) => (
                         <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
@@ -345,7 +357,8 @@ function RawDataSection({ dataJson }) {
                             const left = cell.column.columnDef.meta?.left;
                             return (
                               <td key={cell.id}
-                                className={`px-3 py-1.5 text-xs tabular-nums ${right ? 'text-right' : left ? 'text-left' : 'text-right'} ${cell.column.id === 'offer' ? 'max-w-[200px] truncate text-gray-800' : 'text-gray-600'}`}
+                                style={{ width: cell.column.getSize() }}
+                                className={`px-3 py-1.5 text-xs tabular-nums overflow-hidden ${right ? 'text-right' : left ? 'text-left' : 'text-right'} ${cell.column.id === 'offer' ? 'truncate text-gray-800' : 'text-gray-600'}`}
                                 title={cell.column.id === 'offer' ? row.original.offer : undefined}
                               >
                                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -365,7 +378,7 @@ function RawDataSection({ dataJson }) {
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Route × Vertical × Carrier</h3>
               <div className="card overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full" style={{ tableLayout: 'fixed', width: comboTable.getTotalSize() }}>
                     <thead>
                       {comboTable.getHeaderGroups().map((hg) => (
                         <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
@@ -381,7 +394,8 @@ function RawDataSection({ dataJson }) {
                             const left = cell.column.columnDef.meta?.left;
                             return (
                               <td key={cell.id}
-                                className={`px-3 py-1.5 text-xs tabular-nums ${right ? 'text-right' : left ? 'text-left' : 'text-right'} text-gray-600`}
+                                style={{ width: cell.column.getSize() }}
+                                className={`px-3 py-1.5 text-xs tabular-nums overflow-hidden ${right ? 'text-right' : left ? 'text-left' : 'text-right'} text-gray-600`}
                               >
                                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
                               </td>
@@ -403,13 +417,13 @@ function RawDataSection({ dataJson }) {
 
 const OS_COLS = [
   {
-    id: 'offer', accessorKey: 'offer', header: 'Offer', enableSorting: true, meta: { left: true },
+    id: 'offer', accessorKey: 'offer', header: 'Offer', size: 180, enableSorting: true, enableResizing: true, meta: { left: true },
     cell: ({ getValue }) => (
       <span className="text-xs text-gray-800 max-w-[200px] truncate block" title={getValue()}>{getValue()}</span>
     ),
   },
   {
-    id: 'buyer', accessorKey: 'buyer', header: 'Buyer', enableSorting: true, meta: { center: true },
+    id: 'buyer', accessorKey: 'buyer', header: 'Buyer', size: 64, enableSorting: true, enableResizing: false, meta: { center: true },
     cell: ({ getValue }) => {
       const b = getValue();
       return (
@@ -424,7 +438,7 @@ const OS_COLS = [
     },
   },
   {
-    id: 'ios_epc', header: 'iOS EPC', enableSorting: true, meta: { right: true },
+    id: 'ios_epc', header: 'iOS EPC', size: 80, enableSorting: true, enableResizing: false, meta: { right: true },
     accessorFn: (o) => {
       const ios = o.iOS;
       return ios && Number(ios.clicks) > 0 ? Number(ios.revenue) / Number(ios.clicks) : 0;
@@ -438,7 +452,7 @@ const OS_COLS = [
     },
   },
   {
-    id: 'ios_profit', header: 'iOS Profit*', enableSorting: true, meta: { right: true },
+    id: 'ios_profit', header: 'iOS Profit*', size: 88, enableSorting: true, enableResizing: false, meta: { right: true },
     accessorFn: (o) => Number(o.iOS?.profit || 0),
     cell: ({ getValue, row }) => {
       const ios = row.original.iOS;
@@ -449,7 +463,7 @@ const OS_COLS = [
     },
   },
   {
-    id: 'ios_clicks', header: 'iOS Clicks', enableSorting: true, meta: { right: true },
+    id: 'ios_clicks', header: 'iOS Clicks', size: 80, enableSorting: true, enableResizing: false, meta: { right: true },
     accessorFn: (o) => Number(o.iOS?.clicks || 0),
     cell: ({ getValue, row }) => {
       const ios = row.original.iOS;
@@ -459,7 +473,7 @@ const OS_COLS = [
     },
   },
   {
-    id: 'android_epc', header: 'Android EPC', enableSorting: true, meta: { right: true },
+    id: 'android_epc', header: 'Android EPC', size: 96, enableSorting: true, enableResizing: false, meta: { right: true },
     accessorFn: (o) => {
       const and = o.Android;
       return and && Number(and.clicks) > 0 ? Number(and.revenue) / Number(and.clicks) : 0;
@@ -473,7 +487,7 @@ const OS_COLS = [
     },
   },
   {
-    id: 'android_profit', header: 'Android Profit*', enableSorting: true, meta: { right: true },
+    id: 'android_profit', header: 'Android Profit*', size: 104, enableSorting: true, enableResizing: false, meta: { right: true },
     accessorFn: (o) => Number(o.Android?.profit || 0),
     cell: ({ getValue, row }) => {
       const and = row.original.Android;
@@ -484,7 +498,7 @@ const OS_COLS = [
     },
   },
   {
-    id: 'android_clicks', header: 'Android Clicks', enableSorting: true, meta: { right: true },
+    id: 'android_clicks', header: 'Android Clicks', size: 96, enableSorting: true, enableResizing: false, meta: { right: true },
     accessorFn: (o) => Number(o.Android?.clicks || 0),
     cell: ({ getValue, row }) => {
       const and = row.original.Android;
@@ -494,7 +508,7 @@ const OS_COLS = [
     },
   },
   {
-    id: 'winner', header: 'Winner', enableSorting: false, meta: { center: true },
+    id: 'winner', header: 'Winner', size: 72, enableSorting: false, enableResizing: false, meta: { center: true },
     accessorFn: (o) => {
       const ios = o.iOS;
       const and = o.Android;
@@ -621,6 +635,7 @@ export default function AIRecommendationsPage() {
     onSortingChange: setOsSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    columnResizeMode: 'onChange',
     getRowId: (row) => row.offer,
   });
 
@@ -869,8 +884,8 @@ export default function AIRecommendationsPage() {
           {osOffers.length > 0 && (
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">iOS vs Android Performance</h2>
-              <div className="card overflow-hidden">
-                <table className="w-full">
+              <div className="card overflow-x-auto">
+                <table className="w-full" style={{ tableLayout: 'fixed', width: osTable.getTotalSize() }}>
                   <thead>
                     {osTable.getHeaderGroups().map((hg) => (
                       <tr key={hg.id} className="border-b border-gray-100 bg-gray-50">
@@ -884,7 +899,8 @@ export default function AIRecommendationsPage() {
                             <th
                               key={header.id}
                               onClick={header.column.getToggleSortingHandler()}
-                              className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap
+                              style={{ width: header.getSize(), position: 'relative' }}
+                              className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap overflow-hidden
                                 ${right ? 'text-right' : center ? 'text-center' : left ? 'text-left' : 'text-left'}
                                 ${isIos ? 'text-purple-500' : isAndroid ? 'text-green-600' : 'text-gray-500'}
                                 ${header.column.getCanSort() ? 'cursor-pointer select-none hover:opacity-70' : ''}`}
@@ -892,6 +908,15 @@ export default function AIRecommendationsPage() {
                             >
                               {flexRender(header.column.columnDef.header, header.getContext())}
                               {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                              {header.column.getCanResize() && (
+                                <div
+                                  onMouseDown={header.getResizeHandler()}
+                                  onTouchStart={header.getResizeHandler()}
+                                  className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
+                                    header.column.getIsResizing() ? 'bg-blue-400' : 'bg-transparent hover:bg-gray-300'
+                                  }`}
+                                />
+                              )}
                             </th>
                           );
                         })}
@@ -906,7 +931,8 @@ export default function AIRecommendationsPage() {
                           const center = cell.column.columnDef.meta?.center;
                           return (
                             <td key={cell.id}
-                              className={`px-4 py-2 tabular-nums ${right ? 'text-right' : center ? 'text-center' : 'text-left'}`}
+                              style={{ width: cell.column.getSize() }}
+                              className={`px-4 py-2 tabular-nums overflow-hidden ${right ? 'text-right' : center ? 'text-center' : 'text-left'}`}
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </td>

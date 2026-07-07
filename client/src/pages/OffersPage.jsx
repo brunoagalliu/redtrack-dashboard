@@ -239,6 +239,7 @@ export default function OffersPage() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    columnResizeMode: 'onChange',
     getRowId: (_row, idx) => String(idx),
   });
 
@@ -369,7 +370,7 @@ export default function OffersPage() {
 
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: table.getTotalSize() }}>
                 <thead>
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
@@ -379,12 +380,22 @@ export default function OffersPage() {
                           <th
                             key={header.id}
                             onClick={header.column.getToggleSortingHandler()}
-                            className={`px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap
+                            style={{ width: header.getSize(), position: 'relative' }}
+                            className={`px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap overflow-hidden
                               ${right ? 'text-right' : 'text-left'}
                               ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
                           >
                             {flexRender(header.column.columnDef.header, header.getContext())}
                             {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                            {header.column.getCanResize() && (
+                              <div
+                                onMouseDown={header.getResizeHandler()}
+                                onTouchStart={header.getResizeHandler()}
+                                className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
+                                  header.column.getIsResizing() ? 'bg-blue-400' : 'bg-transparent hover:bg-gray-300'
+                                }`}
+                              />
+                            )}
                           </th>
                         );
                       })}
@@ -397,7 +408,7 @@ export default function OffersPage() {
                       {row.getVisibleCells().map((cell) => {
                         const right = cell.column.columnDef.meta?.right;
                         return (
-                          <td key={cell.id} className={`px-3 py-2 ${right ? 'text-right tabular-nums' : ''}`}>
+                          <td key={cell.id} style={{ width: cell.column.getSize() }} className={`px-3 py-2 overflow-hidden ${right ? 'text-right tabular-nums' : ''}`}>
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </td>
                         );

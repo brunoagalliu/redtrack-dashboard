@@ -203,6 +203,7 @@ export default function VerticalsPage() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    columnResizeMode: 'onChange',
     getRowId: (row) => `${row.vertical}-${row.id}`,
   });
 
@@ -311,7 +312,7 @@ export default function VerticalsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" style={{ tableLayout: 'fixed', width: table.getTotalSize() }}>
               <thead>
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
@@ -321,12 +322,22 @@ export default function VerticalsPage() {
                         <th
                           key={header.id}
                           onClick={header.column.getToggleSortingHandler()}
-                          className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider select-none whitespace-nowrap
+                          style={{ width: header.getSize(), position: 'relative' }}
+                          className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider select-none whitespace-nowrap overflow-hidden
                             ${right ? 'text-right' : 'text-left'}
                             ${header.column.getCanSort() ? 'cursor-pointer hover:text-gray-800 hover:bg-gray-100 transition-colors' : ''}`}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
                           {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                          {header.column.getCanResize() && (
+                            <div
+                              onMouseDown={header.getResizeHandler()}
+                              onTouchStart={header.getResizeHandler()}
+                              className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
+                                header.column.getIsResizing() ? 'bg-blue-400' : 'bg-transparent hover:bg-gray-300'
+                              }`}
+                            />
+                          )}
                         </th>
                       );
                     })}
@@ -341,7 +352,8 @@ export default function VerticalsPage() {
                       return (
                         <td
                           key={cell.id}
-                          className={`px-4 py-2.5 text-sm tabular-nums ${right ? 'text-right text-gray-800' : ''}`}
+                          style={{ width: cell.column.getSize() }}
+                          className={`px-4 py-2.5 text-sm tabular-nums overflow-hidden ${right ? 'text-right text-gray-800' : ''}`}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
