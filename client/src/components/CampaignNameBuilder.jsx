@@ -210,8 +210,8 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
     }
   }, [listName, allPartners.length]);
 
-  // Build the campaign name from parts
-  const suffix = [nameSource, vertical, partner, listName, date].filter(Boolean).join('_');
+  // Build the campaign name from parts — partner is categorization only, not in the name
+  const suffix = [nameSource, vertical, listName, date].filter(Boolean).join('_');
   const preview = buyer
     ? (suffix ? `${buyer} - ${suffix}` : buyer)
     : '';
