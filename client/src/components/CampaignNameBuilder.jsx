@@ -74,7 +74,7 @@ const SELF_ROUTING_VALUES = new Set(Object.values(SELF_ROUTING));
 const TRAFFIC_SOURCES = ['UPM', 'Ranhog', 'TechStar', 'Internal'];
 
 // ── Parse an existing campaign name back into its parts ───────────────────────
-function parseName(name, sources, verticals) {
+function parseName(name, sources, verticals, partners) {
   const n = name.replace(/^Copy of\s+/i, '').replace(/[_\s]*-?\s*copy\s*$/i, '').trim();
 
   const dashIdx = n.indexOf(' - ');
@@ -88,16 +88,19 @@ function parseName(name, sources, verticals) {
 
   const sourceSet   = new Set(sources.map((s) => s.value));
   const verticalSet = new Set(verticals.map((v) => v.value));
+  const partnerSet  = new Set(partners.map((p) => p.alias));
   const dateRegex   = /^\d{2}\.\d{2}$/;
 
   const parts     = rest.split('_');
   let rawSource   = '';
   let vertical    = '';
+  let partner     = '';
   const listParts = [];
 
   for (const part of parts) {
     if (!rawSource  && sourceSet.has(part))    { rawSource = part; }
     else if (!vertical && verticalSet.has(part)) { vertical = part; }
+    else if (!partner  && partnerSet.has(part))  { partner = part; }
     else if (dateRegex.test(part))             { /* skip trailing date */ }
     else                                       { listParts.push(part); }
   }
@@ -105,12 +108,12 @@ function parseName(name, sources, verticals) {
   // Map raw source back to trafficSource + route
   let trafficSource = '';
   let route = '';
-  if (rawSource === 'USMS')      { trafficSource = 'UPM'; }
+  if (rawSource === 'USMS')          { trafficSource = 'UPM'; }
   else if (rawSource === 'Ranhog')   { trafficSource = 'Ranhog'; }
   else if (rawSource === 'TechStar') { trafficSource = 'TechStar'; }
-  else if (rawSource)            { trafficSource = 'Internal'; route = rawSource; }
+  else if (rawSource)                { trafficSource = 'Internal'; route = rawSource; }
 
-  return { buyer, trafficSource, route, vertical, listName: listParts.join('_') };
+  return { buyer, trafficSource, route, vertical, partner, listName: listParts.join('_') };
 }
 
 function todayStr() {
@@ -124,16 +127,20 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
 
   const { data: sources   = [], isLoading: loadingSources   } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
   const { data: verticals = [], isLoading: loadingVerticals } = useQuery({ queryKey: ['list', 'vertical'], queryFn: () => api.getList('vertical') });
+  const { data: partners  = [], isLoading: loadingPartners  } = useQuery({ queryKey: ['partners'],         queryFn: () => api.getPartners() });
 
   const addSource      = useMutation({ mutationFn: (v)  => api.addListItem('route', v),       onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
   const deleteSource   = useMutation({ mutationFn: (id) => api.deleteListItem('route', id),   onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'route'] }) });
   const addVertical    = useMutation({ mutationFn: (v)  => api.addListItem('vertical', v),    onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
   const deleteVertical = useMutation({ mutationFn: (id) => api.deleteListItem('vertical', id), onSuccess: () => qc.invalidateQueries({ queryKey: ['list', 'vertical'] }) });
+  const addPartner     = useMutation({ mutationFn: (alias) => api.addPartner(alias),           onSuccess: () => qc.invalidateQueries({ queryKey: ['partners'] }) });
+  const deletePartner  = useMutation({ mutationFn: (id)   => api.deletePartner(id),            onSuccess: () => qc.invalidateQueries({ queryKey: ['partners'] }) });
 
   const [buyer,         setBuyer]         = useState('');
   const [trafficSource, setTrafficSource] = useState('');
   const [route,         setRoute]         = useState('');
   const [vertical,      setVertical]      = useState('');
+  const [partner,       setPartner]       = useState('');
   const [listName,      setListName]      = useState('');
   const [date,          setDate]          = useState(todayStr);
   const [initialized,   setInitialized]   = useState(false);
@@ -145,18 +152,19 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
 
   // Pre-fill from existing campaign name (edit mode)
   useEffect(() => {
-    if (initialized || !value || loadingSources || loadingVerticals) return;
-    const parsed = parseName(value, sources, verticals);
+    if (initialized || !value || loadingSources || loadingVerticals || loadingPartners) return;
+    const parsed = parseName(value, sources, verticals, partners);
     if (parsed.buyer)         setBuyer(parsed.buyer);
     if (parsed.trafficSource) setTrafficSource(parsed.trafficSource);
     if (parsed.route)         setRoute(parsed.route);
     if (parsed.vertical)      setVertical(parsed.vertical);
+    if (parsed.partner)       setPartner(parsed.partner);
     if (parsed.listName)      setListName(parsed.listName);
     setInitialized(true);
-  }, [value, loadingSources, loadingVerticals, initialized, sources, verticals]);
+  }, [value, loadingSources, loadingVerticals, loadingPartners, initialized, sources, verticals, partners]);
 
   // Build the campaign name from parts
-  const suffix = [nameSource, vertical, listName, date].filter(Boolean).join('_');
+  const suffix = [nameSource, vertical, partner, listName, date].filter(Boolean).join('_');
   const preview = buyer
     ? (suffix ? `${buyer} - ${suffix}` : buyer)
     : '';
@@ -171,10 +179,14 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
     if (onRoute) onRoute(nameSource);
   }, [nameSource]);
 
-  // URL params (keep for compatibility)
+  // URL params — include partner sourceid when selected
   useEffect(() => {
-    if (onUrlParams) onUrlParams(`clk=0`);
-  }, []);
+    if (!onUrlParams) return;
+    const selectedPartner = partners.find((p) => p.alias === partner);
+    const parts = ['clk=0'];
+    if (selectedPartner) parts.push(`sourceid=${selectedPartner.code}`);
+    onUrlParams(parts.join('&'));
+  }, [partner, partners]);
 
   return (
     <div className="space-y-4">
@@ -255,7 +267,21 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
         </div>
       )}
 
-      {/* 4–5. List Name + Date */}
+      {/* 4. Data Partner */}
+      <div className="max-w-xs">
+        <label className="label">Data Partner</label>
+        <CreatableSelect
+          value={partner}
+          items={partners.map((p) => ({ id: p.id, value: p.alias }))}
+          loading={loadingPartners}
+          onChange={setPartner}
+          onAdd={(alias) => addPartner.mutate(alias)}
+          onDelete={(id) => { if (partner === partners.find((p) => p.id === id)?.alias) setPartner(''); deletePartner.mutate(id); }}
+          addLabel="Add new partner…"
+        />
+      </div>
+
+      {/* 5–6. List Name + Date */}
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-2">
           <label className="label">List Name</label>
