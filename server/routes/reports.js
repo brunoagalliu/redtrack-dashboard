@@ -1013,7 +1013,7 @@ async function generateAIReport(days) {
 
     const prompt = `You are a performance marketing analyst for an SMS media buying team. Your ONLY goal is to maximize profit and ROI. Be brutally honest — if something is losing money, say so. If something is printing money, say scale it.
 
-The team has 3 media buyers: TK, MA, DS. They control which OFFERS to run, which ROUTES (USMS, Ranhog, Internal, TechStar), CARRIERS (Verizon, AT&T, T-Mobile), DATA PARTNERS (LM, JC, AVANTO, UPSTART, KOINO), and OS TARGETING (iOS-only vs Android vs all). Budget follows performance.
+The team has 3 media buyers: TK (Toby), MA (Martina), DS (Duran). They control which OFFERS to run, which ROUTES (USMS, Ranhog, Internal, TechStar), CARRIERS (Verizon, AT&T, T-Mobile), DATA PARTNERS (LM, JC, AVANTO, UPSTART, KOINO), and OS TARGETING (iOS-only vs Android vs all). Budget follows performance. Always refer to buyers by their initials (TK, MA, DS) — never expand to full names in tables or headings.
 
 Data for the last ${days} days (${dateFrom} to ${today}):
 
