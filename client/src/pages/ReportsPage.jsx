@@ -1,25 +1,36 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  getExpandedRowModel,
+  flexRender,
+} from '@tanstack/react-table';
 import { api } from '../lib/api';
 
-// ── Column definitions ────────────────────────────────────────────────────────
+// ── Column metadata ───────────────────────────────────────────────────────────
 const ALL_COLUMNS = [
-  { key: 'title',        label: 'Campaign', type: 'title',  sortable: true,  defaultVisible: true  },
-  { key: 'data_list',    label: 'List',     type: 'list',   sortable: true,  defaultVisible: true  },
-  { key: 'data_partner', label: 'Partner',  type: 'partner', sortable: false, defaultVisible: true  },
-  { key: 'route',        label: 'Route',    type: 'text',   sortable: false, defaultVisible: false },
-  { key: 'carrier',      label: 'Carrier',  type: 'text',   sortable: false, defaultVisible: false },
-  { key: 'vertical',     label: 'Vertical', type: 'text',   sortable: false, defaultVisible: false },
-  { key: 'clicks',       label: 'Clicks',   type: 'number', sortable: true,  defaultVisible: true  },
-  { key: 'conversions',  label: 'Conv.',    type: 'number', sortable: true,  defaultVisible: true  },
-  { key: 'cost',         label: 'Spend',    type: 'money',  sortable: true,  defaultVisible: true  },
-  { key: 'revenue',      label: 'Revenue',  type: 'money',  sortable: true,  defaultVisible: true  },
-  { key: 'profit',       label: 'Profit',   type: 'profit', sortable: true,  defaultVisible: true  },
-  { key: 'cpc',          label: 'CPC',      type: 'rate',   sortable: false, defaultVisible: true  },
-  { key: 'epc',          label: 'EPC',      type: 'rate',   sortable: false, defaultVisible: true  },
+  { id: 'title',        label: 'Campaign', defaultVisible: true,  defaultSize: 260 },
+  { id: 'data_list',    label: 'List',     defaultVisible: true,  defaultSize: 180 },
+  { id: 'data_partner', label: 'Partner',  defaultVisible: true,  defaultSize: 100 },
+  { id: 'route',        label: 'Route',    defaultVisible: false, defaultSize: 90  },
+  { id: 'carrier',      label: 'Carrier',  defaultVisible: false, defaultSize: 90  },
+  { id: 'vertical',     label: 'Vertical', defaultVisible: false, defaultSize: 90  },
+  { id: 'clicks',       label: 'Clicks',   defaultVisible: true,  defaultSize: 90  },
+  { id: 'conversions',  label: 'Conv.',    defaultVisible: true,  defaultSize: 80  },
+  { id: 'cost',         label: 'Spend',    defaultVisible: true,  defaultSize: 100 },
+  { id: 'revenue',      label: 'Revenue',  defaultVisible: true,  defaultSize: 100 },
+  { id: 'profit',       label: 'Profit',   defaultVisible: true,  defaultSize: 100 },
+  { id: 'cpc',          label: 'CPC',      defaultVisible: true,  defaultSize: 90  },
+  { id: 'epc',          label: 'EPC',      defaultVisible: true,  defaultSize: 90  },
 ];
 
+const CONFIGURABLE_IDS = ALL_COLUMNS.map((c) => c.id);
 const STORAGE_KEY = 'rt_report_col_config';
+const RIGHT_ALIGNED = new Set(['clicks', 'conversions', 'cost', 'revenue', 'profit', 'cpc', 'epc']);
+const NON_CONFIG_IDS = new Set(['buyer', 'expand']);
 
 function loadColConfig() {
   try {
@@ -27,17 +38,16 @@ function loadColConfig() {
     if (saved?.order && saved?.visible) return saved;
   } catch {}
   return {
-    order:   ALL_COLUMNS.map((c) => c.key),
-    visible: Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, c.defaultVisible])),
+    order:   ALL_COLUMNS.map((c) => c.id),
+    visible: Object.fromEntries(ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])),
   };
 }
 
-function saveColConfig(config) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+function saveColConfig(order, visible) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ order, visible }));
 }
 
 const BUYERS = ['TK', 'MA', 'DS'];
-
 const BUYER_COLORS = {
   TK: 'bg-blue-100 text-blue-700',
   MA: 'bg-purple-100 text-purple-700',
@@ -48,32 +58,31 @@ function fmt(n) {
   if (n == null) return '—';
   return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
-
 function fmtMoney(n) {
   if (n == null) return '—';
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
 function fmtRate(n) {
   if (n == null) return '—';
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
-
 function perClick(amount, clicks) {
   return clicks > 0 ? Number(amount) / Number(clicks) : 0;
 }
 
-function SortIcon({ col, sortKey, sortDir }) {
-  if (sortKey !== col) return (
-    <svg className="w-3.5 h-3.5 text-gray-300 ml-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+// ── Sort icon ─────────────────────────────────────────────────────────────────
+function SortIcon({ sorted }) {
+  if (!sorted) return (
+    <svg className="w-3 h-3 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
     </svg>
   );
-  return sortDir === 'asc'
-    ? <svg className="w-3.5 h-3.5 text-blue-500 ml-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
-    : <svg className="w-3.5 h-3.5 text-blue-500 ml-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>;
+  return sorted === 'asc'
+    ? <svg className="w-3 h-3 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+    : <svg className="w-3 h-3 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>;
 }
 
+// ── Sync button ───────────────────────────────────────────────────────────────
 function SyncButton({ dateFrom, dateTo, onSynced }) {
   const [state, setState] = useState(null);
   const pollRef = useRef(null);
@@ -111,13 +120,9 @@ function SyncButton({ dateFrom, dateTo, onSynced }) {
   }
 
   const running = state?.status === 'running';
-
   return (
-    <button
-      onClick={startSync}
-      disabled={running}
-      className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-    >
+    <button onClick={startSync} disabled={running}
+      className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
       {running ? (
         <>
           <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -136,7 +141,8 @@ function SyncButton({ dateFrom, dateTo, onSynced }) {
   );
 }
 
-function OsRows({ campaignId, offerId, dateFrom, dateTo }) {
+// ── OS sub-rows (inside offer sub-table) ─────────────────────────────────────
+function OsSubRows({ campaignId, offerId, dateFrom, dateTo }) {
   const { data: osStats, isLoading } = useQuery({
     queryKey: ['offer-os', campaignId, offerId, dateFrom, dateTo],
     queryFn: () => api.getOfferOsStats(campaignId, offerId, { date_from: dateFrom, date_to: dateTo }),
@@ -144,42 +150,32 @@ function OsRows({ campaignId, offerId, dateFrom, dateTo }) {
   });
 
   if (isLoading) return (
-    <tr>
-      <td colSpan={20} className="px-4 py-1 text-xs text-gray-400 text-center bg-violet-50/20">Loading OS…</td>
-    </tr>
+    <tr><td colSpan={9} className="px-4 py-1 text-xs text-gray-400 text-center bg-violet-50/20">Loading OS…</td></tr>
   );
   if (!osStats?.length) return (
-    <tr>
-      <td colSpan={20} className="px-12 py-1 text-xs text-gray-400 bg-violet-50/20">No OS data yet — run a sync first.</td>
-    </tr>
+    <tr><td colSpan={9} className="px-12 py-1 text-xs text-gray-400 bg-violet-50/20">No OS data yet — run a sync first.</td></tr>
   );
 
   return osStats.map((s) => (
     <tr key={s.os} className="bg-violet-50/20 border-l-4 border-violet-100">
-      <td className="px-4 py-1" />
-      <td className="px-4 py-1 text-xs text-gray-600">
+      <td className="px-2 py-1 w-8" />
+      <td className="px-3 py-1 text-xs text-gray-600">
         <span className="ml-5 text-violet-300 mr-1.5 select-none">↳</span>
         <span className="font-medium">{s.os}</span>
       </td>
-      <td className="px-4 py-1" />
-      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmt(s.clicks)}</td>
-      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmt(s.conversions)}</td>
-      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmtMoney(s.cost)}</td>
-      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-500">{fmtMoney(s.revenue)}</td>
-      <td className={`px-4 py-1 text-right tabular-nums text-xs font-medium ${Number(s.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-        {fmtMoney(s.profit)}
-      </td>
-      <td className="px-4 py-1 text-right tabular-nums text-xs text-gray-400" title="Estimated — cost is prorated by click share">
-        {fmtRate(perClick(s.cost, s.clicks))}
-      </td>
-      <td className="px-4 py-1 text-right tabular-nums text-xs font-medium text-gray-700" title="Revenue per click — directly reported, not prorated">
-        {fmtRate(perClick(s.revenue, s.clicks))}
-      </td>
+      <td className="px-3 py-1 text-right tabular-nums text-xs text-gray-500">{fmt(s.clicks)}</td>
+      <td className="px-3 py-1 text-right tabular-nums text-xs text-gray-500">{fmt(s.conversions)}</td>
+      <td className="px-3 py-1 text-right tabular-nums text-xs text-gray-500">{fmtMoney(s.cost)}</td>
+      <td className="px-3 py-1 text-right tabular-nums text-xs text-gray-500">{fmtMoney(s.revenue)}</td>
+      <td className={`px-3 py-1 text-right tabular-nums text-xs font-medium ${Number(s.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(s.profit)}</td>
+      <td className="px-3 py-1 text-right tabular-nums text-xs text-gray-400" title="Cost per click — prorated">{fmtRate(perClick(s.cost, s.clicks))}</td>
+      <td className="px-3 py-1 text-right tabular-nums text-xs font-medium text-gray-700" title="Revenue per click">{fmtRate(perClick(s.revenue, s.clicks))}</td>
     </tr>
   ));
 }
 
-function OfferRows({ campaignId, dateFrom, dateTo }) {
+// ── Offer sub-table (shown when campaign row is expanded) ─────────────────────
+function OfferSubTable({ campaignId, dateFrom, dateTo }) {
   const [expandedOfferIds, setExpandedOfferIds] = useState(new Set());
 
   const { data: offers, isLoading } = useQuery({
@@ -196,61 +192,55 @@ function OfferRows({ campaignId, dateFrom, dateTo }) {
     });
   }
 
-  if (isLoading) return (
-    <tr>
-      <td colSpan={20} className="px-4 py-2 text-xs text-gray-400 text-center bg-gray-50/50">
-        Loading offers…
-      </td>
-    </tr>
+  return (
+    <table className="w-full" style={{ tableLayout: 'fixed' }}>
+      <colgroup>
+        <col style={{ width: '32px' }} />
+        <col />
+        <col style={{ width: '80px' }} />
+        <col style={{ width: '72px' }} />
+        <col style={{ width: '96px' }} />
+        <col style={{ width: '96px' }} />
+        <col style={{ width: '96px' }} />
+        <col style={{ width: '84px' }} />
+        <col style={{ width: '84px' }} />
+      </colgroup>
+      <tbody>
+        {isLoading && (
+          <tr><td colSpan={9} className="px-4 py-2 text-xs text-gray-400 text-center bg-gray-50/50">Loading offers…</td></tr>
+        )}
+        {!isLoading && !offers?.length && (
+          <tr><td colSpan={9} className="px-8 py-2 text-xs text-gray-400 bg-gray-50/50">No offer data yet — run a sync first.</td></tr>
+        )}
+        {offers?.flatMap((o) => {
+          const expanded = expandedOfferIds.has(o.offer_id);
+          return [
+            <tr key={o.offer_id} className="bg-indigo-50/30 border-l-2 border-indigo-200">
+              <td className="px-2 py-1.5">
+                <button onClick={() => toggleOffer(o.offer_id)}
+                  className="text-indigo-200 hover:text-indigo-500 transition-colors text-xs select-none"
+                  title="Show OS breakdown">
+                  {expanded ? '▼' : '▶'}
+                </button>
+              </td>
+              <td className="px-3 py-1.5 text-xs text-gray-700 overflow-hidden">
+                <span className="text-indigo-300 mr-1.5 select-none">↳</span>
+                <span className="truncate" title={o.offer_name}>{o.offer_name}</span>
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.clicks)}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.conversions)}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.cost)}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.revenue)}</td>
+              <td className={`px-3 py-1.5 text-right tabular-nums text-xs font-medium ${Number(o.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(o.profit)}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-xs text-gray-400" title="Cost per click — prorated">{fmtRate(perClick(o.cost, o.clicks))}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-xs font-medium text-gray-700" title="Revenue per click">{fmtRate(perClick(o.revenue, o.clicks))}</td>
+            </tr>,
+            expanded ? <OsSubRows key={`os-${o.offer_id}`} campaignId={campaignId} offerId={o.offer_id} dateFrom={dateFrom} dateTo={dateTo} /> : null,
+          ];
+        })}
+      </tbody>
+    </table>
   );
-
-  if (!offers?.length) return (
-    <tr>
-      <td colSpan={20} className="px-8 py-2 text-xs text-gray-400 bg-gray-50/50">
-        No offer data yet — run a sync first.
-      </td>
-    </tr>
-  );
-
-  return offers.flatMap((o) => {
-    const expanded = expandedOfferIds.has(o.offer_id);
-    const rows = [
-      <tr key={o.offer_id} className="bg-indigo-50/30 border-l-2 border-indigo-200">
-        <td className="px-4 py-1.5" />
-        <td className="px-4 py-1.5 text-xs text-gray-700 max-w-xs">
-          <button
-            onClick={() => toggleOffer(o.offer_id)}
-            className="mr-1 text-indigo-200 hover:text-indigo-500 transition-colors text-xs select-none"
-            title="Show OS breakdown"
-          >
-            {expanded ? '▼' : '▶'}
-          </button>
-          <span className="text-indigo-300 mr-1.5 select-none">↳</span>
-          <span className="truncate" title={o.offer_name}>{o.offer_name}</span>
-        </td>
-        <td className="px-4 py-1.5" />
-        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.clicks)}</td>
-        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmt(o.conversions)}</td>
-        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.cost)}</td>
-        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-600">{fmtMoney(o.revenue)}</td>
-        <td className={`px-4 py-1.5 text-right tabular-nums text-xs font-medium ${Number(o.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-          {fmtMoney(o.profit)}
-        </td>
-        <td className="px-4 py-1.5 text-right tabular-nums text-xs text-gray-400" title="Estimated — cost is prorated by click share">
-          {fmtRate(perClick(o.cost, o.clicks))}
-        </td>
-        <td className="px-4 py-1.5 text-right tabular-nums text-xs font-medium text-gray-700" title="Revenue per click — directly reported, not prorated">
-          {fmtRate(perClick(o.revenue, o.clicks))}
-        </td>
-      </tr>,
-    ];
-    if (expanded) {
-      rows.push(
-        <OsRows key={`os-${o.offer_id}`} campaignId={campaignId} offerId={o.offer_id} dateFrom={dateFrom} dateTo={dateTo} />
-      );
-    }
-    return rows;
-  });
 }
 
 // ── Inline list name editor ───────────────────────────────────────────────────
@@ -283,7 +273,7 @@ function ListCell({ campaignId, value, onSaved }) {
 
   return (
     <button type="button" onClick={() => { setDraft(value || ''); setEditing(true); }}
-      className="group flex items-center gap-1 text-left text-xs font-mono text-gray-600 hover:text-indigo-700 max-w-[200px] truncate"
+      className="group flex items-center gap-1 text-left text-xs font-mono text-gray-600 hover:text-indigo-700 max-w-full"
       title={value || 'Click to set list name'}>
       <span className="truncate">{value || <span className="text-gray-300 italic">—</span>}</span>
       <span className="opacity-0 group-hover:opacity-100 text-gray-300 text-[10px] shrink-0">✎</span>
@@ -331,21 +321,24 @@ function PartnerCell({ campaignId, value, onSaved }) {
   );
 }
 
-// ── Column picker panel ───────────────────────────────────────────────────────
-function ColumnPicker({ config, onChange, onClose }) {
-  const { order, visible } = config;
+// ── Column picker ─────────────────────────────────────────────────────────────
+function ColumnPicker({ table, onClose }) {
+  const configOrder = table.getState().columnOrder.filter((id) => CONFIGURABLE_IDS.includes(id));
+  const visibility  = table.getState().columnVisibility;
 
-  function toggleVisible(key) {
-    onChange({ ...config, visible: { ...visible, [key]: !visible[key] } });
+  function move(id, dir) {
+    const cOrder = table.getState().columnOrder.filter((i) => CONFIGURABLE_IDS.includes(i));
+    const idx = cOrder.indexOf(id);
+    const swap = idx + dir;
+    if (swap < 0 || swap >= cOrder.length) return;
+    const next = [...cOrder];
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    table.setColumnOrder(['buyer', 'expand', ...next]);
   }
 
-  function move(key, dir) {
-    const idx = order.indexOf(key);
-    const next = [...order];
-    const swap = idx + dir;
-    if (swap < 0 || swap >= next.length) return;
-    [next[idx], next[swap]] = [next[swap], next[idx]];
-    onChange({ ...config, order: next });
+  function resetToDefault() {
+    table.setColumnOrder(['buyer', 'expand', ...ALL_COLUMNS.map((c) => c.id)]);
+    table.setColumnVisibility(Object.fromEntries(ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])));
   }
 
   return (
@@ -355,59 +348,61 @@ function ColumnPicker({ config, onChange, onClose }) {
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
       </div>
       <div className="max-h-72 overflow-y-auto">
-        {order.map((key) => {
-          const col = ALL_COLUMNS.find((c) => c.key === key);
-          if (!col) return null;
+        {configOrder.map((id) => {
+          const meta = ALL_COLUMNS.find((c) => c.id === id);
+          if (!meta) return null;
+          const isVisible = visibility[id] !== false;
           return (
-            <div key={key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50">
-              <input type="checkbox" checked={!!visible[key]} onChange={() => toggleVisible(key)}
+            <div key={id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50">
+              <input type="checkbox" checked={isVisible}
+                onChange={() => table.getColumn(id)?.toggleVisibility()}
                 className="rounded text-indigo-600 cursor-pointer" />
-              <span className="text-sm text-gray-700 flex-1">{col.label}</span>
+              <span className="text-sm text-gray-700 flex-1">{meta.label}</span>
               <div className="flex flex-col">
-                <button onClick={() => move(key, -1)} className="text-gray-300 hover:text-gray-600 text-[10px] leading-none">▲</button>
-                <button onClick={() => move(key, 1)}  className="text-gray-300 hover:text-gray-600 text-[10px] leading-none">▼</button>
+                <button onClick={() => move(id, -1)} className="text-gray-300 hover:text-gray-600 text-[10px] leading-none">▲</button>
+                <button onClick={() => move(id, 1)}  className="text-gray-300 hover:text-gray-600 text-[10px] leading-none">▼</button>
               </div>
             </div>
           );
         })}
       </div>
       <div className="px-3 pt-2 border-t border-gray-100">
-        <button onClick={() => onChange({ order: ALL_COLUMNS.map((c) => c.key), visible: Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, c.defaultVisible])) })}
-          className="text-xs text-gray-400 hover:text-gray-600">Reset to default</button>
+        <button onClick={resetToDefault} className="text-xs text-gray-400 hover:text-gray-600">Reset to default</button>
       </div>
     </div>
   );
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const [dateFrom, setDateFrom] = useState(ninetyDaysAgo);
-  const [dateTo, setDateTo] = useState(today);
-  const [applied, setApplied] = useState({ date_from: ninetyDaysAgo, date_to: today });
-  const [buyerFilter, setBuyerFilter] = useState('ALL');
-  const [sortKey, setSortKey] = useState('clicks');
-  const [sortDir, setSortDir] = useState('desc');
-  const [page, setPage] = useState(0);
-  const [perPage, setPerPage] = useState(50);
-  const [expandedId, setExpandedId] = useState(null);
-  const [colConfig, setColConfig] = useState(loadColConfig);
-  const [showColPicker, setShowColPicker] = useState(false);
+  const [dateTo,   setDateTo]   = useState(today);
+  const [applied,  setApplied]  = useState({ date_from: ninetyDaysAgo, date_to: today });
+  const [buyerFilter,    setBuyerFilter]    = useState('ALL');
+  const [showColPicker,  setShowColPicker]  = useState(false);
   const [listOverrides,    setListOverrides]    = useState({});
   const [partnerOverrides, setPartnerOverrides] = useState({});
 
+  // TanStack table state — loaded from localStorage
+  const initCfg = useMemo(() => loadColConfig(), []);
+  const [columnVisibility, setColumnVisibility] = useState(() => initCfg.visible);
+  const [columnOrder,      setColumnOrder]      = useState(() => ['buyer', 'expand', ...initCfg.order]);
+  const [sorting,          setSorting]          = useState([{ id: 'clicks', desc: true }]);
+  const [pagination,       setPagination]       = useState({ pageIndex: 0, pageSize: 50 });
+  const [expanded,         setExpanded]         = useState({});
+
   const queryClient = useQueryClient();
 
-  useEffect(() => saveColConfig(colConfig), [colConfig]);
+  useEffect(() => {
+    const configOrder = columnOrder.filter((id) => CONFIGURABLE_IDS.includes(id));
+    saveColConfig(configOrder, columnVisibility);
+  }, [columnOrder, columnVisibility]);
 
-  const handleColConfigChange = useCallback((cfg) => setColConfig(cfg), []);
-  const handleListSaved    = useCallback((id, val) => setListOverrides((prev)    => ({ ...prev, [id]: val })), []);
-  const handlePartnerSaved = useCallback((id, val) => setPartnerOverrides((prev) => ({ ...prev, [id]: val })), []);
-
-  const visibleCols = colConfig.order
-    .map((key) => ALL_COLUMNS.find((c) => c.key === key))
-    .filter((c) => c && colConfig.visible[c.key]);
+  const handleListSaved    = useCallback((id, val) => setListOverrides((p) => ({ ...p, [id]: val })), []);
+  const handlePartnerSaved = useCallback((id, val) => setPartnerOverrides((p) => ({ ...p, [id]: val })), []);
 
   const { data: syncStatus } = useQuery({
     queryKey: ['reports', 'sync-status'],
@@ -427,7 +422,7 @@ export default function ReportsPage() {
 
   function applyRange() {
     setApplied({ date_from: dateFrom, date_to: dateTo });
-    setPage(0);
+    setPagination((p) => ({ ...p, pageIndex: 0 }));
   }
 
   function onSynced() {
@@ -435,22 +430,6 @@ export default function ReportsPage() {
     queryClient.invalidateQueries({ queryKey: ['reports', 'sync-status'] });
   }
 
-  function handleSort(col) {
-    if (sortKey === col) {
-      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(col);
-      setSortDir('desc');
-    }
-    setPage(0);
-  }
-
-  function handleBuyerFilter(val) {
-    setBuyerFilter(val);
-    setPage(0);
-  }
-
-  // Flatten all campaigns into one list
   const allCampaigns = useMemo(() => {
     if (!data?.buyers) return [];
     return BUYERS.flatMap((buyer) =>
@@ -458,17 +437,11 @@ export default function ReportsPage() {
     );
   }, [data]);
 
-  const filtered = useMemo(() => {
-    const list = buyerFilter === 'ALL' ? allCampaigns : allCampaigns.filter((c) => c.buyer === buyerFilter);
-    return [...list].sort((a, b) => {
-      const av = a[sortKey] ?? 0;
-      const bv = b[sortKey] ?? 0;
-      if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-      return sortDir === 'asc' ? av - bv : bv - av;
-    });
-  }, [allCampaigns, buyerFilter, sortKey, sortDir]);
+  const filteredData = useMemo(() => {
+    return buyerFilter === 'ALL' ? allCampaigns : allCampaigns.filter((c) => c.buyer === buyerFilter);
+  }, [allCampaigns, buyerFilter]);
 
-  const totals = useMemo(() => filtered.reduce(
+  const totals = useMemo(() => filteredData.reduce(
     (acc, c) => ({
       clicks:      acc.clicks      + (c.clicks      || 0),
       conversions: acc.conversions + (c.conversions  || 0),
@@ -477,23 +450,199 @@ export default function ReportsPage() {
       profit:      acc.profit      + (c.profit       || 0),
     }),
     { clicks: 0, conversions: 0, cost: 0, revenue: 0, profit: 0 }
-  ), [filtered]);
+  ), [filteredData]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
-  const paged = filtered.slice(page * perPage, page * perPage + perPage);
+  const columns = useMemo(() => [
+    {
+      id: 'buyer',
+      header: '',
+      size: 44, minSize: 44, maxSize: 44,
+      enableResizing: false,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${BUYER_COLORS[row.original.buyer]}`}>
+          {row.original.buyer}
+        </span>
+      ),
+    },
+    {
+      id: 'expand',
+      header: '',
+      size: 28, minSize: 28, maxSize: 28,
+      enableResizing: false,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <button onClick={row.getToggleExpandedHandler()}
+          className="text-gray-300 hover:text-indigo-500 transition-colors text-xs select-none"
+          title="Show offers">
+          {row.getIsExpanded() ? '▼' : '▶'}
+        </button>
+      ),
+    },
+    {
+      id: 'title',
+      accessorKey: 'title',
+      header: 'Campaign',
+      size: 260, minSize: 100,
+      enableResizing: true,
+      enableSorting: true,
+      cell: ({ getValue }) => (
+        <span className="block truncate text-sm text-gray-700" title={String(getValue() ?? '')}>{getValue()}</span>
+      ),
+    },
+    {
+      id: 'data_list',
+      header: 'List',
+      size: 180, minSize: 80,
+      enableResizing: true,
+      enableSorting: true,
+      accessorFn: (row) => listOverrides[row.id] !== undefined ? listOverrides[row.id] : (row.data_list ?? ''),
+      cell: ({ row }) => (
+        <ListCell
+          campaignId={row.original.id}
+          value={listOverrides[row.original.id] !== undefined ? listOverrides[row.original.id] : row.original.data_list}
+          onSaved={handleListSaved}
+        />
+      ),
+    },
+    {
+      id: 'data_partner',
+      header: 'Partner',
+      size: 100, minSize: 60,
+      enableResizing: true,
+      enableSorting: false,
+      accessorFn: (row) => partnerOverrides[row.id] !== undefined ? partnerOverrides[row.id] : (row.data_partner ?? ''),
+      cell: ({ row }) => (
+        <PartnerCell
+          campaignId={row.original.id}
+          value={partnerOverrides[row.original.id] !== undefined ? partnerOverrides[row.original.id] : row.original.data_partner}
+          onSaved={handlePartnerSaved}
+        />
+      ),
+    },
+    {
+      id: 'route',
+      accessorKey: 'route',
+      header: 'Route',
+      size: 90, minSize: 60,
+      enableResizing: true,
+      enableSorting: false,
+      cell: ({ getValue }) => <span className="text-xs text-gray-500 truncate">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'carrier',
+      accessorKey: 'carrier',
+      header: 'Carrier',
+      size: 90, minSize: 60,
+      enableResizing: true,
+      enableSorting: false,
+      cell: ({ getValue }) => <span className="text-xs text-gray-500 truncate">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'vertical',
+      accessorKey: 'vertical',
+      header: 'Vertical',
+      size: 90, minSize: 60,
+      enableResizing: true,
+      enableSorting: false,
+      cell: ({ getValue }) => <span className="text-xs text-gray-500 truncate">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'clicks',
+      accessorKey: 'clicks',
+      header: 'Clicks',
+      size: 90, minSize: 60,
+      enableResizing: true,
+      enableSorting: true,
+      cell: ({ getValue }) => <span className="tabular-nums text-sm text-gray-800">{fmt(getValue())}</span>,
+    },
+    {
+      id: 'conversions',
+      accessorKey: 'conversions',
+      header: 'Conv.',
+      size: 80, minSize: 55,
+      enableResizing: true,
+      enableSorting: true,
+      cell: ({ getValue }) => <span className="tabular-nums text-sm text-gray-800">{fmt(getValue())}</span>,
+    },
+    {
+      id: 'cost',
+      accessorKey: 'cost',
+      header: 'Spend',
+      size: 100, minSize: 70,
+      enableResizing: true,
+      enableSorting: true,
+      cell: ({ getValue }) => <span className="tabular-nums text-sm text-gray-800">{fmtMoney(getValue())}</span>,
+    },
+    {
+      id: 'revenue',
+      accessorKey: 'revenue',
+      header: 'Revenue',
+      size: 100, minSize: 70,
+      enableResizing: true,
+      enableSorting: true,
+      cell: ({ getValue }) => <span className="tabular-nums text-sm text-gray-800">{fmtMoney(getValue())}</span>,
+    },
+    {
+      id: 'profit',
+      accessorKey: 'profit',
+      header: 'Profit',
+      size: 100, minSize: 70,
+      enableResizing: true,
+      enableSorting: true,
+      cell: ({ getValue }) => (
+        <span className={`tabular-nums text-sm font-medium ${Number(getValue()) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+          {fmtMoney(getValue())}
+        </span>
+      ),
+    },
+    {
+      id: 'cpc',
+      accessorFn: (row) => perClick(row.cost, row.clicks),
+      header: 'CPC',
+      size: 90, minSize: 60,
+      enableResizing: true,
+      enableSorting: false,
+      cell: ({ getValue }) => <span className="tabular-nums text-sm text-gray-600" title="Cost per click — prorated">{fmtRate(getValue())}</span>,
+    },
+    {
+      id: 'epc',
+      accessorFn: (row) => perClick(row.revenue, row.clicks),
+      header: 'EPC',
+      size: 90, minSize: 60,
+      enableResizing: true,
+      enableSorting: false,
+      cell: ({ getValue }) => <span className="tabular-nums text-sm font-medium text-gray-700" title="Revenue per click">{fmtRate(getValue())}</span>,
+    },
+  ], [listOverrides, partnerOverrides, handleListSaved, handlePartnerSaved]);
 
-  function Th({ col, label, right }) {
-    return (
-      <th
-        onClick={() => handleSort(col)}
-        className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100 transition-colors ${right ? 'text-right' : 'text-left'}`}
-      >
-        {label}<SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
-      </th>
-    );
-  }
+  const table = useReactTable({
+    data: filteredData,
+    columns,
+    getRowId: (row) => String(row.id),
+    state: { columnVisibility, columnOrder, sorting, pagination, expanded },
+    onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      setPagination((p) => ({ ...p, pageIndex: 0 }));
+    },
+    onPaginationChange: setPagination,
+    onExpandedChange: setExpanded,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
+    columnResizeMode: 'onChange',
+  });
 
-  const noData = !isLoading && data && allCampaigns.length === 0;
+  const { pageIndex, pageSize } = table.getState().pagination;
+  const pageCount          = table.getPageCount();
+  const totalRows          = filteredData.length;
+  const noData             = !isLoading && data && allCampaigns.length === 0;
+  const visibleLeafCount   = table.getVisibleLeafColumns().length;
+  const visibleHeaders     = table.getHeaderGroups()[0]?.headers ?? [];
+  const firstDataHeaderIdx = visibleHeaders.findIndex((h) => !NON_CONFIG_IDS.has(h.id));
 
   return (
     <div className="p-8 max-w-7xl">
@@ -516,7 +665,9 @@ export default function ReportsPage() {
         </div>
         <div>
           <label className="label">Buyer</label>
-          <select value={buyerFilter} onChange={(e) => handleBuyerFilter(e.target.value)} className="input">
+          <select value={buyerFilter}
+            onChange={(e) => { setBuyerFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+            className="input">
             <option value="ALL">All buyers</option>
             {BUYERS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
@@ -541,14 +692,12 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Error */}
       {isError && (
         <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-4">
           {error?.message || 'Failed to load report.'}
         </div>
       )}
 
-      {/* Loading */}
       {isLoading && (
         <div className="card p-10 text-center">
           <div className="inline-block w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
@@ -556,15 +705,13 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* No data */}
       {noData && (
         <div className="card p-10 text-center text-sm text-gray-500">
           No data for this date range. Click <strong>Sync</strong> to fetch from RedTrack.
         </div>
       )}
 
-      {/* Table */}
-      {!isLoading && !noData && filtered.length > 0 && (
+      {!isLoading && !noData && filteredData.length > 0 && (
         <div className="card overflow-hidden">
           {/* Summary chips + column picker */}
           <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3 flex-wrap">
@@ -572,165 +719,150 @@ export default function ReportsPage() {
               const campaigns = allCampaigns.filter((c) => c.buyer === b);
               if (!campaigns.length) return null;
               return (
-                <button key={b} onClick={() => handleBuyerFilter(buyerFilter === b ? 'ALL' : b)}
+                <button key={b}
+                  onClick={() => { setBuyerFilter(buyerFilter === b ? 'ALL' : b); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                    buyerFilter === b || buyerFilter === 'ALL' ? BUYER_COLORS[b] + ' border-transparent' : 'bg-gray-50 text-gray-400 border-gray-200'
+                    buyerFilter === b || buyerFilter === 'ALL'
+                      ? BUYER_COLORS[b] + ' border-transparent'
+                      : 'bg-gray-50 text-gray-400 border-gray-200'
                   }`}>
                   <span>{b}</span><span className="opacity-70">{campaigns.length}</span>
                 </button>
               );
             })}
-            <span className="ml-auto text-xs text-gray-400">{filtered.length} campaigns</span>
+            <span className="ml-auto text-xs text-gray-400">{filteredData.length} campaigns</span>
             <div className="relative">
               <button onClick={() => setShowColPicker((v) => !v)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50 transition-colors">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" /></svg>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+                </svg>
                 Columns
               </button>
-              {showColPicker && <ColumnPicker config={colConfig} onChange={handleColConfigChange} onClose={() => setShowColPicker(false)} />}
+              {showColPicker && <ColumnPicker table={table} onClose={() => setShowColPicker(false)} />}
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full" style={{ tableLayout: 'fixed' }}>
-              <colgroup>
-                <col style={{ width: '44px' }} /> {/* buyer avatar */}
-                <col style={{ width: '24px' }} /> {/* expand toggle */}
-                {visibleCols.map((col) => (
-                  <col key={col.key} style={{
-                    width: col.key === 'title' ? '260px'
-                         : col.key === 'data_list' ? '180px'
-                         : col.key === 'data_partner' ? '90px'
-                         : ['route','carrier','vertical'].includes(col.key) ? '90px'
-                         : '100px'
-                  }} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-2 py-3 w-11" />
-                  <th className="px-1 py-3 w-6" />
-                  {visibleCols.map((col) => {
-                    const right = !['title','data_list','data_partner','route','carrier','vertical'].includes(col.key);
-                    return col.sortable
-                      ? <Th key={col.key} col={col.key === 'cpc' ? '__cpc' : col.key === 'epc' ? '__epc' : col.key} label={col.label} right={right} />
-                      : <th key={col.key} className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider ${right ? 'text-right' : 'text-left'}`}>{col.label}</th>;
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paged.map((c) => {
-                  const listVal    = listOverrides[c.id]    !== undefined ? listOverrides[c.id]    : c.data_list;
-                  const partnerVal = partnerOverrides[c.id] !== undefined ? partnerOverrides[c.id] : c.data_partner;
-                  return (
-                  <>
-                  <tr key={`${c.buyer}-${c.id}`} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-2 py-2.5">
-                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${BUYER_COLORS[c.buyer]}`}>{c.buyer}</span>
-                    </td>
-                    <td className="px-1 py-2.5">
-                      <button onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
-                        className="text-gray-300 hover:text-indigo-500 transition-colors text-xs select-none" title="Show offers">
-                        {expandedId === c.id ? '▼' : '▶'}
-                      </button>
-                    </td>
-                    {visibleCols.map((col) => {
-                      if (col.key === 'title') return (
-                        <td key="title" className="px-3 py-2.5 overflow-hidden">
-                          <span className="block truncate text-sm text-gray-700" title={c.title}>{c.title}</span>
-                        </td>
+            <table
+              className="w-full"
+              style={{ tableLayout: 'fixed', width: table.getTotalSize() }}
+            >
+              <thead className="sticky top-0 z-10">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id} className="border-b border-gray-200 bg-gray-50">
+                    {headerGroup.headers.map((header) => {
+                      const canSort = header.column.getCanSort();
+                      const sorted  = header.column.getIsSorted();
+                      const isRight = RIGHT_ALIGNED.has(header.id);
+                      return (
+                        <th
+                          key={header.id}
+                          style={{ width: header.getSize(), position: 'relative' }}
+                          className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider overflow-hidden ${
+                            canSort ? 'cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100' : ''
+                          } ${isRight ? 'text-right' : 'text-left'}`}
+                          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                        >
+                          <div className={`flex items-center gap-1 ${isRight ? 'justify-end' : ''}`}>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {canSort && <SortIcon sorted={sorted} />}
+                          </div>
+                          {header.column.getCanResize() && (
+                            <div
+                              onMouseDown={header.getResizeHandler()}
+                              onTouchStart={header.getResizeHandler()}
+                              className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
+                                header.column.getIsResizing() ? 'bg-blue-400' : 'bg-transparent hover:bg-gray-300'
+                              }`}
+                            />
+                          )}
+                        </th>
                       );
-                      if (col.key === 'data_list') return (
-                        <td key="data_list" className="px-3 py-2.5 overflow-hidden">
-                          <ListCell campaignId={c.id} value={listVal} onSaved={handleListSaved} />
-                        </td>
-                      );
-                      if (col.key === 'data_partner') return (
-                        <td key="data_partner" className="px-3 py-2.5 overflow-hidden">
-                          <PartnerCell campaignId={c.id} value={partnerVal} onSaved={handlePartnerSaved} />
-                        </td>
-                      );
-                      if (['route','carrier','vertical'].includes(col.key)) return (
-                        <td key={col.key} className="px-3 py-2.5 text-xs text-gray-500 overflow-hidden truncate">{c[col.key] || '—'}</td>
-                      );
-                      if (col.key === 'clicks')      return <td key="clicks"      className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.clicks)}</td>;
-                      if (col.key === 'conversions') return <td key="conversions" className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmt(c.conversions)}</td>;
-                      if (col.key === 'cost')        return <td key="cost"        className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.cost)}</td>;
-                      if (col.key === 'revenue')     return <td key="revenue"     className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-800">{fmtMoney(c.revenue)}</td>;
-                      if (col.key === 'profit')      return <td key="profit"      className={`px-3 py-2.5 text-right tabular-nums text-sm font-medium ${Number(c.profit) >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(c.profit)}</td>;
-                      if (col.key === 'cpc')         return <td key="cpc"         className="px-3 py-2.5 text-right tabular-nums text-sm text-gray-600">{fmtRate(perClick(c.cost, c.clicks))}</td>;
-                      if (col.key === 'epc')         return <td key="epc"         className="px-3 py-2.5 text-right tabular-nums text-sm font-medium text-gray-700">{fmtRate(perClick(c.revenue, c.clicks))}</td>;
-                      return null;
                     })}
                   </tr>
-                  {expandedId === c.id && (
-                    <OfferRows campaignId={c.id} dateFrom={applied.date_from} dateTo={applied.date_to} />
-                  )}
-                  </>
-                  );
-                })}
+                ))}
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {table.getRowModel().rows.map((row) => (
+                  <Fragment key={row.id}>
+                    <tr className="hover:bg-gray-50 transition-colors">
+                      {row.getVisibleCells().map((cell) => {
+                        const isRight = RIGHT_ALIGNED.has(cell.column.id);
+                        return (
+                          <td
+                            key={cell.id}
+                            style={{ width: cell.column.getSize() }}
+                            className={`px-3 py-2.5 overflow-hidden ${isRight ? 'text-right' : ''}`}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {row.getIsExpanded() && (
+                      <tr>
+                        <td colSpan={visibleLeafCount} className="p-0">
+                          <OfferSubTable
+                            campaignId={row.original.id}
+                            dateFrom={applied.date_from}
+                            dateTo={applied.date_to}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
 
-                {/* Totals */}
+                {/* Totals row */}
                 <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
-                  <td className="px-2 py-3" />
-                  <td className="px-1 py-3" />
-                  {visibleCols.map((col, i) => {
-                    if (i === 0) return <td key={col.key} className="px-3 py-3 text-sm text-gray-700">Total</td>;
-                    if (col.key === 'clicks')      return <td key="clicks"      className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>;
-                    if (col.key === 'conversions') return <td key="conversions" className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>;
-                    if (col.key === 'cost')        return <td key="cost"        className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>;
-                    if (col.key === 'revenue')     return <td key="revenue"     className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.revenue)}</td>;
-                    if (col.key === 'profit')      return <td key="profit"      className={`px-3 py-3 text-right tabular-nums text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(totals.profit)}</td>;
-                    if (col.key === 'cpc')         return <td key="cpc"         className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.cost, totals.clicks))}</td>;
-                    if (col.key === 'epc')         return <td key="epc"         className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.revenue, totals.clicks))}</td>;
-                    return <td key={col.key} className="px-3 py-3" />;
+                  {visibleHeaders.map((header, idx) => {
+                    const id = header.id;
+                    const w  = { width: header.getSize() };
+                    if (id === 'buyer')  return <td key={id} style={w} className="px-2 py-3" />;
+                    if (id === 'expand') return <td key={id} style={w} className="px-1 py-3" />;
+                    if (idx === firstDataHeaderIdx) return <td key={id} style={w} className="px-3 py-3 text-sm text-gray-700">Total</td>;
+                    if (id === 'clicks')      return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>;
+                    if (id === 'conversions') return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>;
+                    if (id === 'cost')        return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>;
+                    if (id === 'revenue')     return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.revenue)}</td>;
+                    if (id === 'profit')      return <td key={id} style={w} className={`px-3 py-3 text-right tabular-nums text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(totals.profit)}</td>;
+                    if (id === 'cpc')         return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.cost, totals.clicks))}</td>;
+                    if (id === 'epc')         return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.revenue, totals.clicks))}</td>;
+                    return <td key={id} style={w} className="px-3 py-3" />;
                   })}
                 </tr>
               </tbody>
             </table>
           </div>
 
+          {/* Pagination */}
           <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <span>{applied.date_from} → {applied.date_to}</span>
               <span>·</span>
-              <span>{filtered.length} campaigns</span>
+              <span>{totalRows} campaigns</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 text-xs text-gray-500">
                 <span>Rows</span>
-                <select
-                  value={perPage}
-                  onChange={(e) => { setPerPage(Number(e.target.value)); setPage(0); }}
-                  className="border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-700 bg-white"
-                >
+                <select value={pageSize} onChange={(e) => table.setPageSize(Number(e.target.value))}
+                  className="border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-700 bg-white">
                   {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPage(0)}
-                  disabled={page === 0}
-                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                >«</button>
-                <button
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                >‹</button>
+                <button onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}
+                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">«</button>
+                <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
+                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">‹</button>
                 <span className="px-3 py-1 text-xs text-gray-600">
-                  {page + 1} / {totalPages}
+                  {pageIndex + 1} / {pageCount}
                 </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                >›</button>
-                <button
-                  onClick={() => setPage(totalPages - 1)}
-                  disabled={page >= totalPages - 1}
-                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                >»</button>
+                <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
+                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">›</button>
+                <button onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()}
+                  className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed">»</button>
               </div>
             </div>
           </div>
