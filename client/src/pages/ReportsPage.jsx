@@ -275,7 +275,7 @@ function ListCell({ campaignId, value, onSaved }) {
     <button type="button" onClick={() => { setDraft(value || ''); setEditing(true); }}
       className="group flex items-center gap-1 text-left text-xs font-mono text-gray-600 hover:text-indigo-700 max-w-full"
       title={value || 'Click to set list name'}>
-      <span className="truncate">{value || <span className="text-gray-300 italic">—</span>}</span>
+      <span className="line-clamp-2 min-w-0 flex-1">{value || <span className="text-gray-300 italic">—</span>}</span>
       <span className="opacity-0 group-hover:opacity-100 text-gray-300 text-[10px] shrink-0">✎</span>
     </button>
   );
@@ -746,7 +746,7 @@ export default function ReportsPage() {
           <div className="overflow-x-auto">
             <table
               className="w-full"
-              style={{ tableLayout: 'fixed', width: table.getTotalSize() }}
+              style={{ tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize() }}
             >
               <thead className="sticky top-0 z-10">
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -794,7 +794,7 @@ export default function ReportsPage() {
                           <td
                             key={cell.id}
                             style={{ width: cell.column.getSize() }}
-                            className={`px-3 py-2.5 overflow-hidden ${isRight ? 'text-right' : ''}`}
+                            className={`${cell.column.id === 'expand' ? 'px-1' : 'px-3'} py-2.5 overflow-hidden ${isRight ? 'text-right' : ''}`}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </td>

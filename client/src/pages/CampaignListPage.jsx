@@ -255,7 +255,7 @@ export default function CampaignListPage() {
           <div className="p-8 text-center text-sm text-gray-400">No campaigns found.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full" style={{ tableLayout: 'fixed', width: table.getTotalSize() }}>
+            <table className="w-full" style={{ tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize() }}>
               <thead className="bg-gray-50">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id} className="divide-y divide-gray-200">

@@ -312,7 +312,7 @@ export default function VerticalsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full" style={{ tableLayout: 'fixed', width: table.getTotalSize() }}>
+            <table className="w-full" style={{ tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize() }}>
               <thead>
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">

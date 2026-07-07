@@ -239,7 +239,7 @@ export default function ListsPage() {
 
       {!isLoading && filtered.length > 0 && (
         <div className="card overflow-x-auto">
-          <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: table.getTotalSize() }}>
+          <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize() }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id} className="border-b border-gray-100 bg-gray-50/60">
