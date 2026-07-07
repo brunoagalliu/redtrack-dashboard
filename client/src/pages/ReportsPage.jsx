@@ -772,6 +772,7 @@ export default function ReportsPage() {
                             <div
                               onMouseDown={header.getResizeHandler()}
                               onTouchStart={header.getResizeHandler()}
+                              onClick={(e) => e.stopPropagation()}
                               className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
                                 header.column.getIsResizing() ? 'bg-blue-400' : 'bg-transparent hover:bg-gray-300'
                               }`}
