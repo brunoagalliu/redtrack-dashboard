@@ -154,6 +154,24 @@ router.post('/:id/clone', async (req, res) => {
   }
 });
 
+// Unique tags used across all campaigns
+router.get('/tags', async (req, res) => {
+  try {
+    const { data } = await redtrack.get('/campaigns');
+    const camps = Array.isArray(data) ? data : [];
+    const seen = new Map();
+    for (const c of camps) {
+      for (const tag of c.tags || []) {
+        const key = tag.toLowerCase();
+        if (!seen.has(key)) seen.set(key, tag);
+      }
+    }
+    res.json([...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())));
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
+  }
+});
+
 // Bulk status update
 router.patch('/status', async (req, res) => {
   try {

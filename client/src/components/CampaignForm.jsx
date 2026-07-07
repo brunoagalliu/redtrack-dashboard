@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useDomains, useSources } from '../hooks/useDropdowns';
 import FunnelBuilder from './FunnelBuilder';
 import PostbackConfig from './PostbackConfig';
 import SearchableSelect from './SearchableSelect';
 import CampaignNameBuilder from './CampaignNameBuilder';
+import { api } from '../lib/api';
 
 const COST_TYPES = ['CPC', 'CPA', 'CPM', 'POPCPM', 'REVSHARE', 'DONOTTRACK'];
 const REDIRECT_TYPES = [
@@ -61,6 +63,87 @@ function TabBar({ tabs, active, onChange }) {
           {t.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+function TagInput({ value, onChange }) {
+  const [input, setInput] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const inputRef = useRef(null);
+
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['campaign-tags'],
+    queryFn: () => api.getCampaignTags(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const current = value ? value.split(',').map((t) => t.trim()).filter(Boolean) : [];
+  const currentSet = new Set(current.map((t) => t.toLowerCase()));
+
+  const suggestions = allTags.filter((t) => {
+    if (currentSet.has(t.toLowerCase())) return false;
+    if (input.trim()) return t.toLowerCase().includes(input.toLowerCase());
+    return true;
+  });
+
+  function addTag(tag) {
+    const trimmed = tag.trim();
+    if (!trimmed || currentSet.has(trimmed.toLowerCase())) return;
+    onChange([...current, trimmed].join(', '));
+    setInput('');
+  }
+
+  function removeTag(tag) {
+    onChange(current.filter((t) => t !== tag).join(', '));
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag(input);
+    } else if (e.key === 'Backspace' && !input && current.length) {
+      removeTag(current[current.length - 1]);
+    }
+  }
+
+  return (
+    <div>
+      <label className="label">Tags</label>
+      <div
+        className="input flex flex-wrap gap-1.5 min-h-[38px] cursor-text p-1.5"
+        onClick={() => inputRef.current?.focus()}
+      >
+        {current.map((tag) => (
+          <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium">
+            {tag}
+            <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
+              className="text-indigo-400 hover:text-indigo-700 leading-none">✕</button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={input}
+          onChange={(e) => { setInput(e.target.value); setShowSuggestions(true); }}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setShowSuggestions(true)}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+          className="border-none outline-none text-sm flex-1 min-w-[120px] bg-transparent p-0.5"
+          placeholder={current.length ? '' : 'Type or pick a tag…'}
+        />
+      </div>
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {suggestions.slice(0, 20).map((tag) => (
+            <button key={tag} type="button"
+              onMouseDown={(e) => { e.preventDefault(); addTag(tag); }}
+              className="px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -306,16 +389,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
           <div className="card p-6">
             <p className="section-title">Tags and notes</p>
             <div className="space-y-4">
-              <div>
-                <label className="label">Tags (comma-separated)</label>
-                <input
-                  type="text"
-                  value={form.tags}
-                  onChange={(e) => set('tags', e.target.value)}
-                  className="input"
-                  placeholder="e.g. jc, healthcare, mar31"
-                />
-              </div>
+              <TagInput value={form.tags} onChange={(v) => set('tags', v)} />
               <div>
                 <label className="label">Notes</label>
                 <textarea
