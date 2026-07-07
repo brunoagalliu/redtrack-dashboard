@@ -88,6 +88,7 @@ export const api = {
   triggerSync: (params = {}) => request('/reports/sync', { method: 'POST', body: JSON.stringify(params) }),
   getOfferSyncStatus: () => request('/reports/sync/offers/status'),
   triggerOfferSync: (params = {}) => request('/reports/sync/offers', { method: 'POST', body: JSON.stringify(params) }),
+  getSyncLogs: (limit = 50) => request(`/reports/sync/logs?limit=${limit}`),
   getOffersReport: (params = {}) => {
     const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))).toString();
     return request(`/reports/offers${qs ? `?${qs}` : ''}`);

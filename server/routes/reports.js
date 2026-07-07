@@ -175,6 +175,8 @@ async function persistSyncStatus() {
   );
 }
 
+let currentLogId = null;
+
 async function runSync(dateFrom, dateTo) {
   if (sync.running) return;
   sync.running  = true;
@@ -186,6 +188,16 @@ async function runSync(dateFrom, dateTo) {
   sync.completedAt = null;
   sync.error    = null;
   await persistSyncStatus();
+
+  // Insert a log entry for this sync run
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO rt_sync_logs (date_from, date_to, started_at, status)
+       VALUES ($1, $2, $3, 'running') RETURNING id`,
+      [dateFrom, dateTo, sync.startedAt]
+    );
+    currentLogId = rows[0]?.id || null;
+  } catch { /* non-critical */ }
 
   try {
     const today = new Date().toISOString().slice(0, 10);
@@ -318,13 +330,28 @@ async function runSync(dateFrom, dateTo) {
     sync.completedAt = new Date();
     sync.lastSyncedAt = new Date();
     await persistSyncStatus();
+
+    if (currentLogId) {
+      await pool.query(
+        `UPDATE rt_sync_logs SET status='complete', completed_at=$1, campaigns_processed=$2 WHERE id=$3`,
+        [sync.completedAt, sync.processed, currentLogId]
+      ).catch(() => {});
+    }
   } catch (err) {
     sync.status = 'error';
     sync.phase  = 'idle';
     sync.error  = err.message;
     await persistSyncStatus().catch(() => {});
+
+    if (currentLogId) {
+      await pool.query(
+        `UPDATE rt_sync_logs SET status='error', completed_at=NOW(), campaigns_processed=$1, error=$2 WHERE id=$3`,
+        [sync.processed, err.message, currentLogId]
+      ).catch(() => {});
+    }
   } finally {
     sync.running = false;
+    currentLogId = null;
   }
 }
 
@@ -369,6 +396,23 @@ router.get('/sync/status', async (_req, res) => {
     if (rows.length) return res.json(normalize(rows[0]));
   } catch { /* ignore */ }
   res.json(normalize(sync));
+});
+
+// Sync log history
+router.get('/sync/logs', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const { rows } = await pool.query(
+      `SELECT id, date_from, date_to, started_at, completed_at, campaigns_processed, status, error
+       FROM rt_sync_logs
+       ORDER BY started_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Manual cleanup trigger (also called by scheduled job in index.js)

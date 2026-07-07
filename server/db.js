@@ -234,11 +234,32 @@ async function init() {
     }
   }
 
+  // Sync history log — one row per completed (or interrupted) sync run
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rt_sync_logs (
+      id                  SERIAL PRIMARY KEY,
+      date_from           TEXT,
+      date_to             TEXT,
+      started_at          TIMESTAMP,
+      completed_at        TIMESTAMP,
+      campaigns_processed INT,
+      status              TEXT,
+      error               TEXT
+    );
+    CREATE INDEX IF NOT EXISTS rt_sync_logs_started ON rt_sync_logs(started_at DESC);
+  `);
+
   // If the server restarted mid-sync the DB row will be stuck at status='running'.
   // Clear it so the UI doesn't show a phantom running sync on next page load.
   await pool.query(`
     UPDATE rt_sync_status SET status = 'interrupted', error = 'Server restarted during sync'
     WHERE id = 1 AND status = 'running'
+  `);
+
+  // Mark any open log entries as interrupted on restart
+  await pool.query(`
+    UPDATE rt_sync_logs SET status = 'interrupted', error = 'Server restarted during sync', completed_at = NOW()
+    WHERE status = 'running'
   `);
 }
 

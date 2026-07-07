@@ -14,6 +14,7 @@ import ListsPage from './pages/ListsPage';
 import ListsAIPage from './pages/ListsAIPage';
 import CostUpdaterPage from './pages/CostUpdaterPage';
 import RevenueUpdaterPage from './pages/RevenueUpdaterPage';
+import SyncLogsPage from './pages/SyncLogsPage';
 import LoginPage from './pages/LoginPage';
 import { getToken, clearToken } from './lib/api';
 
@@ -115,6 +116,13 @@ function Sidebar() {
             </svg>
             {!collapsed && 'Revenue Updater'}
           </NavLink>
+          <NavLink to="/tools/import-logs" className={linkClass} title={collapsed ? 'Import Logs' : undefined}>
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            {!collapsed && 'Import Logs'}
+          </NavLink>
         </div>
       </nav>
 
@@ -156,6 +164,7 @@ function AppLayout() {
           <Route path="/reports/lists" element={<ListsPage />} />
           <Route path="/tools/cost-updater" element={<CostUpdaterPage />} />
           <Route path="/tools/revenue-updater" element={<RevenueUpdaterPage />} />
+          <Route path="/tools/import-logs" element={<SyncLogsPage />} />
         </Routes>
       </main>
     </div>
