@@ -77,10 +77,9 @@ function scheduleDailyCleanup() {
 
 function scheduleAutoSync() {
   function triggerSync() {
-    const today     = new Date().toISOString().slice(0, 10);
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     console.log('[auto-sync] Starting scheduled sync…');
-    runSync(yesterday, today).catch((err) => console.error('[auto-sync] Failed:', err.message));
+    runSync(yesterday, yesterday).catch((err) => console.error('[auto-sync] Failed:', err.message));
   }
 
   function msUntilNext8am() {
