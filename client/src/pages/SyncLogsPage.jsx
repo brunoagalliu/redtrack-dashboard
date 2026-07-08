@@ -56,17 +56,19 @@ export default function SyncLogsPage() {
     if (!isRunning) refetch();
   }, [isRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleBackfill() {
-    const dateFrom = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
-    const dateTo   = new Date().toISOString().slice(0, 10);
+  async function triggerWithDates(dateFrom, dateTo, label) {
     setTriggering(true);
     setTriggerError(null);
     setTriggerMsg(null);
     try {
-      await api.triggerSync({ date_from: dateFrom, date_to: dateTo });
-      setTriggerMsg(`Backfill started for ${dateFrom} → ${dateTo}`);
-      queryClient.invalidateQueries({ queryKey: ['reports', 'sync', 'status'] });
-      setTimeout(() => refetch(), 2000);
+      const result = await api.triggerSync({ date_from: dateFrom, date_to: dateTo });
+      if (result?.status === 'already_running') {
+        setTriggerError('A sync is already running — wait for it to finish, then try again.');
+      } else {
+        setTriggerMsg(`${label} started for ${dateFrom} → ${dateTo}`);
+        queryClient.invalidateQueries({ queryKey: ['reports', 'sync', 'status'] });
+        setTimeout(() => refetch(), 2000);
+      }
     } catch (err) {
       setTriggerError(err.message || 'Failed to start sync.');
     } finally {
@@ -74,21 +76,15 @@ export default function SyncLogsPage() {
     }
   }
 
-  async function handleSyncToday() {
+  function handleBackfill() {
+    const dateFrom = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+    const dateTo   = new Date().toISOString().slice(0, 10);
+    return triggerWithDates(dateFrom, dateTo, 'Backfill');
+  }
+
+  function handleSyncToday() {
     const today = new Date().toISOString().slice(0, 10);
-    setTriggering(true);
-    setTriggerError(null);
-    setTriggerMsg(null);
-    try {
-      await api.triggerSync({ date_from: today, date_to: today });
-      setTriggerMsg('Today\'s sync started.');
-      queryClient.invalidateQueries({ queryKey: ['reports', 'sync', 'status'] });
-      setTimeout(() => refetch(), 2000);
-    } catch (err) {
-      setTriggerError(err.message || 'Failed to start sync.');
-    } finally {
-      setTriggering(false);
-    }
+    return triggerWithDates(today, today, 'Sync');
   }
 
   return (
