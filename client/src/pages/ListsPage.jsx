@@ -73,7 +73,7 @@ function CampaignRows({ listKey, days, colSpan }) {
 }
 
 export default function ListsPage() {
-  const [campaignDays, setCampaignDays] = useState(30);
+  const campaignDays = 180;
   const [search, setSearch] = useState('');
   const [sorting, setSorting] = useState([{ id: 'profit', desc: true }]);
   const [expanded, setExpanded] = useState({});
@@ -222,13 +222,7 @@ export default function ListsPage() {
         <input type="text" placeholder="Search list…" value={search} onChange={e => setSearch(e.target.value)}
           className="border border-gray-200 rounded px-3 py-1.5 text-sm w-64" />
         <span className="text-xs text-gray-400">{table.getRowModel().rows.length} lists</span>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <span className="text-xs text-gray-500">Campaign stats window</span>
-          <select value={campaignDays} onChange={e => setCampaignDays(Number(e.target.value))}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white">
-            {[7, 14, 30, 60, 90, 180].map(d => <option key={d} value={d}>Last {d} days</option>)}
-          </select>
-        </div>
+        <span className="text-xs text-gray-400 ml-auto">Last 6 months</span>
       </div>
 
       {isLoading && <div className="card p-10 text-center"><div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>}
