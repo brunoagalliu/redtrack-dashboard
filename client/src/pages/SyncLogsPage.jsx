@@ -29,13 +29,22 @@ function StatusBadge({ status }) {
   );
 }
 
+function SectionHeader({ title, subtitle }) {
+  return (
+    <div className="mb-3">
+      <h2 className="text-base font-semibold text-gray-800">{title}</h2>
+      {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+    </div>
+  );
+}
+
 export default function SyncLogsPage() {
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState(null);
   const [triggerMsg, setTriggerMsg] = useState(null);
   const queryClient = useQueryClient();
 
-  const { data: logs = [], isLoading, refetch } = useQuery({
+  const { data: logs = [], isLoading: logsLoading, refetch: refetchLogs } = useQuery({
     queryKey: ['sync', 'logs'],
     queryFn: () => api.getSyncLogs(50),
     staleTime: 15000,
@@ -49,12 +58,55 @@ export default function SyncLogsPage() {
     refetchInterval: 3000,
   });
 
-  const isRunning = Boolean(syncStatus?.running);
+  const { data: aiCampaignHistory = [], isLoading: aiCampLoading, refetch: refetchAICamp } = useQuery({
+    queryKey: ['reports', 'ai-recommendations', 'history'],
+    queryFn: () => api.getAIReportHistory(30),
+    staleTime: 60000,
+    refetchInterval: 60000,
+  });
 
-  // Auto-refetch logs when a sync completes
+  const { data: aiListHistory = [], isLoading: aiListLoading, refetch: refetchAIList } = useQuery({
+    queryKey: ['reports', 'ai-list', 'history'],
+    queryFn: () => api.getAIListReportHistory(30),
+    staleTime: 60000,
+    refetchInterval: 60000,
+  });
+
+  const { data: aiCampStatus } = useQuery({
+    queryKey: ['reports', 'ai-recommendations', 'status'],
+    queryFn: () => api.getAICampaignStatus(),
+    staleTime: 5000,
+    refetchInterval: 5000,
+  });
+
+  const { data: aiListStatus } = useQuery({
+    queryKey: ['reports', 'ai-list', 'status'],
+    queryFn: () => api.getAIListStatus(),
+    staleTime: 5000,
+    refetchInterval: 5000,
+  });
+
+  const isRunning = Boolean(syncStatus?.running);
+  const aiCampRunning = Boolean(aiCampStatus?.running);
+  const aiListRunning = Boolean(aiListStatus?.running);
+
   useEffect(() => {
-    if (!isRunning) refetch();
+    if (!isRunning) refetchLogs();
   }, [isRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!aiCampRunning) refetchAICamp();
+  }, [aiCampRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!aiListRunning) refetchAIList();
+  }, [aiListRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Merge and sort AI history — campaign + lists combined, newest first
+  const aiHistory = [
+    ...aiCampaignHistory.map(r => ({ ...r, type: 'Campaign' })),
+    ...aiListHistory.map(r => ({ ...r, type: 'Lists', period_days: null })),
+  ].sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
 
   async function triggerWithDates(dateFrom, dateTo, label) {
     setTriggering(true);
@@ -67,7 +119,7 @@ export default function SyncLogsPage() {
       } else {
         setTriggerMsg(`${label} started for ${dateFrom} → ${dateTo}`);
         queryClient.invalidateQueries({ queryKey: ['reports', 'sync', 'status'] });
-        setTimeout(() => refetch(), 2000);
+        setTimeout(() => refetchLogs(), 2000);
       }
     } catch (err) {
       setTriggerError(err.message || 'Failed to start sync.');
@@ -88,11 +140,13 @@ export default function SyncLogsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-8 space-y-8">
+
+      {/* ── Header ── */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Import Logs</h1>
-          <p className="text-sm text-gray-500 mt-1">History of data syncs from RedTrack</p>
+          <p className="text-sm text-gray-500 mt-1">Data sync and AI generation history</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
@@ -121,6 +175,7 @@ export default function SyncLogsPage() {
         </div>
       </div>
 
+      {/* ── Sync running banner ── */}
       {isRunning && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -143,6 +198,18 @@ export default function SyncLogsPage() {
         </div>
       )}
 
+      {/* ── AI running banner ── */}
+      {(aiCampRunning || aiListRunning) && (
+        <div className="rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse inline-block" />
+          <span className="text-sm font-medium text-purple-800">
+            AI generating —
+            {aiCampRunning && ` Campaign report (period: ${aiCampStatus?.currentPeriod}d, ${(aiCampStatus?.completedPeriods || []).length}/${5} done)`}
+            {aiListRunning && ' Lists report'}
+          </span>
+        </div>
+      )}
+
       {triggerMsg && !isRunning && (
         <div className="rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{triggerMsg}</div>
       )}
@@ -150,65 +217,114 @@ export default function SyncLogsPage() {
         <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{triggerError}</div>
       )}
 
-      <div className="rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%' }}>
-          <colgroup>
-            <col style={{ width: '80px' }} />
-            <col style={{ width: '200px' }} />
-            <col style={{ width: '160px' }} />
-            <col style={{ width: '160px' }} />
-            <col style={{ width: '80px' }} />
-            <col style={{ width: '90px' }} />
-            <col style={{ width: '100px' }} />
-            <col />
-          </colgroup>
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">#</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date Range</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Started</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Completed</th>
-              <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Duration</th>
-              <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Campaigns</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Error</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {isLoading && (
+      {/* ── Data Syncs ── */}
+      <div>
+        <SectionHeader title="Data Syncs" subtitle="RedTrack campaign & offer data imports" />
+        <div className="rounded-lg border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <colgroup>
+              <col style={{ width: '50px' }} />
+              <col style={{ width: '190px' }} />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '75px' }} />
+              <col style={{ width: '90px' }} />
+              <col style={{ width: '95px' }} />
+              <col />
+            </colgroup>
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-400">Loading…</td>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">#</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date Range</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Started</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Completed</th>
+                <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Duration</th>
+                <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Campaigns</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Error</th>
               </tr>
-            )}
-            {!isLoading && logs.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-3 py-10 text-center">
-                  <p className="text-sm font-medium text-gray-600">No sync history yet</p>
-                  <p className="text-xs text-gray-400 mt-1">Run a sync to start building the log.</p>
-                </td>
-              </tr>
-            )}
-            {logs.map((log) => (
-              <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-3 py-2.5 text-xs text-gray-400 font-mono">{log.id}</td>
-                <td className="px-3 py-2.5 text-xs text-gray-700 font-mono">
-                  {log.date_from} → {log.date_to}
-                </td>
-                <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.started_at)}</td>
-                <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.completed_at)}</td>
-                <td className="px-3 py-2.5 text-xs text-gray-600 text-right font-mono">
-                  {fmtDuration(log.started_at, log.completed_at)}
-                </td>
-                <td className="px-3 py-2.5 text-xs text-gray-700 text-right font-mono">
-                  {log.campaigns_processed ?? '—'}
-                </td>
-                <td className="px-3 py-2.5"><StatusBadge status={log.status} /></td>
-                <td className="px-3 py-2.5 text-xs text-red-600 line-clamp-2">{log.error || ''}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {logsLoading && (
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-400">Loading…</td></tr>
+              )}
+              {!logsLoading && logs.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-8 text-center">
+                    <p className="text-sm font-medium text-gray-600">No sync history yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Run a sync to start building the log.</p>
+                  </td>
+                </tr>
+              )}
+              {logs.map((log) => (
+                <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-3 py-2.5 text-xs text-gray-400 font-mono">{log.id}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-700 font-mono">{log.date_from} → {log.date_to}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.started_at)}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.completed_at)}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-600 text-right font-mono">{fmtDuration(log.started_at, log.completed_at)}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-700 text-right font-mono">{log.campaigns_processed ?? '—'}</td>
+                  <td className="px-3 py-2.5"><StatusBadge status={log.status} /></td>
+                  <td className="px-3 py-2.5 text-xs text-red-600 line-clamp-2">{log.error || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* ── AI Generations ── */}
+      <div>
+        <SectionHeader title="AI Generations" subtitle="Campaign and Lists AI report history" />
+        <div className="rounded-lg border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <colgroup>
+              <col style={{ width: '50px' }} />
+              <col style={{ width: '100px' }} />
+              <col style={{ width: '180px' }} />
+              <col />
+            </colgroup>
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">#</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Generated</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Period</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {(aiCampLoading || aiListLoading) && (
+                <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400">Loading…</td></tr>
+              )}
+              {!aiCampLoading && !aiListLoading && aiHistory.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-3 py-8 text-center">
+                    <p className="text-sm font-medium text-gray-600">No AI reports generated yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Generate a report from the AI pages.</p>
+                  </td>
+                </tr>
+              )}
+              {aiHistory.map((row, i) => (
+                <tr key={`${row.type}-${row.id}`} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-3 py-2.5 text-xs text-gray-400 font-mono">{i + 1}</td>
+                  <td className="px-3 py-2.5">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                      row.type === 'Campaign' ? 'bg-indigo-100 text-indigo-800' : 'bg-teal-100 text-teal-800'
+                    }`}>
+                      {row.type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(row.generated_at)}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-500">
+                    {row.period_days ? `Last ${row.period_days} days` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   );
 }
