@@ -376,11 +376,11 @@ function ColumnPicker({ table, onClose }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const sixMonthsAgo = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
 
-  const [dateFrom, setDateFrom] = useState(ninetyDaysAgo);
+  const [dateFrom, setDateFrom] = useState(sixMonthsAgo);
   const [dateTo,   setDateTo]   = useState(today);
-  const [applied,  setApplied]  = useState({ date_from: ninetyDaysAgo, date_to: today });
+  const [applied,  setApplied]  = useState({ date_from: sixMonthsAgo, date_to: today });
   const [buyerFilter,    setBuyerFilter]    = useState('ALL');
   const [showColPicker,  setShowColPicker]  = useState(false);
   const [listOverrides,    setListOverrides]    = useState({});
@@ -654,6 +654,19 @@ export default function ReportsPage() {
 
       {/* Controls */}
       <div className="card p-4 mb-4 flex flex-wrap items-end gap-3">
+        <div className="flex items-center gap-1">
+          {[7, 30, 90, 180].map((d) => {
+            const from = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+            const active = applied.date_from === from && applied.date_to === today;
+            return (
+              <button key={d} type="button"
+                onClick={() => { setDateFrom(from); setDateTo(today); setApplied({ date_from: from, date_to: today }); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+                className={`px-2.5 py-1.5 text-xs font-medium rounded border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                {d}d
+              </button>
+            );
+          })}
+        </div>
         <div>
           <label className="label">From</label>
           <input type="date" value={dateFrom} max={dateTo}

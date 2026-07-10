@@ -265,6 +265,19 @@ export default function OffersPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">
+        <div className="flex items-end gap-1">
+          {[7, 30, 90, 180].map((d) => {
+            const from = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+            const active = dateFrom === from && dateTo === today;
+            return (
+              <button key={d} type="button"
+                onClick={() => { setDateFrom(from); setDateTo(today); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+                className={`px-2.5 py-1.5 text-xs font-medium rounded border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                {d}d
+              </button>
+            );
+          })}
+        </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">From</label>
           <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}

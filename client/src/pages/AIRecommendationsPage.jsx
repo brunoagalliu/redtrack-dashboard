@@ -673,7 +673,7 @@ export default function AIRecommendationsPage() {
             <span className="text-xs text-gray-500">Analyze last</span>
             <select value={days} onChange={(e) => handleDaysChange(Number(e.target.value))}
               className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white">
-              {[7, 14, 30].map((d) => <option key={d} value={d}>{d} days</option>)}
+              {[7, 14, 30, 60, 90, 180].map((d) => <option key={d} value={d}>{d} days</option>)}
             </select>
           </div>
           {periodHistory.length > 0 && (

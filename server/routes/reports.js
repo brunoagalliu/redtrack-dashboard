@@ -867,7 +867,7 @@ function buildReportDiff(previous, combos, buyerRows) {
 
 // Core AI report generation — callable from the route handler or the weekly auto-trigger.
 // In-memory generation status — avoids concurrent runs and lets the frontend poll
-const ALL_PERIODS = [7, 14, 30, 60, 90];
+const ALL_PERIODS = [7, 14, 30, 60, 90, 180];
 const aiStatus = {
   campaign: { running: false, error: null, startedAt: null, currentPeriod: null, completedPeriods: [] },
   list:     { running: false, error: null, startedAt: null },

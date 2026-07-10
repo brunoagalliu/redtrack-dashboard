@@ -72,7 +72,7 @@ export default function InsightsPage() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500">Period:</span>
-          {[7, 14, 30, 60, 90].map((d) => (
+          {[7, 14, 30, 60, 90, 180].map((d) => (
             <button key={d} onClick={() => setDays(d)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
                 days === d ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
