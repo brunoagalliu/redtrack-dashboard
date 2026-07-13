@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
 const BUYER_COLORS = {
-  TK: { badge: 'bg-blue-100 text-blue-700',   ring: 'ring-blue-200',   bar: 'bg-blue-500' },
-  MA: { badge: 'bg-purple-100 text-purple-700', ring: 'ring-purple-200', bar: 'bg-purple-500' },
-  DS: { badge: 'bg-orange-100 text-orange-700', ring: 'ring-orange-200', bar: 'bg-orange-500' },
+  TK: { badge: 'bg-blue-100 text-blue-700',   ring: 'ring-blue-200',   bar: 'bg-blue-500',   line: '#3b82f6' },
+  MA: { badge: 'bg-purple-100 text-purple-700', ring: 'ring-purple-200', bar: 'bg-purple-500', line: '#a855f7' },
+  DS: { badge: 'bg-orange-100 text-orange-700', ring: 'ring-orange-200', bar: 'bg-orange-500', line: '#f97316' },
 };
 const BUYERS = ['TK', 'MA', 'DS'];
 
@@ -23,36 +23,59 @@ function Bar({ value, max, className = 'bg-blue-500' }) {
   );
 }
 
-// Sparkline that groups into weeks for periods > 30 days
-function DailyBar({ daily, period }) {
+// Inline SVG line sparkline, groups into weeks for periods > 30 days
+function SparkLine({ daily, period, color, id }) {
   const useWeekly = period > 30;
 
-  let bars;
+  let points;
   if (useWeekly) {
-    // Group daily rows (newest-first) into weekly buckets, then reverse to oldest-first
     const reversed = [...daily].reverse(); // oldest first
     const weeks = [];
     for (let i = 0; i < reversed.length; i += 7) {
       const chunk = reversed.slice(i, i + 7);
       weeks.push({ count: chunk.reduce((a, d) => a + d.count, 0), label: chunk[0]?.date });
     }
-    bars = weeks;
+    points = weeks;
   } else {
-    bars = [...daily].reverse(); // oldest first
+    points = [...daily].reverse(); // oldest first
   }
 
-  const max = Math.max(1, ...bars.map((b) => b.count));
+  if (points.length < 2) return <div className="h-10 mt-2" />;
+
+  const W = 200, H = 36, pad = 2;
+  const max = Math.max(1, ...points.map((p) => p.count));
+
+  const coords = points.map((p, i) => ({
+    x: pad + (i / (points.length - 1)) * (W - 2 * pad),
+    y: H - pad - Math.max(1, (p.count / max) * (H - 2 * pad - 2)),
+    count: p.count,
+    label: p.label || p.date || '',
+  }));
+
+  const linePoints = coords.map((c) => `${c.x},${c.y}`).join(' ');
+  const areaD = `M${coords[0].x},${H} L ${coords.map((c) => `${c.x},${c.y}`).join(' L ')} L${coords[coords.length - 1].x},${H} Z`;
+  const gradId = `sg-${id}`;
+  const last = coords[coords.length - 1];
 
   return (
-    <div className="flex items-end gap-0.5 h-8 mt-2">
-      {bars.map((b, i) => {
-        const h = b.count > 0 ? Math.max(4, (b.count / max) * 32) : 2;
-        return (
-          <div key={i} title={`${b.label || b.date}: ${b.count}`}
-            className={`flex-1 rounded-sm ${b.count > 0 ? 'bg-blue-400' : 'bg-gray-100'}`}
-            style={{ height: `${h}px` }} />
-        );
-      })}
+    <div className="mt-2" style={{ height: '36px' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full overflow-visible">
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill={`url(#${gradId})`} />
+        <polyline points={linePoints} fill="none" stroke={color} strokeWidth="1.5"
+          strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        <circle cx={last.x} cy={last.y} r="2.5" fill={color} vectorEffect="non-scaling-stroke" />
+        {coords.map((c, i) => (
+          <circle key={i} cx={c.x} cy={c.y} r={Math.max(4, W / coords.length / 2)} fill="transparent">
+            <title>{`${c.label}: ${c.count}`}</title>
+          </circle>
+        ))}
+      </svg>
     </div>
   );
 }
@@ -136,7 +159,7 @@ export default function InsightsPage() {
                         <div className="flex justify-between"><span>Last {days} days</span><span className="font-semibold text-gray-700">{s.last_30 ?? 0}</span></div>
                       )}
                     </div>
-                    <DailyBar daily={s.daily || []} period={days} />
+                    <SparkLine daily={s.daily || []} period={days} color={col.line} id={buyer} />
                     <p className="text-xs text-gray-400 mt-1">
                       {days > 30 ? `${Math.ceil((s.daily || []).length / 7)} weeks` : `Last ${days} days`}
                     </p>
