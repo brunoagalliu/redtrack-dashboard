@@ -153,21 +153,16 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
   const [tab, setTab] = useState('details');
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [routeFilter, setRouteFilter] = useState('');
 
   const { data: sources = [], isLoading: loadingSources } = useSources();
   const { data: domains = [], isLoading: loadingDomains } = useDomains();
 
-  const filteredDomains = routeFilter
-    ? domains.filter((d) => (d.url || d.domain || d.name || '').toLowerCase().includes(routeFilter.toLowerCase()))
-    : domains;
-
-  // Auto-select when exactly one domain matches the route
+  // Auto-select when there is exactly one domain
   useEffect(() => {
-    if (filteredDomains.length === 1 && String(form.domain_id) !== String(filteredDomains[0].id)) {
-      set('domain_id', filteredDomains[0].id);
+    if (domains.length === 1 && String(form.domain_id) !== String(domains[0].id)) {
+      set('domain_id', domains[0].id);
     }
-  }, [filteredDomains.length === 1 ? filteredDomains[0]?.id : null]);
+  }, [domains.length === 1 ? domains[0]?.id : null]);
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -265,8 +260,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
                 onUrlParams={(p) => set('urlParams', p)}
                 error={fieldErrors.name}
                 sourceName={selectedSource?.name || selectedSource?.title}
-                onRoute={setRouteFilter}
-                domains={filteredDomains}
+                domains={domains}
                 domainId={form.domain_id}
                 onDomainChange={(v) => set('domain_id', v)}
                 loadingDomains={loadingDomains}

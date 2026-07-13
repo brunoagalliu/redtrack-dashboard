@@ -127,7 +127,7 @@ function todayStr() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRoute, error, domains = [], domainId, onDomainChange, loadingDomains }) {
+export default function CampaignNameBuilder({ value, onChange, onUrlParams, error, domains = [], domainId, onDomainChange, loadingDomains }) {
   const qc = useQueryClient();
 
   const { data: sources   = [], isLoading: loadingSources   } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
@@ -220,11 +220,6 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, onRo
   useEffect(() => {
     if (preview) onChange(preview);
   }, [preview]);
-
-  // Notify parent when effective route changes (used for domain auto-select)
-  useEffect(() => {
-    if (onRoute) onRoute(nameSource);
-  }, [nameSource]);
 
   // URL params — include partner sourceid (= partner name) when selected
   useEffect(() => {
