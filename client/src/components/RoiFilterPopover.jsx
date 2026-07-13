@@ -1,42 +1,52 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function RoiFilterPopover({ roiMin, roiMax, onMinChange, onMaxChange }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const [pos, setPos] = useState({ top: 0, right: 0 });
+  const btnRef = useRef(null);
+  const popoverRef = useRef(null);
   const minRef = useRef(null);
   const isActive = roiMin !== '' || roiMax !== '';
 
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e) {
-      if (!ref.current?.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
+  function openPopover(e) {
+    e.stopPropagation();
+    if (open) { setOpen(false); return; }
+    const rect = btnRef.current.getBoundingClientRect();
+    setPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    setOpen(true);
+  }
 
   useEffect(() => {
-    if (open) minRef.current?.focus();
+    if (!open) return;
+    setTimeout(() => minRef.current?.focus(), 10);
+    function onDown(e) {
+      if (!btnRef.current?.contains(e.target) && !popoverRef.current?.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    function onScroll() { setOpen(false); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('scroll', onScroll, true);
+    };
   }, [open]);
 
   return (
-    <div
-      ref={ref}
-      className="relative inline-flex shrink-0"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={openPopover}
         title={
           isActive
             ? `ROI filter: ${roiMin !== '' ? roiMin + '%' : '−∞'} to ${roiMax !== '' ? roiMax + '%' : '+∞'}`
             : 'Filter by ROI range'
         }
-        className={`relative flex items-center justify-center w-4 h-4 rounded transition-colors ${
-          isActive
-            ? 'text-blue-500 hover:text-blue-600'
-            : 'text-gray-300 hover:text-gray-500'
+        className={`relative shrink-0 flex items-center justify-center w-4 h-4 rounded transition-colors ${
+          isActive ? 'text-blue-500 hover:text-blue-600' : 'text-gray-300 hover:text-gray-500'
         }`}
       >
         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -47,8 +57,12 @@ export default function RoiFilterPopover({ roiMin, roiMax, onMinChange, onMaxCha
         )}
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 bg-white border border-gray-200 rounded-lg shadow-xl w-44 p-3">
+      {open && createPortal(
+        <div
+          ref={popoverRef}
+          style={{ position: 'fixed', top: pos.top, right: pos.right, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-lg shadow-xl w-44 p-3"
+        >
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2.5">
             ROI % range
           </p>
@@ -84,8 +98,9 @@ export default function RoiFilterPopover({ roiMin, roiMax, onMinChange, onMaxCha
               Clear filter
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
