@@ -23,19 +23,26 @@ const ALL_COLUMNS = [
   { id: 'cost',         label: 'Spend',    defaultVisible: true,  defaultSize: 100 },
   { id: 'revenue',      label: 'Revenue',  defaultVisible: true,  defaultSize: 100 },
   { id: 'profit',       label: 'Profit',   defaultVisible: true,  defaultSize: 100 },
+  { id: 'roi',          label: 'ROI',      defaultVisible: true,  defaultSize: 160 },
   { id: 'cpc',          label: 'CPC',      defaultVisible: true,  defaultSize: 90  },
   { id: 'epc',          label: 'EPC',      defaultVisible: true,  defaultSize: 90  },
 ];
 
 const CONFIGURABLE_IDS = ALL_COLUMNS.map((c) => c.id);
 const STORAGE_KEY = 'rt_report_col_config';
-const RIGHT_ALIGNED = new Set(['clicks', 'conversions', 'cost', 'revenue', 'profit', 'cpc', 'epc']);
+const RIGHT_ALIGNED = new Set(['clicks', 'conversions', 'cost', 'revenue', 'profit', 'roi', 'cpc', 'epc']);
 const NON_CONFIG_IDS = new Set(['buyer', 'expand']);
 
 function loadColConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved?.order && saved?.visible) return saved;
+    if (saved?.order && saved?.visible) {
+      const newIds = ALL_COLUMNS.map((c) => c.id).filter((id) => !saved.order.includes(id));
+      return {
+        order:   [...saved.order, ...newIds],
+        visible: { ...Object.fromEntries(ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])), ...saved.visible },
+      };
+    }
   } catch {}
   return {
     order:   ALL_COLUMNS.map((c) => c.id),
@@ -615,6 +622,41 @@ export default function ReportsPage() {
       ),
     },
     {
+      id: 'roi',
+      accessorFn: (row) => row.cost > 0 ? (row.profit / row.cost) * 100 : 0,
+      header: ({ column }) => (
+        <div>
+          <div className="flex items-center justify-end gap-1 mb-1">
+            <span>ROI</span>
+            <SortIcon sorted={column.getIsSorted()} />
+          </div>
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5 justify-end">
+            <input type="number" value={roiMin}
+              onChange={(e) => { setRoiMin(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Min"
+              className="w-14 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white font-normal normal-case tracking-normal text-gray-600 focus:outline-none focus:border-blue-400" />
+            <span className="text-gray-300 text-[10px] self-center">–</span>
+            <input type="number" value={roiMax}
+              onChange={(e) => { setRoiMax(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Max"
+              className="w-14 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white font-normal normal-case tracking-normal text-gray-600 focus:outline-none focus:border-blue-400" />
+          </div>
+        </div>
+      ),
+      size: 160, minSize: 130,
+      enableResizing: true,
+      enableSorting: true,
+      meta: { hasFilterHeader: true },
+      cell: ({ getValue }) => {
+        const v = Number(getValue());
+        return (
+          <span className={`tabular-nums text-sm font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+            {v.toFixed(1)}%
+          </span>
+        );
+      },
+    },
+    {
       id: 'cpc',
       accessorFn: (row) => perClick(row.cost, row.clicks),
       header: 'CPC',
@@ -632,7 +674,7 @@ export default function ReportsPage() {
       enableSorting: false,
       cell: ({ getValue }) => <span className="tabular-nums text-sm font-medium text-gray-700" title="Revenue per click">{fmtRate(getValue())}</span>,
     },
-  ], [listOverrides, partnerOverrides, handleListSaved, handlePartnerSaved]);
+  ], [listOverrides, partnerOverrides, handleListSaved, handlePartnerSaved, roiMin, roiMax]);
 
   const table = useReactTable({
     data: filteredData,
@@ -716,26 +758,6 @@ export default function ReportsPage() {
               onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
               placeholder="Search campaigns…"
               className="input pl-7 w-48"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="label">ROI %</label>
-          <div className="flex items-center gap-1">
-            <input
-              type="number"
-              value={roiMin}
-              onChange={(e) => { setRoiMin(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              placeholder="Min"
-              className="input w-20"
-            />
-            <span className="text-xs text-gray-400">–</span>
-            <input
-              type="number"
-              value={roiMax}
-              onChange={(e) => { setRoiMax(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              placeholder="Max"
-              className="input w-20"
             />
           </div>
         </div>
@@ -831,10 +853,14 @@ export default function ReportsPage() {
                           } ${isRight ? 'text-right' : 'text-left'}`}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                         >
-                          <div className={`flex items-center gap-1 ${isRight ? 'justify-end' : ''}`}>
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                            {canSort && <SortIcon sorted={sorted} />}
-                          </div>
+                          {header.column.columnDef.meta?.hasFilterHeader ? (
+                            flexRender(header.column.columnDef.header, header.getContext())
+                          ) : (
+                            <div className={`flex items-center gap-1 ${isRight ? 'justify-end' : ''}`}>
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                              {canSort && <SortIcon sorted={sorted} />}
+                            </div>
+                          )}
                           {header.column.getCanResize() && (
                             <div
                               onMouseDown={header.getResizeHandler()}
@@ -895,6 +921,7 @@ export default function ReportsPage() {
                     if (id === 'cost')        return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>;
                     if (id === 'revenue')     return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.revenue)}</td>;
                     if (id === 'profit')      return <td key={id} style={w} className={`px-3 py-3 text-right tabular-nums text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(totals.profit)}</td>;
+                    if (id === 'roi')         { const rv = totals.cost > 0 ? (totals.profit / totals.cost) * 100 : 0; return <td key={id} style={w} className={`px-3 py-3 text-right tabular-nums text-sm font-bold ${rv >= 0 ? 'text-green-700' : 'text-red-600'}`}>{rv.toFixed(1)}%</td>; }
                     if (id === 'cpc')         return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.cost, totals.clicks))}</td>;
                     if (id === 'epc')         return <td key={id} style={w} className="px-3 py-3 text-right tabular-nums text-sm text-gray-900">{fmtRate(perClick(totals.revenue, totals.clicks))}</td>;
                     return <td key={id} style={w} className="px-3 py-3" />;

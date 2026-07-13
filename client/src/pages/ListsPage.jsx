@@ -75,6 +75,8 @@ function CampaignRows({ listKey, days, colSpan }) {
 export default function ListsPage() {
   const campaignDays = 180;
   const [search, setSearch] = useState('');
+  const [roiMin, setRoiMin] = useState('');
+  const [roiMax, setRoiMax] = useState('');
   const [sorting, setSorting] = useState([{ id: 'profit', desc: true }]);
   const [expanded, setExpanded] = useState({});
 
@@ -86,10 +88,20 @@ export default function ListsPage() {
   });
 
   const rows = data?.rows || [];
-  const filtered = useMemo(
-    () => rows.filter((r) => !search || r.list_key?.toLowerCase().includes(search.toLowerCase())),
-    [rows, search]
-  );
+  const filtered = useMemo(() => {
+    let result = rows.filter((r) => !search || r.list_key?.toLowerCase().includes(search.toLowerCase()));
+    const min = roiMin !== '' ? Number(roiMin) : null;
+    const max = roiMax !== '' ? Number(roiMax) : null;
+    if (min !== null || max !== null) {
+      result = result.filter((r) => {
+        const roi = Number(r.roi);
+        if (min !== null && roi < min) return false;
+        if (max !== null && roi > max) return false;
+        return true;
+      });
+    }
+    return result;
+  }, [rows, search, roiMin, roiMax]);
 
   const columns = useMemo(() => [
     {
@@ -164,10 +176,28 @@ export default function ListsPage() {
     {
       id: 'roi',
       accessorKey: 'roi',
-      header: 'ROI',
-      size: 72,
+      header: ({ column }) => (
+        <div>
+          <div className="flex items-center justify-end gap-1 mb-1">
+            <span>ROI</span>
+            <SortIcon sorted={column.getIsSorted()} />
+          </div>
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5 justify-end">
+            <input type="number" value={roiMin}
+              onChange={(e) => setRoiMin(e.target.value)}
+              placeholder="Min"
+              className="w-14 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white font-normal normal-case tracking-normal text-gray-600 focus:outline-none focus:border-blue-400" />
+            <span className="text-gray-300 text-[10px]">–</span>
+            <input type="number" value={roiMax}
+              onChange={(e) => setRoiMax(e.target.value)}
+              placeholder="Max"
+              className="w-14 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white font-normal normal-case tracking-normal text-gray-600 focus:outline-none focus:border-blue-400" />
+          </div>
+        </div>
+      ),
+      size: 158,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, hasFilterHeader: true },
       cell: ({ getValue }) => {
         const v = Number(getValue());
         return <span className={v >= 0 ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>{getValue()}%</span>;
@@ -193,7 +223,7 @@ export default function ListsPage() {
       enableResizing: false,
       cell: ({ row }) => <StatusBadge days={row.original.days_since_last_use} />,
     },
-  ], []);
+  ], [roiMin, roiMax]);
 
   const table = useReactTable({
     data: filtered,
@@ -249,7 +279,7 @@ export default function ListsPage() {
                           ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                        {header.column.getCanSort() && !header.column.columnDef.meta?.hasFilterHeader && <SortIcon sorted={header.column.getIsSorted()} />}
                         {header.column.getCanResize() && (
                           <div
                             onMouseDown={header.getResizeHandler()}

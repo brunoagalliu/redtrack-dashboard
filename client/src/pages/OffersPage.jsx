@@ -210,10 +210,28 @@ export default function OffersPage() {
     {
       id: 'roi',
       accessorKey: 'roi',
-      header: 'ROI',
-      size: 72,
+      header: ({ column }) => (
+        <div>
+          <div className="flex items-center justify-end gap-1 mb-1">
+            <span>ROI</span>
+            <SortIcon sorted={column.getIsSorted()} />
+          </div>
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5 justify-end">
+            <input type="number" value={roiMin}
+              onChange={(e) => { setRoiMin(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Min"
+              className="w-14 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white font-normal normal-case tracking-normal text-gray-600 focus:outline-none focus:border-blue-400" />
+            <span className="text-gray-300 text-[10px]">–</span>
+            <input type="number" value={roiMax}
+              onChange={(e) => { setRoiMax(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Max"
+              className="w-14 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white font-normal normal-case tracking-normal text-gray-600 focus:outline-none focus:border-blue-400" />
+          </div>
+        </div>
+      ),
+      size: 158,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, hasFilterHeader: true },
       cell: ({ getValue }) => {
         const v = Number(getValue());
         return <span className={`text-xs font-semibold ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{getValue()}%</span>;
@@ -245,7 +263,7 @@ export default function OffersPage() {
         </span>
       ),
     },
-  ], []);
+  ], [roiMin, roiMax]);
 
   const table = useReactTable({
     data: rows,
@@ -362,26 +380,6 @@ export default function OffersPage() {
             {(data?.dataPartners || []).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">ROI %</label>
-          <div className="flex items-center gap-1">
-            <input
-              type="number"
-              value={roiMin}
-              onChange={(e) => { setRoiMin(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              placeholder="Min"
-              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white w-20"
-            />
-            <span className="text-xs text-gray-400">–</span>
-            <input
-              type="number"
-              value={roiMax}
-              onChange={(e) => { setRoiMax(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              placeholder="Max"
-              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white w-20"
-            />
-          </div>
-        </div>
         <div className="flex flex-col gap-1 ml-auto">
           <label className="text-xs text-gray-500 font-medium">Rows</label>
           <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
@@ -453,7 +451,7 @@ export default function OffersPage() {
                               ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-gray-700' : ''}`}
                           >
                             {flexRender(header.column.columnDef.header, header.getContext())}
-                            {header.column.getCanSort() && <SortIcon sorted={header.column.getIsSorted()} />}
+                            {header.column.getCanSort() && !header.column.columnDef.meta?.hasFilterHeader && <SortIcon sorted={header.column.getIsSorted()} />}
                             {header.column.getCanResize() && (
                               <div
                                 onMouseDown={header.getResizeHandler()}
