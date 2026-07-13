@@ -383,6 +383,8 @@ export default function ReportsPage() {
   const [applied,  setApplied]  = useState({ date_from: sixMonthsAgo, date_to: today });
   const [buyerFilter,    setBuyerFilter]    = useState('ALL');
   const [search,         setSearch]         = useState('');
+  const [roiMin,         setRoiMin]         = useState('');
+  const [roiMax,         setRoiMax]         = useState('');
   const [showColPicker,  setShowColPicker]  = useState(false);
   const [listOverrides,    setListOverrides]    = useState({});
   const [partnerOverrides, setPartnerOverrides] = useState({});
@@ -444,8 +446,18 @@ export default function ReportsPage() {
       const q = search.toLowerCase();
       result = result.filter((c) => (c.title || '').toLowerCase().includes(q));
     }
+    const min = roiMin !== '' ? Number(roiMin) : null;
+    const max = roiMax !== '' ? Number(roiMax) : null;
+    if (min !== null || max !== null) {
+      result = result.filter((c) => {
+        const roi = c.cost > 0 ? (c.profit / c.cost) * 100 : (c.profit > 0 ? Infinity : c.profit < 0 ? -Infinity : 0);
+        if (min !== null && roi < min) return false;
+        if (max !== null && roi > max) return false;
+        return true;
+      });
+    }
     return result;
-  }, [allCampaigns, buyerFilter, search]);
+  }, [allCampaigns, buyerFilter, search, roiMin, roiMax]);
 
   const totals = useMemo(() => filteredData.reduce(
     (acc, c) => ({
@@ -704,6 +716,26 @@ export default function ReportsPage() {
               onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
               placeholder="Search campaigns…"
               className="input pl-7 w-48"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="label">ROI %</label>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              value={roiMin}
+              onChange={(e) => { setRoiMin(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Min"
+              className="input w-20"
+            />
+            <span className="text-xs text-gray-400">–</span>
+            <input
+              type="number"
+              value={roiMax}
+              onChange={(e) => { setRoiMax(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Max"
+              className="input w-20"
             />
           </div>
         </div>

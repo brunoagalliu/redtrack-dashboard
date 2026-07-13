@@ -33,6 +33,8 @@ export default function OffersPage() {
   const [carrier,     setCarrier]     = useState('');
   const [dataPartner, setDataPartner] = useState('');
   const [search, setSearch] = useState('');
+  const [roiMin, setRoiMin] = useState('');
+  const [roiMax, setRoiMax] = useState('');
   const [sorting, setSorting] = useState([{ id: 'profit', desc: true }]);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
 
@@ -53,11 +55,23 @@ export default function OffersPage() {
   const syncPhase   = mainSync?.phase;
 
   const rows = useMemo(() => {
-    const all = data?.rows || [];
-    if (!search.trim()) return all;
-    const q = search.toLowerCase();
-    return all.filter((r) => (r.offer_name || '').toLowerCase().includes(q));
-  }, [data, search]);
+    let all = data?.rows || [];
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      all = all.filter((r) => (r.offer_name || '').toLowerCase().includes(q));
+    }
+    const min = roiMin !== '' ? Number(roiMin) : null;
+    const max = roiMax !== '' ? Number(roiMax) : null;
+    if (min !== null || max !== null) {
+      all = all.filter((r) => {
+        const roi = Number(r.roi);
+        if (min !== null && roi < min) return false;
+        if (max !== null && roi > max) return false;
+        return true;
+      });
+    }
+    return all;
+  }, [data, search, roiMin, roiMax]);
 
   const columns = useMemo(() => [
     {
@@ -347,6 +361,26 @@ export default function OffersPage() {
             <option value="">All</option>
             {(data?.dataPartners || []).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium">ROI %</label>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              value={roiMin}
+              onChange={(e) => { setRoiMin(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Min"
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white w-20"
+            />
+            <span className="text-xs text-gray-400">–</span>
+            <input
+              type="number"
+              value={roiMax}
+              onChange={(e) => { setRoiMax(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Max"
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white w-20"
+            />
+          </div>
         </div>
         <div className="flex flex-col gap-1 ml-auto">
           <label className="text-xs text-gray-500 font-medium">Rows</label>
