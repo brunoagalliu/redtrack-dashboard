@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useDomains, useSources } from '../hooks/useDropdowns';
 import FunnelBuilder from './FunnelBuilder';
 import PostbackConfig from './PostbackConfig';
-import SearchableSelect from './SearchableSelect';
 import CampaignNameBuilder from './CampaignNameBuilder';
 import { api } from '../lib/api';
 
@@ -157,7 +156,13 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
   const { data: sources = [], isLoading: loadingSources } = useSources();
   const { data: domains = [], isLoading: loadingDomains } = useDomains();
 
-  // Auto-select when there is exactly one domain
+  // Auto-select when there is exactly one source or domain
+  useEffect(() => {
+    if (sources.length === 1 && !form.traffic_source_id) {
+      set('traffic_source_id', sources[0].id);
+    }
+  }, [sources.length]);
+
   useEffect(() => {
     if (domains.length === 1 && String(form.domain_id) !== String(domains[0].id)) {
       set('domain_id', domains[0].id);
@@ -235,21 +240,6 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
       {/* ── CAMPAIGN DETAILS TAB ── */}
       {tab === 'details' && (
         <div className="grid grid-cols-1 gap-6">
-          {/* Template */}
-          <div className="card p-6">
-            <p className="section-title">Template</p>
-            <div className="max-w-xs">
-              <label className="label">Traffic Channel</label>
-              <SearchableSelect
-                options={sources.map((s) => ({ value: s.id, label: s.name || s.title }))}
-                value={form.traffic_source_id}
-                onChange={(v) => set('traffic_source_id', v)}
-                placeholder="Select traffic channel"
-                disabled={loadingSources}
-              />
-            </div>
-          </div>
-
           {/* General */}
           <div className="card p-6">
             <p className="section-title">General</p>
@@ -259,7 +249,6 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
                 onChange={(v) => { set('name', v); setFieldErrors((fe) => ({ ...fe, name: undefined })); }}
                 onUrlParams={(p) => set('urlParams', p)}
                 error={fieldErrors.name}
-                sourceName={selectedSource?.name || selectedSource?.title}
                 domains={domains}
                 domainId={form.domain_id}
                 onDomainChange={(v) => set('domain_id', v)}
