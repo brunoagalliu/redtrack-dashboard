@@ -32,6 +32,7 @@ export default function OffersPage() {
   const [route,       setRoute]       = useState('');
   const [carrier,     setCarrier]     = useState('');
   const [dataPartner, setDataPartner] = useState('');
+  const [search, setSearch] = useState('');
   const [sorting, setSorting] = useState([{ id: 'profit', desc: true }]);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
 
@@ -51,7 +52,12 @@ export default function OffersPage() {
   const syncRunning = mainSync?.status === 'running';
   const syncPhase   = mainSync?.phase;
 
-  const rows = useMemo(() => data?.rows || [], [data]);
+  const rows = useMemo(() => {
+    const all = data?.rows || [];
+    if (!search.trim()) return all;
+    const q = search.toLowerCase();
+    return all.filter((r) => (r.offer_name || '').toLowerCase().includes(q));
+  }, [data, search]);
 
   const columns = useMemo(() => [
     {
@@ -263,6 +269,20 @@ export default function OffersPage() {
         )}
       </div>
 
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+          placeholder="Search offers…"
+          className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex items-end gap-1">
@@ -369,7 +389,7 @@ export default function OffersPage() {
       {!isLoading && rows.length > 0 && (
         <>
           <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>{rows.length} combinations</span>
+            <span>{rows.length} {search.trim() ? 'matches' : 'combinations'}</span>
             {table.getPageCount() > 1 && (
               <div className="flex items-center gap-1">
                 <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}

@@ -382,6 +382,7 @@ export default function ReportsPage() {
   const [dateTo,   setDateTo]   = useState(today);
   const [applied,  setApplied]  = useState({ date_from: sixMonthsAgo, date_to: today });
   const [buyerFilter,    setBuyerFilter]    = useState('ALL');
+  const [search,         setSearch]         = useState('');
   const [showColPicker,  setShowColPicker]  = useState(false);
   const [listOverrides,    setListOverrides]    = useState({});
   const [partnerOverrides, setPartnerOverrides] = useState({});
@@ -438,8 +439,13 @@ export default function ReportsPage() {
   }, [data]);
 
   const filteredData = useMemo(() => {
-    return buyerFilter === 'ALL' ? allCampaigns : allCampaigns.filter((c) => c.buyer === buyerFilter);
-  }, [allCampaigns, buyerFilter]);
+    let result = buyerFilter === 'ALL' ? allCampaigns : allCampaigns.filter((c) => c.buyer === buyerFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((c) => (c.title || '').toLowerCase().includes(q));
+    }
+    return result;
+  }, [allCampaigns, buyerFilter, search]);
 
   const totals = useMemo(() => filteredData.reduce(
     (acc, c) => ({
@@ -685,6 +691,21 @@ export default function ReportsPage() {
             <option value="ALL">All buyers</option>
             {BUYERS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
+        </div>
+        <div className="relative">
+          <label className="label">Search</label>
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Search campaigns…"
+              className="input pl-7 w-48"
+            />
+          </div>
         </div>
         <button type="button" onClick={applyRange} disabled={isFetching} className="btn-primary">
           {isFetching ? 'Loading…' : 'Apply'}
