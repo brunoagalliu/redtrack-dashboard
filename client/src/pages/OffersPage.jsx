@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import RoiFilterPopover from '../components/RoiFilterPopover';
 import {
   useReactTable,
   getCoreRowModel,
@@ -211,25 +212,18 @@ export default function OffersPage() {
       id: 'roi',
       accessorKey: 'roi',
       header: ({ column }) => (
-        <div>
-          <div className="flex items-center justify-end gap-1 mb-1">
-            <span>ROI</span>
-            <SortIcon sorted={column.getIsSorted()} />
-          </div>
-          <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5 justify-end">
-            <input type="number" value={roiMin}
-              onChange={(e) => { setRoiMin(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              placeholder="Min"
-              className="w-14 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white font-normal normal-case tracking-normal text-gray-600 focus:outline-none focus:border-blue-400" />
-            <span className="text-gray-300 text-[10px]">–</span>
-            <input type="number" value={roiMax}
-              onChange={(e) => { setRoiMax(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              placeholder="Max"
-              className="w-14 px-1 py-0.5 text-[10px] border border-gray-200 rounded bg-white font-normal normal-case tracking-normal text-gray-600 focus:outline-none focus:border-blue-400" />
-          </div>
+        <div className="flex items-center justify-end gap-1">
+          <span>ROI</span>
+          <SortIcon sorted={column.getIsSorted()} />
+          <RoiFilterPopover
+            roiMin={roiMin}
+            roiMax={roiMax}
+            onMinChange={(v) => { setRoiMin(v); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+            onMaxChange={(v) => { setRoiMax(v); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+          />
         </div>
       ),
-      size: 158,
+      size: 88,
       enableSorting: true,
       meta: { right: true, hasFilterHeader: true },
       cell: ({ getValue }) => {
