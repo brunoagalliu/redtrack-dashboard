@@ -23,17 +23,33 @@ function Bar({ value, max, className = 'bg-blue-500' }) {
   );
 }
 
-// Sparkline-style day bars (last 14 days)
-function DailyBar({ daily, max }) {
-  const days = [...daily].reverse();
+// Sparkline that groups into weeks for periods > 30 days
+function DailyBar({ daily, period }) {
+  const useWeekly = period > 30;
+
+  let bars;
+  if (useWeekly) {
+    // Group daily rows (newest-first) into weekly buckets, then reverse to oldest-first
+    const reversed = [...daily].reverse(); // oldest first
+    const weeks = [];
+    for (let i = 0; i < reversed.length; i += 7) {
+      const chunk = reversed.slice(i, i + 7);
+      weeks.push({ count: chunk.reduce((a, d) => a + d.count, 0), label: chunk[0]?.date });
+    }
+    bars = weeks;
+  } else {
+    bars = [...daily].reverse(); // oldest first
+  }
+
+  const max = Math.max(1, ...bars.map((b) => b.count));
+
   return (
     <div className="flex items-end gap-0.5 h-8 mt-2">
-      {Array.from({ length: 14 }).map((_, i) => {
-        const d = days[i];
-        const h = max > 0 && d ? Math.max(4, (d.count / max) * 32) : 2;
+      {bars.map((b, i) => {
+        const h = b.count > 0 ? Math.max(4, (b.count / max) * 32) : 2;
         return (
-          <div key={i} title={d ? `${d.date}: ${d.count}` : ''}
-            className={`flex-1 rounded-sm ${d?.count ? 'bg-blue-400' : 'bg-gray-100'}`}
+          <div key={i} title={`${b.label || b.date}: ${b.count}`}
+            className={`flex-1 rounded-sm ${b.count > 0 ? 'bg-blue-400' : 'bg-gray-100'}`}
             style={{ height: `${h}px` }} />
         );
       })}
@@ -57,8 +73,6 @@ export default function InsightsPage() {
   const ops  = data?.opportunities || [];
   const mat  = data?.buyer_vertical_matrix || {};
 
-  // Max daily count across all buyers for sparkline scaling
-  const maxDaily = Math.max(1, ...BUYERS.flatMap((b) => (nc[b]?.daily || []).map((d) => d.count)));
   // Max profit for bar scaling
   const maxProfit = Math.max(1, ...vp.map((v) => v.profit));
   const maxPPC    = Math.max(1, ...vp.map((v) => v.profit_per_campaign));
@@ -113,21 +127,19 @@ export default function InsightsPage() {
                       <span className="text-2xl font-bold text-gray-900">{s.last_30 ?? '—'}</span>
                     </div>
                     <div className="space-y-1 text-xs text-gray-500">
-                      <div className="flex justify-between">
-                        <span>Today</span>
-                        <span className="font-semibold text-gray-700">{s.today ?? 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Yesterday</span>
-                        <span className="font-semibold text-gray-700">{s.yesterday ?? 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Last 7 days</span>
-                        <span className="font-semibold text-gray-700">{s.last_7 ?? 0}</span>
-                      </div>
+                      {days <= 14 && <>
+                        <div className="flex justify-between"><span>Today</span><span className="font-semibold text-gray-700">{s.today ?? 0}</span></div>
+                        <div className="flex justify-between"><span>Yesterday</span><span className="font-semibold text-gray-700">{s.yesterday ?? 0}</span></div>
+                      </>}
+                      <div className="flex justify-between"><span>Last 7 days</span><span className="font-semibold text-gray-700">{s.last_7 ?? 0}</span></div>
+                      {days > 7 && (
+                        <div className="flex justify-between"><span>Last {days} days</span><span className="font-semibold text-gray-700">{s.last_30 ?? 0}</span></div>
+                      )}
                     </div>
-                    <DailyBar daily={s.daily || []} max={maxDaily} />
-                    <p className="text-xs text-gray-400 mt-1">Last 14 days</p>
+                    <DailyBar daily={s.daily || []} period={days} />
+                    <p className="text-xs text-gray-400 mt-1">
+                      {days > 30 ? `${Math.ceil((s.daily || []).length / 7)} weeks` : `Last ${days} days`}
+                    </p>
                   </div>
                 );
               })}

@@ -670,7 +670,7 @@ router.get('/insights', async (req, res) => {
         yesterday:  rows.find((r) => r.date === yesterday)?.count || 0,
         last_7:     sum(weekAgo),
         last_30:    sum(statsFrom),
-        daily:      rows.slice(0, 14), // last 14 days for sparkline
+        daily:      rows.slice(0, statsDays), // full period for sparkline
       };
     }
 
