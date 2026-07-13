@@ -93,7 +93,7 @@ function parseListFromTitle(rawTitle, knownRoutes, knownVerticals) {
   if (dateM) { listLastUsed = `${dateM[1]}.${dateM[2]}`; s = s.slice(0, dateM.index); }
 
   // Find the last size token — list name ends here (e.g. "34k", "114k", "5,7k")
-  const sizeRe = /\d+(?:[.,]\d+)?\s*[kK]\b/g;
+  const sizeRe = /\d+(?:[.,]\d+)?\s*[kK](?![a-zA-Z])/g;
   const sizeMatches = [...s.matchAll(sizeRe)];
   if (!sizeMatches.length) return { listKey: null, listLastUsed };
   const lastSize = sizeMatches[sizeMatches.length - 1];
@@ -1671,7 +1671,10 @@ router.post('/lists/backfill', async (req, res) => {
     const { rows: rRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'route'`);
     const knownRoutes = new Map(rRows.map(r => [r.value.toUpperCase(), r.value]));
 
-    const { rows: campaigns } = await pool.query(`SELECT id, title FROM rt_campaigns WHERE data_list IS NULL`);
+    const force = req.query.force === '1';
+    const { rows: campaigns } = await pool.query(
+      force ? `SELECT id, title FROM rt_campaigns` : `SELECT id, title FROM rt_campaigns WHERE data_list IS NULL`
+    );
     let updated = 0;
     for (const c of campaigns) {
       const { listKey, listLastUsed } = parseListFromTitle(c.title, knownRoutes, knownVerticals);
