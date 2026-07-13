@@ -23,22 +23,9 @@ function Bar({ value, max, className = 'bg-blue-500' }) {
   );
 }
 
-// Inline SVG line sparkline, groups into weeks for periods > 30 days
+// Inline SVG line sparkline — daily granularity for all periods
 function SparkLine({ daily, period, color, id }) {
-  const useWeekly = period > 30;
-
-  let points;
-  if (useWeekly) {
-    const reversed = [...daily].reverse(); // oldest first
-    const weeks = [];
-    for (let i = 0; i < reversed.length; i += 7) {
-      const chunk = reversed.slice(i, i + 7);
-      weeks.push({ count: chunk.reduce((a, d) => a + d.count, 0), label: chunk[0]?.date });
-    }
-    points = weeks;
-  } else {
-    points = [...daily].reverse(); // oldest first
-  }
+  const points = [...daily].reverse(); // oldest first, always daily
 
   if (points.length < 2) return <div className="h-10 mt-2" />;
 
@@ -160,9 +147,7 @@ export default function InsightsPage() {
                       )}
                     </div>
                     <SparkLine daily={s.daily || []} period={days} color={col.line} id={buyer} />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {days > 30 ? `${Math.ceil((s.daily || []).length / 7)} weeks` : `Last ${days} days`}
-                    </p>
+                    <p className="text-xs text-gray-400 mt-1">Last {days} days</p>
                   </div>
                 );
               })}
