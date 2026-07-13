@@ -146,7 +146,7 @@ function SectionGroup({ icon, label, sublabel, color, children }) {
 }
 
 const BUYERS = ['TK', 'MA', 'DS'];
-const DAY_OPTIONS = [7, 14, 30, 60, 90];
+const DAY_OPTIONS = [7, 14, 30, 60, 90, 180];
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
@@ -400,7 +400,7 @@ export default function AIDashboardPage() {
           <div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
           <p className="text-sm font-medium text-gray-700">Generating all date windows…</p>
           <div className="flex justify-center gap-2 flex-wrap text-xs">
-            {[7, 14, 30, 60, 90].map(d => {
+            {DAY_OPTIONS.map(d => {
               const done = completedPeriods.includes(d);
               const active = currentPeriod === d;
               return (
@@ -417,7 +417,7 @@ export default function AIDashboardPage() {
               {listDone ? '✓ ' : listStatus?.running ? '⏳ ' : ''}Lists
             </span>
           </div>
-          <p className="text-xs text-gray-400">{completedPeriods.length}/5 periods done · ~2 min total</p>
+          <p className="text-xs text-gray-400">{completedPeriods.length}/{DAY_OPTIONS.length} periods done · ~2 min total</p>
         </div>
       )}
 
