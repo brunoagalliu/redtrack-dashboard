@@ -311,10 +311,10 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, erro
       {/* 4. Data Partner */}
       <div className="max-w-xs">
         <label className="label">Data Partner</label>
-        {partnerAutoDetected ? (
+        {partner ? (
           <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-50 border border-emerald-200">
             <span className="text-sm font-medium text-emerald-800 flex-1">{partner}</span>
-            <span className="text-xs text-emerald-500 shrink-0">auto-detected</span>
+            {partnerAutoDetected && <span className="text-xs text-emerald-500 shrink-0">auto-detected</span>}
             <button type="button" onClick={() => { setPartner(''); setPartnerAutoDetected(false); }}
               className="text-emerald-400 hover:text-red-500 text-xs leading-none ml-1">✕</button>
           </div>
