@@ -100,12 +100,12 @@ router.post('/', async (req, res) => {
   try {
     const { streams: rawStreams, ...campaignBody } = req.body;
     const resolvedStreams = await resolveStreams(rawStreams);
-    const { data } = await redtrack.post('/campaigns', {
-      ...campaignBody,
-      streams: resolvedStreams.length ? resolvedStreams : undefined,
-    });
+    const payload = { ...campaignBody, streams: resolvedStreams.length ? resolvedStreams : undefined };
+    console.log('[campaign create] payload:', JSON.stringify(payload, null, 2));
+    const { data } = await redtrack.post('/campaigns', payload);
     res.status(201).json(data);
   } catch (err) {
+    console.error('[campaign create] redtrack error:', err.response?.status, JSON.stringify(err.response?.data));
     res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
   }
 });
