@@ -36,6 +36,16 @@ function deriveFlow(stream) {
   return 'offer';
 }
 
+function deriveTrafficLabel(title) {
+  if (!title) return '';
+  const rest = title.includes(' - ') ? title.split(' - ').slice(1).join(' - ') : title;
+  const firstSegment = rest.split('_')[0];
+  if (firstSegment === 'USMS') return 'UPM';
+  if (firstSegment === 'Ranhog') return 'Ranhog';
+  if (firstSegment === 'TechStar') return 'TechStar';
+  return 'Internal';
+}
+
 function toFormValues(campaign) {
   if (!campaign) return null;
   const costModel = campaign.cost_model || 'CPC';
@@ -45,6 +55,7 @@ function toFormValues(campaign) {
   return {
     name: campaign.title || '',
     traffic_source_id: campaign.source_id || '',
+    traffic_label: deriveTrafficLabel(campaign.title),
     domain_id: campaign.domain_id || '',
     cost_type: costModel,
     cost_value: costValue,

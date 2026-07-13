@@ -32,6 +32,7 @@ function defaultForm() {
   return {
     name: '',
     traffic_source_id: '',
+    traffic_label: '',
     domain_id: '',
     cost_type: 'CPC',
     cost_value: 0,
@@ -247,11 +248,15 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
             <div className="max-w-xs">
               <label className="label">Traffic Channel</label>
               <SearchableSelect
-                options={sources.map((s) => ({ value: s.id, label: s.name || s.title }))}
-                value={form.traffic_source_id}
-                onChange={(v) => set('traffic_source_id', v)}
-                placeholder={loadingSources ? 'Loading…' : 'Select traffic channel'}
-                disabled={loadingSources}
+                options={['UPM', 'Ranhog', 'TechStar', 'Internal'].map((ts) => ({ value: ts, label: ts }))}
+                value={form.traffic_label}
+                onChange={(v) => {
+                  set('traffic_label', v);
+                  if (!form.traffic_source_id && sources.length > 0) {
+                    set('traffic_source_id', sources[0].id);
+                  }
+                }}
+                placeholder="Select traffic channel"
               />
             </div>
           </div>
@@ -265,6 +270,8 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
                 onChange={(v) => { set('name', v); setFieldErrors((fe) => ({ ...fe, name: undefined })); }}
                 onUrlParams={(p) => set('urlParams', p)}
                 error={fieldErrors.name}
+                trafficLabel={form.traffic_label}
+                onTrafficLabelChange={(v) => set('traffic_label', v)}
                 domains={domains}
                 domainId={form.domain_id}
                 onDomainChange={(v) => set('domain_id', v)}

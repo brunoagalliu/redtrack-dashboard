@@ -127,7 +127,7 @@ function todayStr() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function CampaignNameBuilder({ value, onChange, onUrlParams, error, domains = [], domainId, onDomainChange, loadingDomains }) {
+export default function CampaignNameBuilder({ value, onChange, onUrlParams, error, domains = [], domainId, onDomainChange, loadingDomains, trafficLabel, onTrafficLabelChange }) {
   const qc = useQueryClient();
 
   const { data: sources   = [], isLoading: loadingSources   } = useQuery({ queryKey: ['list', 'route'],    queryFn: () => api.getList('route') });
@@ -177,12 +177,23 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, erro
     ? SELF_ROUTING[trafficSource]
     : (trafficSource === 'Internal' ? route : '');
 
+  // Sync trafficSource from parent's controlled trafficLabel prop
+  useEffect(() => {
+    if (trafficLabel !== undefined && trafficLabel !== trafficSource) {
+      setTrafficSource(trafficLabel || '');
+      if (trafficLabel !== 'Internal') setRoute('');
+    }
+  }, [trafficLabel]);
+
   // Pre-fill from existing campaign name (edit mode)
   useEffect(() => {
     if (initialized || !value || loadingSources || loadingVerticals) return;
     const parsed = parseName(value, sources, verticals);
     if (parsed.buyer)         setBuyer(parsed.buyer);
-    if (parsed.trafficSource) setTrafficSource(parsed.trafficSource);
+    if (parsed.trafficSource) {
+      setTrafficSource(parsed.trafficSource);
+      if (onTrafficLabelChange) onTrafficLabelChange(parsed.trafficSource);
+    }
     if (parsed.route)         setRoute(parsed.route);
     if (parsed.vertical)      setVertical(parsed.vertical);
     if (parsed.partner)       { setPartner(parsed.partner); setPartnerAutoDetected(false); }
@@ -249,26 +260,28 @@ export default function CampaignNameBuilder({ value, onChange, onUrlParams, erro
         </div>
       </div>
 
-      {/* 2. Traffic Source */}
-      <div>
-        <label className="label">Traffic Source</label>
-        <div className="flex gap-2 flex-wrap">
-          {TRAFFIC_SOURCES.map((ts) => (
-            <button key={ts} type="button"
-              onClick={() => {
-                setTrafficSource(trafficSource === ts ? '' : ts);
-                setRoute('');
-              }}
-              className={`px-4 py-2 rounded-md text-sm font-semibold border-2 transition-colors ${
-                trafficSource === ts
-                  ? 'bg-violet-600 border-violet-600 text-white'
-                  : 'bg-white border-gray-200 text-gray-700 hover:border-violet-300'
-              }`}>
-              {ts}
-            </button>
-          ))}
+      {/* 2. Traffic Source — shown only when not controlled by the parent dropdown */}
+      {trafficLabel === undefined && (
+        <div>
+          <label className="label">Traffic Source</label>
+          <div className="flex gap-2 flex-wrap">
+            {TRAFFIC_SOURCES.map((ts) => (
+              <button key={ts} type="button"
+                onClick={() => {
+                  setTrafficSource(trafficSource === ts ? '' : ts);
+                  setRoute('');
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-semibold border-2 transition-colors ${
+                  trafficSource === ts
+                    ? 'bg-violet-600 border-violet-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-700 hover:border-violet-300'
+                }`}>
+                {ts}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 3. Route sub-picker — only for Internal */}
       {trafficSource === 'Internal' && (
