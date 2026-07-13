@@ -1900,20 +1900,6 @@ router.get('/offers', async (req, res) => {
   }
 });
 
-// Diagnostic: find campaigns by title fragment and show their data_list assignments
-router.get('/debug/campaigns', async (req, res) => {
-  const pattern = req.query.q || '';
-  if (!pattern || pattern.length < 5) return res.status(400).json({ error: 'q param required (min 5 chars)' });
-  const { rows } = await pool.query(
-    `SELECT id, title, data_list, created_at,
-            (SELECT COUNT(*) FROM rt_campaign_stats WHERE campaign_id = c.id)::int AS stat_rows
-     FROM rt_campaigns c
-     WHERE title ILIKE $1
-     ORDER BY created_at ASC`,
-    [`%${pattern}%`]
-  );
-  res.json({ count: rows.length, rows });
-});
 
 module.exports = router;
 module.exports.cleanupOldStats = cleanupOldStats;
