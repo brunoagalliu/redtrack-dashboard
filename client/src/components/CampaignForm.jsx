@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDomains, useSources } from '../hooks/useDropdowns';
 import FunnelBuilder from './FunnelBuilder';
 import PostbackConfig from './PostbackConfig';
@@ -148,7 +148,17 @@ function TagInput({ value, onChange }) {
 }
 
 export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) {
-  const [form, setForm] = useState(() => initialValues || defaultForm());
+  const qc = useQueryClient();
+  const [form, setForm] = useState(() => {
+    const base = initialValues || defaultForm();
+    // Initialize traffic_source_id synchronously from cache if available
+    if (!base.traffic_source_id) {
+      const cached = qc.getQueryData(['sources']);
+      const list = Array.isArray(cached) ? cached : (cached?.items ?? []);
+      if (list.length === 1) base.traffic_source_id = list[0].id;
+    }
+    return base;
+  });
   const [tab, setTab] = useState('details');
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -156,7 +166,7 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
   const { data: sources = [], isLoading: loadingSources } = useSources();
   const { data: domains = [], isLoading: loadingDomains } = useDomains();
 
-  // Auto-select when there is exactly one source or domain
+  // Fallback: set traffic_source_id once sources finish loading (if not already set from cache)
   useEffect(() => {
     if (sources.length === 1 && !form.traffic_source_id) {
       set('traffic_source_id', sources[0].id);
