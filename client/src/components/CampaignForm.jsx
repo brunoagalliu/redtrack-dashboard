@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useDomains, useSources } from '../hooks/useDropdowns';
 import FunnelBuilder from './FunnelBuilder';
 import PostbackConfig from './PostbackConfig';
 import CampaignNameBuilder from './CampaignNameBuilder';
+import SearchableSelect from './SearchableSelect';
 import { api } from '../lib/api';
 
 const COST_TYPES = ['CPC', 'CPA', 'CPM', 'POPCPM', 'REVSHARE', 'DONOTTRACK'];
@@ -148,17 +149,7 @@ function TagInput({ value, onChange }) {
 }
 
 export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) {
-  const qc = useQueryClient();
-  const [form, setForm] = useState(() => {
-    const base = initialValues || defaultForm();
-    // Initialize traffic_source_id synchronously from cache if available
-    if (!base.traffic_source_id) {
-      const cached = qc.getQueryData(['sources']);
-      const list = Array.isArray(cached) ? cached : (cached?.items ?? []);
-      if (list.length === 1) base.traffic_source_id = list[0].id;
-    }
-    return base;
-  });
+  const [form, setForm] = useState(() => initialValues || defaultForm());
   const [tab, setTab] = useState('details');
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -166,12 +157,12 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
   const { data: sources = [], isLoading: loadingSources } = useSources();
   const { data: domains = [], isLoading: loadingDomains } = useDomains();
 
-  // Fallback: set traffic_source_id once sources finish loading (if not already set from cache)
+  // Auto-select the only available source so the dropdown shows it pre-filled
   useEffect(() => {
     if (sources.length === 1 && !form.traffic_source_id) {
       set('traffic_source_id', sources[0].id);
     }
-  }, [sources.length]);
+  }, [sources.length, sources[0]?.id]);
 
   useEffect(() => {
     if (domains.length === 1 && String(form.domain_id) !== String(domains[0].id)) {
@@ -250,6 +241,21 @@ export default function CampaignForm({ initialValues, onSubmit, isSubmitting }) 
       {/* ── CAMPAIGN DETAILS TAB ── */}
       {tab === 'details' && (
         <div className="grid grid-cols-1 gap-6">
+          {/* Template */}
+          <div className="card p-6">
+            <p className="section-title">Template</p>
+            <div className="max-w-xs">
+              <label className="label">Traffic Channel</label>
+              <SearchableSelect
+                options={sources.map((s) => ({ value: s.id, label: s.name || s.title }))}
+                value={form.traffic_source_id}
+                onChange={(v) => set('traffic_source_id', v)}
+                placeholder={loadingSources ? 'Loading…' : 'Select traffic channel'}
+                disabled={loadingSources}
+              />
+            </div>
+          </div>
+
           {/* General */}
           <div className="card p-6">
             <p className="section-title">General</p>
