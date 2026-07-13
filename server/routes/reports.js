@@ -87,17 +87,19 @@ const _LIST_NOISE = new Set(['own', 'upm']);
 function parseListFromTitle(rawTitle, knownRoutes, knownVerticals) {
   let s = rawTitle.trim().replace(/[_\s]*-?\s*COPY\s*$/i, '');
 
-  // Extract trailing _DD.MM date stamp
-  let listLastUsed = null;
-  const dateM = s.match(/_(\d{1,2})\.(\d{1,2})\s*$/);
-  if (dateM) { listLastUsed = `${dateM[1]}.${dateM[2]}`; s = s.slice(0, dateM.index); }
-
-  // Find the last size token — list name ends here (e.g. "34k", "114k", "5,7k")
+  // List name ends at the last size token (e.g. "34k", "114k", "5,7k", "123k_drfds_124K").
+  // Anything after it — an optional _DD.MM date and any free-form suffix — is noise.
   const sizeRe = /\d+(?:[.,]\d+)?\s*[kK](?![a-zA-Z])/g;
   const sizeMatches = [...s.matchAll(sizeRe)];
-  if (!sizeMatches.length) return { listKey: null, listLastUsed };
+  if (!sizeMatches.length) return { listKey: null, listLastUsed: null };
   const lastSize = sizeMatches[sizeMatches.length - 1];
   let body = s.slice(0, lastSize.index + lastSize[0].length);
+
+  // Extract date from immediately after the last size token (_DD.MM or _DD.MM-)
+  let listLastUsed = null;
+  const afterSize = s.slice(lastSize.index + lastSize[0].length);
+  const dateM = afterSize.match(/^[_\-\s]*(\d{1,2})\.(\d{1,2})/);
+  if (dateM) listLastUsed = `${dateM[1]}.${dateM[2]}`;
 
   // When a " - " dash splits the string and the tail is only carrier+size (no other text),
   // the dash is a list/carrier separator — keep the full body.
