@@ -110,6 +110,19 @@ export default function ListsPage() {
     return result;
   }, [rows, search, roiMin, roiMax]);
 
+  const totals = useMemo(() => {
+    if (!filtered.length) return null;
+    const clicks      = filtered.reduce((s, r) => s + Number(r.clicks      || 0), 0);
+    const conversions = filtered.reduce((s, r) => s + Number(r.conversions || 0), 0);
+    const revenue     = filtered.reduce((s, r) => s + Number(r.revenue     || 0), 0);
+    const cost        = filtered.reduce((s, r) => s + Number(r.cost        || 0), 0);
+    const profit      = filtered.reduce((s, r) => s + Number(r.profit      || 0), 0);
+    const campaigns   = filtered.reduce((s, r) => s + Number(r.campaign_count || 0), 0);
+    const epc         = clicks > 0 ? revenue / clicks : 0;
+    const roi         = cost   > 0 ? (profit / cost) * 100 : 0;
+    return { clicks, conversions, revenue, cost, profit, campaigns, epc, roi };
+  }, [filtered]);
+
   const columns = useMemo(() => [
     {
       id: 'expand',
@@ -282,9 +295,9 @@ export default function ListsPage() {
       {!isLoading && filtered.length > 0 && (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%' }}>
-            <thead>
+            <thead className="sticky top-0 z-10">
               {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className="border-b border-gray-100 bg-gray-50/60">
+                <tr key={hg.id} className="border-b border-gray-100 bg-gray-50">
                   {hg.headers.map((header) => {
                     const right = header.column.columnDef.meta?.right;
                     return (
@@ -363,6 +376,30 @@ export default function ListsPage() {
                 </Fragment>
               ))}
             </tbody>
+            {totals && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+                  {table.getVisibleLeafColumns().map((col) => {
+                    const right = col.columnDef.meta?.right;
+                    let content = null;
+                    if      (col.id === 'list_key')          content = <span className="text-gray-500 font-normal text-[11px]">{filtered.length} lists</span>;
+                    else if (col.id === 'campaign_count')    content = fmt(totals.campaigns);
+                    else if (col.id === 'clicks')            content = fmt(totals.clicks);
+                    else if (col.id === 'conversions')       content = fmt(totals.conversions);
+                    else if (col.id === 'epc')               content = fmtRate(totals.epc);
+                    else if (col.id === 'cost')              content = fmtMoney(totals.cost);
+                    else if (col.id === 'profit')            content = <span className={totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}>{fmtMoney(totals.profit)}</span>;
+                    else if (col.id === 'roi')               content = <span className={totals.roi >= 0 ? 'text-green-600' : 'text-red-500'}>{totals.roi.toFixed(2)}%</span>;
+                    return (
+                      <td key={col.id} style={{ width: col.getSize() }}
+                        className={`px-3 py-2.5 text-xs tabular-nums ${right ? 'text-right' : 'text-left'}`}>
+                        {content}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       )}
