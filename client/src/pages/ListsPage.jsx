@@ -293,7 +293,7 @@ export default function ListsPage() {
       )}
 
       {!isLoading && filtered.length > 0 && (
-        <div className="card overflow-x-auto">
+        <div className="card overflow-auto max-h-[calc(100vh-220px)]">
           <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%' }}>
             <thead className="sticky top-0 z-10">
               {table.getHeaderGroups().map((hg) => (
