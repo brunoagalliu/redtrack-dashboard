@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
@@ -32,6 +32,9 @@ export default function DateRangePicker({ from, to, onChange }) {
   const [pos,       setPos]       = useState({ top: 0, left: 0 });
   // Local state only for the in-progress half-selection (start picked, end not yet)
   const [selecting, setSelecting] = useState(null);
+  // Mark the parent date-change as a low-priority transition so the popover
+  // closes and repaints before React processes the expensive table re-render.
+  const [, startTransition] = useTransition();
 
   const btnRef     = useRef(null);
   const popoverRef = useRef(null);
@@ -76,17 +79,21 @@ export default function DateRangePicker({ from, to, onChange }) {
       return;
     }
     if (selected.from && selected.to) {
+      const newFrom = toStr(selected.from);
+      const newTo   = toStr(selected.to);
       setSelecting(null);
-      onChange({ from: toStr(selected.from), to: toStr(selected.to) });
       setOpen(false);
+      startTransition(() => onChange({ from: newFrom, to: newTo }));
     }
   }
 
   function applyPreset(days) {
     const f = new Date(Date.now() - days * 86400000);
+    const newFrom = toStr(f);
+    const newTo   = toStr(TODAY);
     setSelecting(null);
-    onChange({ from: toStr(f), to: toStr(TODAY) });
     setOpen(false);
+    startTransition(() => onChange({ from: newFrom, to: newTo }));
   }
 
   const label    = from && to ? `${fmt(from)} – ${fmt(to)}` : 'Select date range';
@@ -146,7 +153,7 @@ export default function DateRangePicker({ from, to, onChange }) {
             })}
             {isActive && (
               <button type="button"
-                onClick={() => { onChange({ from: '', to: '' }); setOpen(false); }}
+                onClick={() => { setOpen(false); startTransition(() => onChange({ from: '', to: '' })); }}
                 className="ml-auto text-xs text-gray-400 hover:text-red-500 transition-colors">
                 Clear
               </button>
