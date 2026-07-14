@@ -67,6 +67,7 @@ function CampaignRows({ listKey, dateFrom, dateTo, colSpan }) {
         <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-600">{fmt(c.clicks)}</td>
         <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-600">{fmt(c.conversions)}</td>
         <td className="px-3 py-2 text-right tabular-nums text-xs font-medium text-gray-700">{fmtRate(c.epc)}</td>
+        <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-600">{fmtMoney(c.cost)}</td>
         <td className={`px-3 py-2 text-right tabular-nums text-xs font-medium ${profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(profit)}</td>
         <td className="px-3 py-2 text-right tabular-nums text-xs text-gray-400">{fmtDate(c.created_at)}</td>
       </tr>
@@ -338,6 +339,7 @@ export default function ListsPage() {
                               <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Clicks</th>
                               <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Conv</th>
                               <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">EPC</th>
+                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Cost</th>
                               <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Profit</th>
                               <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Created</th>
                             </tr>
