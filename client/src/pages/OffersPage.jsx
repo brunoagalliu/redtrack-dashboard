@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import RoiFilterPopover from '../components/RoiFilterPopover';
+import ColumnPicker from '../components/ColumnPicker';
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,6 +12,48 @@ import {
 import { api } from '../lib/api';
 
 const BUYERS = ['TK', 'MA', 'DS'];
+
+const OFFERS_ALL_COLUMNS = [
+  { id: 'buyer',        label: 'Buyer',        defaultVisible: true },
+  { id: 'vertical',     label: 'Vertical',     defaultVisible: true },
+  { id: 'route',        label: 'Route',        defaultVisible: true },
+  { id: 'carrier',      label: 'Carrier',      defaultVisible: true },
+  { id: 'data_partner', label: 'Data Partner', defaultVisible: true },
+  { id: 'campaigns',    label: 'Campaigns',    defaultVisible: true },
+  { id: 'clicks',       label: 'Clicks',       defaultVisible: true },
+  { id: 'conversions',  label: 'Conv',         defaultVisible: true },
+  { id: 'cvr',          label: 'CVR',          defaultVisible: true },
+  { id: 'cost',         label: 'Cost',         defaultVisible: true },
+  { id: 'revenue',      label: 'Revenue',      defaultVisible: true },
+  { id: 'profit',       label: 'Profit',       defaultVisible: true },
+  { id: 'roi',          label: 'ROI',          defaultVisible: true },
+  { id: 'cpc',          label: 'CPC',          defaultVisible: true },
+  { id: 'epc',          label: 'EPC',          defaultVisible: true },
+];
+const OFFERS_CONFIGURABLE_IDS = OFFERS_ALL_COLUMNS.map((c) => c.id);
+const OFFERS_FIXED_START = ['offer_name'];
+const OFFERS_STORAGE_KEY = 'rt_offers_col_config';
+
+function loadOffersColConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(OFFERS_STORAGE_KEY));
+    if (saved?.order && saved?.visible) {
+      const newIds = OFFERS_CONFIGURABLE_IDS.filter((id) => !saved.order.includes(id));
+      return {
+        order:   [...saved.order, ...newIds],
+        visible: { ...Object.fromEntries(OFFERS_ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])), ...saved.visible },
+      };
+    }
+  } catch {}
+  return {
+    order:   OFFERS_ALL_COLUMNS.map((c) => c.id),
+    visible: Object.fromEntries(OFFERS_ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])),
+  };
+}
+
+function saveOffersColConfig(order, visible) {
+  localStorage.setItem(OFFERS_STORAGE_KEY, JSON.stringify({ order, visible }));
+}
 
 function fmt(n)      { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
 function fmtMoney(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -38,6 +81,15 @@ export default function OffersPage() {
   const [roiMax, setRoiMax] = useState('');
   const [sorting, setSorting] = useState([{ id: 'profit', desc: true }]);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
+  const [showColPicker, setShowColPicker] = useState(false);
+  const initOffersCfg = useMemo(() => loadOffersColConfig(), []);
+  const [columnVisibility, setColumnVisibility] = useState(() => initOffersCfg.visible);
+  const [columnOrder,      setColumnOrder]      = useState(() => [...OFFERS_FIXED_START, ...initOffersCfg.order]);
+
+  useEffect(() => {
+    const configOrder = columnOrder.filter((id) => OFFERS_CONFIGURABLE_IDS.includes(id));
+    saveOffersColConfig(configOrder, columnVisibility);
+  }, [columnOrder, columnVisibility]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['reports', 'offers', dateFrom, dateTo, buyer, vertical, route, carrier, dataPartner],
@@ -262,12 +314,14 @@ export default function OffersPage() {
   const table = useReactTable({
     data: rows,
     columns,
-    state: { sorting, pagination },
+    state: { sorting, pagination, columnVisibility, columnOrder },
     onSortingChange: (updater) => {
       setSorting(updater);
       setPagination((p) => ({ ...p, pageIndex: 0 }));
     },
     onPaginationChange: setPagination,
+    onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -374,12 +428,33 @@ export default function OffersPage() {
             {(data?.dataPartners || []).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
-        <div className="flex flex-col gap-1 ml-auto">
-          <label className="text-xs text-gray-500 font-medium">Rows</label>
-          <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white">
-            {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
+        <div className="flex items-end gap-2 ml-auto">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Rows</label>
+            <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white">
+              {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => setShowColPicker((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+              </svg>
+              Columns
+            </button>
+            {showColPicker && (
+              <ColumnPicker
+                allColumns={OFFERS_ALL_COLUMNS}
+                fixedStart={OFFERS_FIXED_START}
+                table={table}
+                onClose={() => setShowColPicker(false)}
+              />
+            )}
+          </div>
         </div>
       </div>
 

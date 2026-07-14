@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import ColumnPicker from '../components/ColumnPicker';
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,6 +9,40 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import { api } from '../lib/api';
+
+const VERTICALS_ALL_COLUMNS = [
+  { id: 'buyer',       label: 'Buyer',    defaultVisible: true },
+  { id: 'title',       label: 'Campaign', defaultVisible: true },
+  { id: 'clicks',      label: 'Clicks',   defaultVisible: true },
+  { id: 'conversions', label: 'Conv.',    defaultVisible: true },
+  { id: 'cost',        label: 'Spend',    defaultVisible: true },
+  { id: 'revenue',     label: 'Revenue',  defaultVisible: true },
+  { id: 'profit',      label: 'Profit',   defaultVisible: true },
+];
+const VERTICALS_CONFIGURABLE_IDS = VERTICALS_ALL_COLUMNS.map((c) => c.id);
+const VERTICALS_FIXED_START = ['vertical'];
+const VERTICALS_STORAGE_KEY = 'rt_verticals_col_config';
+
+function loadVerticalsColConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(VERTICALS_STORAGE_KEY));
+    if (saved?.order && saved?.visible) {
+      const newIds = VERTICALS_CONFIGURABLE_IDS.filter((id) => !saved.order.includes(id));
+      return {
+        order:   [...saved.order, ...newIds],
+        visible: { ...Object.fromEntries(VERTICALS_ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])), ...saved.visible },
+      };
+    }
+  } catch {}
+  return {
+    order:   VERTICALS_ALL_COLUMNS.map((c) => c.id),
+    visible: Object.fromEntries(VERTICALS_ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])),
+  };
+}
+
+function saveVerticalsColConfig(order, visible) {
+  localStorage.setItem(VERTICALS_STORAGE_KEY, JSON.stringify({ order, visible }));
+}
 
 const BUYER_COLORS = {
   TK: 'bg-blue-100 text-blue-700',
@@ -48,6 +83,15 @@ export default function VerticalsPage() {
   const [partnerFilter, setPartnerFilter] = useState('ALL');
   const [sorting, setSorting] = useState([{ id: 'clicks', desc: true }]);
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 50 });
+  const [showColPicker, setShowColPicker] = useState(false);
+  const initVerticalsCfg = useMemo(() => loadVerticalsColConfig(), []);
+  const [columnVisibility, setColumnVisibility] = useState(() => initVerticalsCfg.visible);
+  const [columnOrder,      setColumnOrder]      = useState(() => [...VERTICALS_FIXED_START, ...initVerticalsCfg.order]);
+
+  useEffect(() => {
+    const configOrder = columnOrder.filter((id) => VERTICALS_CONFIGURABLE_IDS.includes(id));
+    saveVerticalsColConfig(configOrder, columnVisibility);
+  }, [columnOrder, columnVisibility]);
 
   const { data: syncStatus } = useQuery({
     queryKey: ['reports', 'sync-status'],
@@ -194,12 +238,14 @@ export default function VerticalsPage() {
   const table = useReactTable({
     data: filtered,
     columns,
-    state: { sorting, pagination },
+    state: { sorting, pagination, columnVisibility, columnOrder },
     onSortingChange: (updater) => {
       setSorting(updater);
       setPagination((p) => ({ ...p, pageIndex: 0 }));
     },
     onPaginationChange: setPagination,
+    onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -308,7 +354,28 @@ export default function VerticalsPage() {
                 </button>
               );
             })}
-            <span className="ml-auto text-xs text-gray-400">{filtered.length} campaigns</span>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-gray-400">{filtered.length} campaigns</span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowColPicker((v) => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+                  </svg>
+                  Columns
+                </button>
+                {showColPicker && (
+                  <ColumnPicker
+                    allColumns={VERTICALS_ALL_COLUMNS}
+                    fixedStart={VERTICALS_FIXED_START}
+                    table={table}
+                    onClose={() => setShowColPicker(false)}
+                  />
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -365,14 +432,22 @@ export default function VerticalsPage() {
 
                 {/* Totals row */}
                 <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
-                  <td className="px-4 py-3" colSpan={3}><span className="text-sm text-gray-700">Total</span></td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.clicks)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmt(totals.conversions)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.cost)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-sm text-gray-900">{fmtMoney(totals.revenue)}</td>
-                  <td className={`px-4 py-3 text-right tabular-nums text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                    {fmtMoney(totals.profit)}
-                  </td>
+                  {table.getVisibleLeafColumns().map((col) => {
+                    const right = col.columnDef.meta?.right;
+                    let content = null;
+                    if      (col.id === 'vertical')     content = <span className="text-sm text-gray-700">Total</span>;
+                    else if (col.id === 'clicks')       content = <span className="text-sm text-gray-900">{fmt(totals.clicks)}</span>;
+                    else if (col.id === 'conversions')  content = <span className="text-sm text-gray-900">{fmt(totals.conversions)}</span>;
+                    else if (col.id === 'cost')         content = <span className="text-sm text-gray-900">{fmtMoney(totals.cost)}</span>;
+                    else if (col.id === 'revenue')      content = <span className="text-sm text-gray-900">{fmtMoney(totals.revenue)}</span>;
+                    else if (col.id === 'profit')       content = <span className={`text-sm font-bold ${totals.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmtMoney(totals.profit)}</span>;
+                    return (
+                      <td key={col.id} style={{ width: col.getSize() }}
+                        className={`px-4 py-3 tabular-nums ${right ? 'text-right' : ''}`}>
+                        {content}
+                      </td>
+                    );
+                  })}
                 </tr>
               </tbody>
             </table>

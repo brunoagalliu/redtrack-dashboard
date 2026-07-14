@@ -1,6 +1,7 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, useEffect, Fragment } from 'react';
 import RoiFilterPopover from '../components/RoiFilterPopover';
 import DateRangePicker from '../components/DateRangePicker';
+import ColumnPicker from '../components/ColumnPicker';
 import { useQuery } from '@tanstack/react-query';
 import {
   useReactTable,
@@ -30,6 +31,42 @@ function StatusBadge({ days }) {
 function SortIcon({ sorted }) {
   if (!sorted) return <span className="text-gray-300 ml-0.5 text-[10px]">↕</span>;
   return <span className="text-indigo-500 ml-0.5 text-[10px]">{sorted === 'asc' ? '▲' : '▼'}</span>;
+}
+
+const LISTS_ALL_COLUMNS = [
+  { id: 'campaign_count',     label: 'Camps',  defaultVisible: true },
+  { id: 'clicks',             label: 'Clicks', defaultVisible: true },
+  { id: 'conversions',        label: 'Conv',   defaultVisible: true },
+  { id: 'epc',                label: 'EPC',    defaultVisible: true },
+  { id: 'cost',               label: 'Cost',   defaultVisible: true },
+  { id: 'profit',             label: 'Profit', defaultVisible: true },
+  { id: 'roi',                label: 'ROI',    defaultVisible: true },
+  { id: 'days_since_last_use',label: 'Idle',   defaultVisible: true },
+  { id: 'status',             label: 'Status', defaultVisible: true },
+];
+const LISTS_CONFIGURABLE_IDS = LISTS_ALL_COLUMNS.map((c) => c.id);
+const LISTS_FIXED_START = ['expand', 'list_key'];
+const LISTS_STORAGE_KEY = 'rt_lists_col_config';
+
+function loadListsColConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LISTS_STORAGE_KEY));
+    if (saved?.order && saved?.visible) {
+      const newIds = LISTS_CONFIGURABLE_IDS.filter((id) => !saved.order.includes(id));
+      return {
+        order:   [...saved.order, ...newIds],
+        visible: { ...Object.fromEntries(LISTS_ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])), ...saved.visible },
+      };
+    }
+  } catch {}
+  return {
+    order:   LISTS_ALL_COLUMNS.map((c) => c.id),
+    visible: Object.fromEntries(LISTS_ALL_COLUMNS.map((c) => [c.id, c.defaultVisible])),
+  };
+}
+
+function saveListsColConfig(order, visible) {
+  localStorage.setItem(LISTS_STORAGE_KEY, JSON.stringify({ order, visible }));
 }
 
 function CampaignRows({ listKey, dateFrom, dateTo, colSpan }) {
@@ -84,8 +121,18 @@ export default function ListsPage() {
   const [search, setSearch] = useState('');
   const [roiMin, setRoiMin] = useState('');
   const [roiMax, setRoiMax] = useState('');
+  const [hideNegativeRoi, setHideNegativeRoi] = useState(false);
   const [sorting, setSorting] = useState([{ id: 'profit', desc: true }]);
   const [expanded, setExpanded] = useState({});
+  const [showColPicker, setShowColPicker] = useState(false);
+  const initListsCfg = useMemo(() => loadListsColConfig(), []);
+  const [columnVisibility, setColumnVisibility] = useState(() => initListsCfg.visible);
+  const [columnOrder,      setColumnOrder]      = useState(() => [...LISTS_FIXED_START, ...initListsCfg.order]);
+
+  useEffect(() => {
+    const configOrder = columnOrder.filter((id) => LISTS_CONFIGURABLE_IDS.includes(id));
+    saveListsColConfig(configOrder, columnVisibility);
+  }, [columnOrder, columnVisibility]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['reports', 'lists', dateFrom, dateTo],
@@ -107,8 +154,11 @@ export default function ListsPage() {
         return true;
       });
     }
+    if (hideNegativeRoi) {
+      result = result.filter((r) => Number(r.roi) >= 0);
+    }
     return result;
-  }, [rows, search, roiMin, roiMax]);
+  }, [rows, search, roiMin, roiMax, hideNegativeRoi]);
 
   const totals = useMemo(() => {
     if (!filtered.length) return null;
@@ -250,9 +300,11 @@ export default function ListsPage() {
   const table = useReactTable({
     data: filtered,
     columns,
-    state: { sorting, expanded },
+    state: { sorting, expanded, columnVisibility, columnOrder },
     onSortingChange: setSorting,
     onExpandedChange: setExpanded,
+    onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
@@ -283,7 +335,38 @@ export default function ListsPage() {
           <input type="text" placeholder="Search list…" value={search} onChange={e => setSearch(e.target.value)}
             className="border border-gray-200 rounded pl-8 pr-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
         </div>
-        <span className="text-xs text-gray-400 ml-auto">{table.getRowModel().rows.length} lists</span>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hideNegativeRoi}
+            onChange={(e) => setHideNegativeRoi(e.target.checked)}
+            className="rounded text-indigo-600 cursor-pointer"
+          />
+          <span className="text-sm text-gray-600">Positive ROI only</span>
+        </label>
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-gray-400">{table.getRowModel().rows.length} lists</span>
+          <div className="relative">
+            <button
+              onClick={() => setShowColPicker((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+              </svg>
+              Columns
+            </button>
+            {showColPicker && (
+              <ColumnPicker
+                allColumns={LISTS_ALL_COLUMNS}
+                fixedStart={LISTS_FIXED_START}
+                table={table}
+                onClose={() => setShowColPicker(false)}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       {isLoading && <div className="card p-10 text-center"><div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>}
