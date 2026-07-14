@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
@@ -36,13 +36,20 @@ export default function DateRangePicker({ from, to, onChange }) {
   const btnRef     = useRef(null);
   const popoverRef = useRef(null);
 
-  // Displayed range: in-progress selection takes priority, else committed props
-  const displayRange = selecting ?? { from: toDate(from), to: toDate(to) };
+  // Memoized so DayPicker receives a stable object reference unless from/to actually changes.
+  // Without this, every parent re-render creates new Date objects → DayPicker sees changed
+  // `selected` prop → re-renders all ~30 cells → can freeze on slower machines.
+  const committedRange = useMemo(
+    () => ({ from: toDate(from), to: toDate(to) }),
+    [from, to],
+  );
+
+  const displayRange = selecting ?? committedRange;
   const isActive     = !!from && !!to;
 
   function openPicker() {
     const rect = btnRef.current.getBoundingClientRect();
-    const pickerWidth = 580;
+    const pickerWidth = 310;
     const left = rect.left + pickerWidth > window.innerWidth
       ? window.innerWidth - pickerWidth - 8
       : rect.left;
@@ -65,7 +72,6 @@ export default function DateRangePicker({ from, to, onChange }) {
   function handleSelect(selected) {
     if (!selected) { setSelecting(null); return; }
     if (selected.from && !selected.to) {
-      // User clicked the start date — wait for end
       setSelecting({ from: selected.from, to: undefined });
       return;
     }
@@ -83,13 +89,15 @@ export default function DateRangePicker({ from, to, onChange }) {
     setOpen(false);
   }
 
-  const label = from && to ? `${fmt(from)} – ${fmt(to)}` : 'Select date range';
-
-  // Show two months ending at the selected end date (or current month if no selection)
-  const endDate = displayRange.to ?? TODAY;
-  const defaultMonth = new Date(endDate.getFullYear(), endDate.getMonth() - 1);
-
+  const label    = from && to ? `${fmt(from)} – ${fmt(to)}` : 'Select date range';
   const todayStr = TODAY.toISOString().slice(0, 10);
+
+  // Show the calendar at the month containing the end date (or current month)
+  const defaultMonth = useMemo(
+    () => (committedRange.to ?? TODAY),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [from, to],
+  );
 
   return (
     <>
@@ -122,17 +130,17 @@ export default function DateRangePicker({ from, to, onChange }) {
           {/* Presets */}
           <div className="flex items-center gap-1.5 px-4 py-3 border-b border-gray-100">
             <span className="text-xs text-gray-400 mr-1">Quick:</span>
-            {PRESETS.map(({ label, days }) => {
+            {PRESETS.map(({ label: pl, days }) => {
               const presetFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
               const active = from === presetFrom && to === todayStr;
               return (
-                <button key={label} type="button" onClick={() => applyPreset(days)}
+                <button key={pl} type="button" onClick={() => applyPreset(days)}
                   className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                     active
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                   }`}>
-                  {label}
+                  {pl}
                 </button>
               );
             })}
@@ -145,27 +153,27 @@ export default function DateRangePicker({ from, to, onChange }) {
             )}
           </div>
 
-          {/* Calendar — styled via CSS variables, no classNames conflicts */}
+          {/* Calendar — styled via CSS variables, no classNames conflicts with Tailwind */}
           <div style={{
             '--rdp-accent-color':            '#2563eb',
             '--rdp-accent-background-color': '#dbeafe',
-            '--rdp-day-height':              '36px',
-            '--rdp-day-width':               '36px',
-            '--rdp-day_button-height':       '34px',
-            '--rdp-day_button-width':        '34px',
-            '--rdp-nav_button-height':       '2rem',
-            '--rdp-nav_button-width':        '2rem',
-            '--rdp-months-gap':              '1.5rem',
+            '--rdp-day-height':              '32px',
+            '--rdp-day-width':               '32px',
+            '--rdp-day_button-height':       '30px',
+            '--rdp-day_button-width':        '30px',
+            '--rdp-nav_button-height':       '1.75rem',
+            '--rdp-nav_button-width':        '1.75rem',
             '--rdp-animation_duration':      '0s',
             padding: '12px',
           }}>
             <DayPicker
               mode="range"
-              numberOfMonths={2}
+              numberOfMonths={1}
               selected={displayRange}
               onSelect={handleSelect}
               disabled={DISABLED_AFTER_TODAY}
               defaultMonth={defaultMonth}
+              resetOnSelect
             />
           </div>
 
