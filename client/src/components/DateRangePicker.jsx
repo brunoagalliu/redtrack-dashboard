@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
+import './DateRangePicker.css';
 
 const TODAY = new Date();
 const DISABLED_AFTER_TODAY = { after: TODAY };
@@ -181,7 +182,7 @@ export default function DateRangePicker({ from, to, onChange }) {
 
           {/* Right: two-month calendar */}
           <div>
-            <div style={{
+            <div className="drp-wrap" style={{
               '--rdp-accent-color':            '#2563eb',
               '--rdp-accent-background-color': '#dbeafe',
               '--rdp-day-height':              '28px',
