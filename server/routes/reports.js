@@ -1982,3 +1982,7 @@ router.get('/offers', async (req, res) => {
 module.exports = router;
 module.exports.cleanupOldStats = cleanupOldStats;
 module.exports.runSync = runSync;
+module.exports.generateAIReport = generateAIReport;
+module.exports.generateListReport = generateListReport;
+module.exports.aiStatus = aiStatus;
+module.exports.ALL_PERIODS = ALL_PERIODS;

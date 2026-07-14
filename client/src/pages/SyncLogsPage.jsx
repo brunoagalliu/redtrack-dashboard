@@ -42,6 +42,8 @@ export default function SyncLogsPage() {
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState(null);
   const [triggerMsg, setTriggerMsg] = useState(null);
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [aiGenStartedAt, setAiGenStartedAt] = useState(null);
   const queryClient = useQueryClient();
 
   const { data: logs = [], isLoading: logsLoading, refetch: refetchLogs } = useQuery({
@@ -139,6 +141,32 @@ export default function SyncLogsPage() {
     return triggerWithDates(today, today, 'Sync');
   }
 
+  async function handleGenerateAI() {
+    setGeneratingAI(true);
+    setAiGenStartedAt(new Date());
+    setTriggerError(null);
+    try {
+      await Promise.all([api.generateAIReport(14), api.generateAIListReport()]);
+    } catch (err) {
+      setTriggerError(err.message || 'Failed to start AI generation.');
+      setGeneratingAI(false);
+      setAiGenStartedAt(null);
+    }
+  }
+
+  // Stop generatingAI spinner when both jobs finish
+  useEffect(() => {
+    if (!generatingAI || !aiGenStartedAt) return;
+    const campDone = aiCampStatus && !aiCampStatus.running && new Date(aiCampStatus.startedAt) >= aiGenStartedAt;
+    const listDone = aiListStatus && !aiListStatus.running && new Date(aiListStatus.startedAt) >= aiGenStartedAt;
+    if (campDone && listDone) {
+      setGeneratingAI(false);
+      setAiGenStartedAt(null);
+      queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
+      queryClient.invalidateQueries({ queryKey: ['reports', 'ai-list'] });
+    }
+  }, [aiCampStatus, aiListStatus, generatingAI, aiGenStartedAt, queryClient]);
+
   return (
     <div className="p-8 space-y-8">
 
@@ -162,14 +190,25 @@ export default function SyncLogsPage() {
           <button
             onClick={handleBackfill}
             disabled={triggering || isRunning}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60 transition-colors"
           >
             {triggering ? (
-              <><span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Starting…</>
+              <><span className="inline-block w-3.5 h-3.5 border-2 border-gray-400/30 border-t-gray-600 rounded-full animate-spin" />Starting…</>
             ) : (
               <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>Backfill 6 Months</>
+            )}
+          </button>
+          <button
+            onClick={handleGenerateAI}
+            disabled={generatingAI || aiCampRunning || aiListRunning || isRunning}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+          >
+            {(generatingAI || aiCampRunning || aiListRunning) ? (
+              <><span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</>
+            ) : (
+              <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Generate AI</>
             )}
           </button>
         </div>

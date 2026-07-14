@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
@@ -153,9 +153,7 @@ const DAY_OPTIONS = [7, 14, 30, 60, 90, 180];
 export default function AIDashboardPage() {
   const [buyer, setBuyer]               = useState('Overview');
   const [days, setDays]                 = useState(14);  // view-only selector
-  const [generating, setGenerating]     = useState(false);
   const [error, setError]               = useState(null);
-  const [genStartedAt, setGenStartedAt] = useState(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState(null); // null = freshest for period
   const [selectedListId, setSelectedListId]         = useState(null); // null = latest
   const queryClient = useQueryClient();
@@ -211,58 +209,36 @@ export default function AIDashboardPage() {
   const dataIsNewer  = Boolean(lastSyncAt && oldestAt && lastSyncAt > oldestAt);
   const freshness    = syncRunning ? 'syncing' : !oldestAt ? 'none' : dataIsNewer ? 'stale' : 'fresh';
 
-  // Poll status while generating — stop when both are done
+  // Always poll AI status so the progress card reflects generation triggered from Import Logs
   const { data: campaignStatus } = useQuery({
     queryKey: ['ai-status', 'campaign'],
     queryFn: () => api.getAICampaignStatus(),
-    enabled: generating,
-    refetchInterval: generating ? 4000 : false,
+    refetchInterval: 5000,
     retry: false,
   });
   const { data: listStatus } = useQuery({
     queryKey: ['ai-status', 'list'],
     queryFn: () => api.getAIListStatus(),
-    enabled: generating,
-    refetchInterval: generating ? 4000 : false,
+    refetchInterval: 5000,
     retry: false,
   });
 
-  const campaignDone = generating && campaignStatus && !campaignStatus.running && genStartedAt &&
-    new Date(campaignStatus.startedAt) >= genStartedAt;
-  const listDone = generating && listStatus && !listStatus.running && genStartedAt &&
-    new Date(listStatus.startedAt) >= genStartedAt;
+  const generating = Boolean(campaignStatus?.running || listStatus?.running);
+
+  // Refresh report history when generation finishes (triggered from anywhere — Import Logs, cron, etc.)
+  const prevGeneratingRef = useRef(false);
+  useEffect(() => {
+    if (prevGeneratingRef.current && !generating) {
+      setSelectedCampaignId(null);
+      setSelectedListId(null);
+      queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
+      queryClient.invalidateQueries({ queryKey: ['reports', 'ai-list'] });
+    }
+    prevGeneratingRef.current = generating;
+  }, [generating, queryClient]);
 
   const completedPeriods = campaignStatus?.completedPeriods || [];
   const currentPeriod    = campaignStatus?.currentPeriod || null;
-
-  if (campaignDone && listDone) {
-    setGenerating(false);
-    setGenStartedAt(null);
-    setSelectedCampaignId(null);
-    setSelectedListId(null);
-    const err = campaignStatus.error || listStatus.error;
-    if (err) setError(err);
-    queryClient.invalidateQueries({ queryKey: ['reports', 'ai-recommendations'] });
-    queryClient.invalidateQueries({ queryKey: ['reports', 'ai-list'] });
-  }
-
-  // ── Generate both at once ────────────────────────────────────────────────
-  async function handleGenerate() {
-    setError(null);
-    setGenerating(true);
-    setGenStartedAt(new Date());
-    try {
-      // Both respond 202 immediately — actual work runs server-side in background
-      await Promise.all([
-        api.generateAIReport(days),
-        api.generateAIListReport(),
-      ]);
-    } catch (e) {
-      setError(e.message || 'Failed to start generation.');
-      setGenerating(false);
-      setGenStartedAt(null);
-    }
-  }
 
   function handleDaysChange(d) {
     setDays(d);
@@ -293,16 +269,6 @@ export default function AIDashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AI Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">Campaign recommendations + list intelligence in one view</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button onClick={handleGenerate} disabled={generating || syncRunning}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-            {generating ? (
-              <><span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</>
-            ) : (
-              <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Generate All</>
-            )}
-          </button>
         </div>
       </div>
 
@@ -390,7 +356,7 @@ export default function AIDashboardPage() {
       {noPeriodReport && !generating && (
         <div className="card p-8 text-center space-y-2">
           <p className="text-sm font-medium text-gray-700">No {days}-day report generated yet</p>
-          <p className="text-xs text-gray-400">Click Generate Analysis to create one for this window.</p>
+          <p className="text-xs text-gray-400">Go to Import Logs and click Generate AI to create one for this window.</p>
         </div>
       )}
 
@@ -413,8 +379,8 @@ export default function AIDashboardPage() {
                 </span>
               );
             })}
-            <span className={`px-2 py-1 rounded-full font-medium ${listDone ? 'bg-green-100 text-green-700' : listStatus?.running ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-400'}`}>
-              {listDone ? '✓ ' : listStatus?.running ? '⏳ ' : ''}Lists
+            <span className={`px-2 py-1 rounded-full font-medium ${!listStatus?.running && listStatus?.startedAt ? 'bg-green-100 text-green-700' : listStatus?.running ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-400'}`}>
+              {!listStatus?.running && listStatus?.startedAt ? '✓ ' : listStatus?.running ? '⏳ ' : ''}Lists
             </span>
           </div>
           <p className="text-xs text-gray-400">{completedPeriods.length}/{DAY_OPTIONS.length} periods done · ~2 min total</p>

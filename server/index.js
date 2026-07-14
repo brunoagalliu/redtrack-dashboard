@@ -15,7 +15,7 @@ const sourcesRouter = require('./routes/sources');
 const networksRouter = require('./routes/networks');
 const filterOptionsRouter = require('./routes/filter-options');
 const reportsRouter = require('./routes/reports');
-const { cleanupOldStats, runSync } = require('./routes/reports');
+const { cleanupOldStats, runSync, generateAIReport, generateListReport, aiStatus, ALL_PERIODS } = require('./routes/reports');
 const costUpdaterRouter = require('./routes/cost-updater');
 
 const app = express();
@@ -75,11 +75,55 @@ function scheduleDailyCleanup() {
   }, 24 * 60 * 60 * 1000);
 }
 
+async function runAutoAIGeneration() {
+  if (aiStatus.campaign.running || aiStatus.list.running) {
+    console.log('[auto-ai] Already running — skipping Monday generation.');
+    return;
+  }
+  console.log('[auto-ai] Monday — generating all campaign AI reports…');
+  aiStatus.campaign.running          = true;
+  aiStatus.campaign.error            = null;
+  aiStatus.campaign.startedAt        = new Date();
+  aiStatus.campaign.currentPeriod    = null;
+  aiStatus.campaign.completedPeriods = [];
+  try {
+    for (const days of ALL_PERIODS) {
+      aiStatus.campaign.currentPeriod = days;
+      await generateAIReport(days);
+      aiStatus.campaign.completedPeriods.push(days);
+      console.log(`[auto-ai] ${days}d done (${aiStatus.campaign.completedPeriods.length}/${ALL_PERIODS.length})`);
+    }
+  } catch (err) {
+    aiStatus.campaign.error = err.message;
+    console.error('[auto-ai] Campaign error:', err.message);
+  } finally {
+    aiStatus.campaign.running       = false;
+    aiStatus.campaign.currentPeriod = null;
+  }
+
+  console.log('[auto-ai] Generating list report…');
+  aiStatus.list.running   = true;
+  aiStatus.list.error     = null;
+  aiStatus.list.startedAt = new Date();
+  try {
+    await generateListReport();
+    console.log('[auto-ai] List report done.');
+  } catch (err) {
+    aiStatus.list.error = err.message;
+    console.error('[auto-ai] List error:', err.message);
+  } finally {
+    aiStatus.list.running = false;
+  }
+}
+
 function scheduleAutoSync() {
   function triggerSync() {
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const isMonday  = new Date().getDay() === 1;
     console.log('[auto-sync] Starting scheduled sync…');
-    runSync(yesterday, yesterday).catch((err) => console.error('[auto-sync] Failed:', err.message));
+    runSync(yesterday, yesterday)
+      .then(() => { if (isMonday) runAutoAIGeneration().catch((e) => console.error('[auto-ai] Error:', e.message)); })
+      .catch((err) => console.error('[auto-sync] Failed:', err.message));
   }
 
   function msUntilNext8am() {
