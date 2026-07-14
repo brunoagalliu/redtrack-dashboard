@@ -67,9 +67,9 @@ export default function DateRangePicker({ from, to, onChange }) {
 
   function openPicker() {
     const rect = btnRef.current.getBoundingClientRect();
-    const popupW = 700;
+    const popupW = 520;
     const left = Math.min(rect.left, window.innerWidth - popupW - 8);
-    setPos({ top: rect.bottom + 6, left: Math.max(8, left) });
+    setPos({ top: rect.bottom + 4, left: Math.max(8, left) });
     setOpen(true);
   }
 
@@ -144,10 +144,10 @@ export default function DateRangePicker({ from, to, onChange }) {
         <div
           ref={popoverRef}
           style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
-          className="flex bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
+          className="flex bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
         >
           {/* Left: preset shortcuts */}
-          <div className="flex flex-col py-3 border-r border-gray-100 min-w-[144px]">
+          <div className="flex flex-col py-1.5 border-r border-gray-100 min-w-[116px]">
             {PRESETS.map((p) => {
               const active = from === p.from && to === p.to;
               return (
@@ -155,7 +155,7 @@ export default function DateRangePicker({ from, to, onChange }) {
                   key={p.label}
                   type="button"
                   onClick={() => applyPreset(p)}
-                  className={`text-left px-5 py-1.5 text-sm transition-colors ${
+                  className={`text-left px-3 py-1 text-xs transition-colors ${
                     active
                       ? 'text-blue-600 font-medium bg-blue-50'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -167,11 +167,11 @@ export default function DateRangePicker({ from, to, onChange }) {
             })}
             {isActive && (
               <>
-                <div className="mx-4 my-2 border-t border-gray-100" />
+                <div className="mx-3 my-1.5 border-t border-gray-100" />
                 <button
                   type="button"
                   onClick={() => { setOpen(false); startTransition(() => onChange({ from: '', to: '' })); }}
-                  className="text-left px-5 py-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors"
+                  className="text-left px-3 py-1 text-xs text-gray-400 hover:text-red-500 transition-colors"
                 >
                   Clear
                 </button>
@@ -184,13 +184,15 @@ export default function DateRangePicker({ from, to, onChange }) {
             <div style={{
               '--rdp-accent-color':            '#2563eb',
               '--rdp-accent-background-color': '#dbeafe',
-              '--rdp-day-height':              '36px',
-              '--rdp-day-width':               '36px',
-              '--rdp-day_button-height':       '34px',
-              '--rdp-day_button-width':        '34px',
-              '--rdp-months-gap':              '1.5rem',
+              '--rdp-day-height':              '28px',
+              '--rdp-day-width':               '28px',
+              '--rdp-day_button-height':       '26px',
+              '--rdp-day_button-width':        '26px',
+              '--rdp-months-gap':              '0.75rem',
               '--rdp-animation_duration':      '0s',
-              padding: '12px 16px',
+              '--rdp-font-size':               '12px',
+              fontSize: '12px',
+              padding: '8px 10px',
             }}>
               <DayPicker
                 mode="range"
@@ -203,8 +205,8 @@ export default function DateRangePicker({ from, to, onChange }) {
               />
             </div>
             {selecting?.from && !selecting?.to && (
-              <p className="px-4 pb-3 text-xs text-center text-gray-400">
-                Now click an end date
+              <p className="px-3 pb-2 text-xs text-center text-gray-400">
+                Click an end date
               </p>
             )}
           </div>
