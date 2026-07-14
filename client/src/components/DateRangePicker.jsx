@@ -3,16 +3,8 @@ import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/style.css';
 
-// Stable constants — not recreated on every render
 const TODAY = new Date();
 const DISABLED_AFTER_TODAY = { after: TODAY };
-
-const PRESETS = [
-  { label: '7d',   days: 7   },
-  { label: '30d',  days: 30  },
-  { label: '90d',  days: 90  },
-  { label: '180d', days: 180 },
-];
 
 function toDate(str) {
   return str ? new Date(str + 'T12:00:00') : undefined;
@@ -27,21 +19,44 @@ function fmt(str) {
   });
 }
 
+// Build presets once at module load (relative to TODAY constant)
+const T = TODAY;
+const PRESETS = [
+  { label: 'Today',
+    from: toStr(T),
+    to:   toStr(T) },
+  { label: 'Yesterday',
+    from: toStr(new Date(T.getTime() - 86400000)),
+    to:   toStr(new Date(T.getTime() - 86400000)) },
+  { label: 'Last 7 days',
+    from: toStr(new Date(T.getTime() - 6 * 86400000)),
+    to:   toStr(T) },
+  { label: 'Last 30 days',
+    from: toStr(new Date(T.getTime() - 29 * 86400000)),
+    to:   toStr(T) },
+  { label: 'This month',
+    from: toStr(new Date(T.getFullYear(), T.getMonth(), 1)),
+    to:   toStr(T) },
+  { label: 'Last month',
+    from: toStr(new Date(T.getFullYear(), T.getMonth() - 1, 1)),
+    to:   toStr(new Date(T.getFullYear(), T.getMonth(), 0)) },
+  { label: 'Last 90 days',
+    from: toStr(new Date(T.getTime() - 89 * 86400000)),
+    to:   toStr(T) },
+  { label: 'Last 180 days',
+    from: toStr(new Date(T.getTime() - 179 * 86400000)),
+    to:   toStr(T) },
+];
+
 export default function DateRangePicker({ from, to, onChange }) {
   const [open,      setOpen]      = useState(false);
   const [pos,       setPos]       = useState({ top: 0, left: 0 });
-  // Local state only for the in-progress half-selection (start picked, end not yet)
   const [selecting, setSelecting] = useState(null);
-  // Mark the parent date-change as a low-priority transition so the popover
-  // closes and repaints before React processes the expensive table re-render.
   const [, startTransition] = useTransition();
 
   const btnRef     = useRef(null);
   const popoverRef = useRef(null);
 
-  // Memoized so DayPicker receives a stable object reference unless from/to actually changes.
-  // Without this, every parent re-render creates new Date objects → DayPicker sees changed
-  // `selected` prop → re-renders all ~30 cells → can freeze on slower machines.
   const committedRange = useMemo(
     () => ({ from: toDate(from), to: toDate(to) }),
     [from, to],
@@ -52,10 +67,8 @@ export default function DateRangePicker({ from, to, onChange }) {
 
   function openPicker() {
     const rect = btnRef.current.getBoundingClientRect();
-    const pickerWidth = 310;
-    const left = rect.left + pickerWidth > window.innerWidth
-      ? window.innerWidth - pickerWidth - 8
-      : rect.left;
+    const popupW = 700;
+    const left = Math.min(rect.left, window.innerWidth - popupW - 8);
     setPos({ top: rect.bottom + 6, left: Math.max(8, left) });
     setOpen(true);
   }
@@ -87,21 +100,20 @@ export default function DateRangePicker({ from, to, onChange }) {
     }
   }
 
-  function applyPreset(days) {
-    const f = new Date(Date.now() - days * 86400000);
-    const newFrom = toStr(f);
-    const newTo   = toStr(TODAY);
+  function applyPreset(preset) {
     setSelecting(null);
     setOpen(false);
-    startTransition(() => onChange({ from: newFrom, to: newTo }));
+    startTransition(() => onChange({ from: preset.from, to: preset.to }));
   }
 
-  const label    = from && to ? `${fmt(from)} – ${fmt(to)}` : 'Select date range';
-  const todayStr = TODAY.toISOString().slice(0, 10);
+  const label = from && to ? `${fmt(from)} – ${fmt(to)}` : 'Select date range';
 
-  // Show the calendar at the month containing the end date (or current month)
+  // Open showing the two months that contain the end of the committed range
   const defaultMonth = useMemo(
-    () => (committedRange.to ?? TODAY),
+    () => new Date(
+      (committedRange.to ?? TODAY).getFullYear(),
+      (committedRange.to ?? TODAY).getMonth() - 1,
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [from, to],
   );
@@ -132,64 +144,70 @@ export default function DateRangePicker({ from, to, onChange }) {
         <div
           ref={popoverRef}
           style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
+          className="flex bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
         >
-          {/* Presets */}
-          <div className="flex items-center gap-1.5 px-4 py-3 border-b border-gray-100">
-            <span className="text-xs text-gray-400 mr-1">Quick:</span>
-            {PRESETS.map(({ label: pl, days }) => {
-              const presetFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-              const active = from === presetFrom && to === todayStr;
+          {/* Left: preset shortcuts */}
+          <div className="flex flex-col py-3 border-r border-gray-100 min-w-[144px]">
+            {PRESETS.map((p) => {
+              const active = from === p.from && to === p.to;
               return (
-                <button key={pl} type="button" onClick={() => applyPreset(days)}
-                  className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className={`text-left px-5 py-1.5 text-sm transition-colors ${
                     active
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                  }`}>
-                  {pl}
+                      ? 'text-blue-600 font-medium bg-blue-50'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  {p.label}
                 </button>
               );
             })}
             {isActive && (
-              <button type="button"
-                onClick={() => { setOpen(false); startTransition(() => onChange({ from: '', to: '' })); }}
-                className="ml-auto text-xs text-gray-400 hover:text-red-500 transition-colors">
-                Clear
-              </button>
+              <>
+                <div className="mx-4 my-2 border-t border-gray-100" />
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); startTransition(() => onChange({ from: '', to: '' })); }}
+                  className="text-left px-5 py-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  Clear
+                </button>
+              </>
             )}
           </div>
 
-          {/* Calendar — styled via CSS variables, no classNames conflicts with Tailwind */}
-          <div style={{
-            '--rdp-accent-color':            '#2563eb',
-            '--rdp-accent-background-color': '#dbeafe',
-            '--rdp-day-height':              '32px',
-            '--rdp-day-width':               '32px',
-            '--rdp-day_button-height':       '30px',
-            '--rdp-day_button-width':        '30px',
-            '--rdp-nav_button-height':       '1.75rem',
-            '--rdp-nav_button-width':        '1.75rem',
-            '--rdp-animation_duration':      '0s',
-            padding: '12px',
-          }}>
-            <DayPicker
-              mode="range"
-              numberOfMonths={1}
-              selected={displayRange}
-              onSelect={handleSelect}
-              disabled={DISABLED_AFTER_TODAY}
-              defaultMonth={defaultMonth}
-              resetOnSelect
-            />
-          </div>
-
-          {/* Hint when start is picked */}
-          {selecting?.from && !selecting?.to && (
-            <div className="px-4 pb-3 text-xs text-center text-gray-400">
-              Now click an end date
+          {/* Right: two-month calendar */}
+          <div>
+            <div style={{
+              '--rdp-accent-color':            '#2563eb',
+              '--rdp-accent-background-color': '#dbeafe',
+              '--rdp-day-height':              '36px',
+              '--rdp-day-width':               '36px',
+              '--rdp-day_button-height':       '34px',
+              '--rdp-day_button-width':        '34px',
+              '--rdp-months-gap':              '1.5rem',
+              '--rdp-animation_duration':      '0s',
+              padding: '12px 16px',
+            }}>
+              <DayPicker
+                mode="range"
+                numberOfMonths={2}
+                selected={displayRange}
+                onSelect={handleSelect}
+                disabled={DISABLED_AFTER_TODAY}
+                defaultMonth={defaultMonth}
+                resetOnSelect
+              />
             </div>
-          )}
+            {selecting?.from && !selecting?.to && (
+              <p className="px-4 pb-3 text-xs text-center text-gray-400">
+                Now click an end date
+              </p>
+            )}
+          </div>
         </div>,
         document.body
       )}
