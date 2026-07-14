@@ -126,6 +126,21 @@ export default function OffersPage() {
     return all;
   }, [data, search, roiMin, roiMax]);
 
+  const offersTotals = useMemo(() => {
+    if (!rows.length) return null;
+    const clicks      = rows.reduce((s, r) => s + Number(r.clicks      || 0), 0);
+    const conversions = rows.reduce((s, r) => s + Number(r.conversions || 0), 0);
+    const cost        = rows.reduce((s, r) => s + Number(r.cost        || 0), 0);
+    const revenue     = rows.reduce((s, r) => s + Number(r.revenue     || 0), 0);
+    const profit      = rows.reduce((s, r) => s + Number(r.profit      || 0), 0);
+    const campaigns   = rows.reduce((s, r) => s + Number(r.campaigns   || 0), 0);
+    const cvr  = clicks > 0 ? (conversions / clicks) * 100 : 0;
+    const roi  = cost   > 0 ? (profit / cost) * 100 : 0;
+    const epc  = clicks > 0 ? revenue / clicks : 0;
+    const cpc  = clicks > 0 ? cost    / clicks : 0;
+    return { clicks, conversions, cost, revenue, profit, campaigns, cvr, roi, epc, cpc };
+  }, [rows]);
+
   const columns = useMemo(() => [
     {
       id: 'offer_name',
@@ -502,10 +517,9 @@ export default function OffersPage() {
             )}
           </div>
 
-          <div className="card overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="card overflow-auto max-h-[calc(100vh-300px)]">
               <table className="w-full text-sm" style={{ tableLayout: 'fixed', width: '100%' }}>
-                <thead>
+                <thead className="sticky top-0 z-10">
                   {table.getHeaderGroups().map((hg) => (
                     <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
                       {hg.headers.map((header) => {
@@ -551,8 +565,34 @@ export default function OffersPage() {
                     </tr>
                   ))}
                 </tbody>
+                {offersTotals && (
+                  <tfoot className="sticky bottom-0 z-10">
+                    <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+                      {table.getVisibleLeafColumns().map((col) => {
+                        const right = col.columnDef.meta?.right;
+                        let content = null;
+                        if      (col.id === 'offer_name')   content = <span className="text-gray-500 font-normal text-[11px]">{rows.length} offers</span>;
+                        else if (col.id === 'campaigns')    content = fmt(offersTotals.campaigns);
+                        else if (col.id === 'clicks')       content = fmt(offersTotals.clicks);
+                        else if (col.id === 'conversions')  content = fmt(offersTotals.conversions);
+                        else if (col.id === 'cvr')          content = fmtPct(offersTotals.cvr);
+                        else if (col.id === 'cost')         content = fmtMoney(offersTotals.cost);
+                        else if (col.id === 'revenue')      content = fmtMoney(offersTotals.revenue);
+                        else if (col.id === 'profit')       content = <span className={offersTotals.profit >= 0 ? 'text-green-700' : 'text-red-600'}>{fmtMoney(offersTotals.profit)}</span>;
+                        else if (col.id === 'roi')          content = <span className={offersTotals.roi >= 0 ? 'text-green-600' : 'text-red-500'}>{offersTotals.roi.toFixed(2)}%</span>;
+                        else if (col.id === 'cpc')          content = fmtRate(offersTotals.cpc);
+                        else if (col.id === 'epc')          content = fmtRate(offersTotals.epc);
+                        return (
+                          <td key={col.id} style={{ width: col.getSize() }}
+                            className={`px-3 py-2.5 text-xs tabular-nums ${right ? 'text-right' : 'text-left'}`}>
+                            {content}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tfoot>
+                )}
               </table>
-            </div>
           </div>
 
           {table.getPageCount() > 1 && (

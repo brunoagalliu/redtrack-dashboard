@@ -378,9 +378,9 @@ export default function VerticalsPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[calc(100vh-360px)]">
             <table className="w-full" style={{ tableLayout: 'fixed', width: '100%' }}>
-              <thead>
+              <thead className="sticky top-0 z-10">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id} className="border-b border-gray-200 bg-gray-50">
                     {hg.headers.map((header) => {
@@ -429,8 +429,8 @@ export default function VerticalsPage() {
                     })}
                   </tr>
                 ))}
-
-                {/* Totals row */}
+              </tbody>
+              <tfoot className="sticky bottom-0 z-10">
                 <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
                   {table.getVisibleLeafColumns().map((col) => {
                     const right = col.columnDef.meta?.right;
@@ -449,7 +449,7 @@ export default function VerticalsPage() {
                     );
                   })}
                 </tr>
-              </tbody>
+              </tfoot>
             </table>
           </div>
 

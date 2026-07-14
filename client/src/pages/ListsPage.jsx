@@ -460,7 +460,7 @@ export default function ListsPage() {
               ))}
             </tbody>
             {totals && (
-              <tfoot>
+              <tfoot className="sticky bottom-0 z-10">
                 <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
                   {table.getVisibleLeafColumns().map((col) => {
                     const right = col.columnDef.meta?.right;
