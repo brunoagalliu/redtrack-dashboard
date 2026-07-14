@@ -364,112 +364,92 @@ export default function OffersPage() {
         )}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-        </svg>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-          placeholder="Search offers…"
-          className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex items-end gap-1">
-          {[7, 30, 90, 180].map((d) => {
-            const from = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
-            const active = dateFrom === from && dateTo === today;
-            return (
-              <button key={d} type="button"
-                onClick={() => { setDateFrom(from); setDateTo(today); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-                className={`px-2.5 py-1.5 text-xs font-medium rounded border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                {d}d
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">From</label>
-          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">To</label>
-          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Buyer</label>
-          <select value={buyer} onChange={e => { setBuyer(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[80px]">
-            <option value="">All</option>
-            {BUYERS.map(b => <option key={b} value={b}>{b}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Vertical</label>
-          <select value={vertical} onChange={e => { setVertical(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
-            <option value="">All</option>
-            {(data?.verticals || []).map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Route</label>
-          <select value={route} onChange={e => { setRoute(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
-            <option value="">All</option>
-            {(data?.routes || []).map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Carrier</label>
-          <select value={carrier} onChange={e => { setCarrier(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
-            <option value="">All</option>
-            {(data?.carriers || []).map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Data Partner</label>
-          <select value={dataPartner} onChange={e => { setDataPartner(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
-            <option value="">All</option>
-            {(data?.dataPartners || []).map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
-          className="border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 bg-white">
-          {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
-        <div className="relative">
-          <button
-            onClick={() => setShowColPicker((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+      {/* Filters card */}
+      <div className="card p-4 space-y-3">
+        {/* Row 1: Search + date range */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="relative flex-1 min-w-[180px] max-w-xs">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
             </svg>
-            Columns
-          </button>
-          {showColPicker && (
-            <ColumnPicker
-              allColumns={OFFERS_ALL_COLUMNS}
-              fixedStart={OFFERS_FIXED_START}
-              table={table}
-              onClose={() => setShowColPicker(false)}
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Search offers…"
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-          )}
+          </div>
+          <div className="flex items-center gap-1">
+            {[7, 30, 90, 180].map((d) => {
+              const from = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+              const active = dateFrom === from && dateTo === today;
+              return (
+                <button key={d} type="button"
+                  onClick={() => { setDateFrom(from); setDateTo(today); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+                  className={`px-2.5 py-1.5 text-xs font-medium rounded border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  {d}d
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">From</label>
+            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">To</label>
+            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
+          </div>
         </div>
-      </div>
+
+        <div className="border-t border-gray-100" />
+
+        {/* Row 2: Dimension filters */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Buyer</label>
+            <select value={buyer} onChange={e => { setBuyer(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[80px]">
+              <option value="">All</option>
+              {BUYERS.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Vertical</label>
+            <select value={vertical} onChange={e => { setVertical(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
+              <option value="">All</option>
+              {(data?.verticals || []).map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Route</label>
+            <select value={route} onChange={e => { setRoute(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
+              <option value="">All</option>
+              {(data?.routes || []).map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Carrier</label>
+            <select value={carrier} onChange={e => { setCarrier(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
+              <option value="">All</option>
+              {(data?.carriers || []).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Data Partner</label>
+            <select value={dataPartner} onChange={e => { setDataPartner(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white min-w-[100px]">
+              <option value="">All</option>
+              {(data?.dataPartners || []).map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Empty state */}
@@ -503,17 +483,42 @@ export default function OffersPage() {
       {/* Table */}
       {!isLoading && rows.length > 0 && (
         <>
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center gap-3 text-xs text-gray-500">
             <span>{rows.length} {search.trim() ? 'matches' : 'combinations'}</span>
-            {table.getPageCount() > 1 && (
-              <div className="flex items-center gap-1">
-                <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
-                  className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">‹</button>
-                <span className="px-2">Page {pageIndex + 1} / {table.getPageCount()}</span>
-                <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
-                  className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">›</button>
+            <div className="ml-auto flex items-center gap-2">
+              <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
+                className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 bg-white">
+                {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <div className="relative">
+                <button
+                  onClick={() => setShowColPicker((v) => !v)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+                  </svg>
+                  Columns
+                </button>
+                {showColPicker && (
+                  <ColumnPicker
+                    allColumns={OFFERS_ALL_COLUMNS}
+                    fixedStart={OFFERS_FIXED_START}
+                    table={table}
+                    onClose={() => setShowColPicker(false)}
+                  />
+                )}
               </div>
-            )}
+              {table.getPageCount() > 1 && (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
+                    className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">‹</button>
+                  <span className="px-1">Page {pageIndex + 1} / {table.getPageCount()}</span>
+                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
+                    className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">›</button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="card overflow-auto max-h-[calc(100vh-300px)]">
@@ -594,15 +599,6 @@ export default function OffersPage() {
               </table>
           </div>
 
-          {table.getPageCount() > 1 && (
-            <div className="flex items-center justify-end gap-1 text-xs text-gray-500">
-              <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
-                className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">‹ Prev</button>
-              <span className="px-2">Page {pageIndex + 1} / {table.getPageCount()}</span>
-              <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
-                className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50">Next ›</button>
-            </div>
-          )}
         </>
       )}
     </div>

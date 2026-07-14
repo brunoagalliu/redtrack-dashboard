@@ -701,13 +701,30 @@ export default function ReportsPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-        <p className="text-sm text-gray-500 mt-1">Media buyer performance</p>
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
+          <p className="text-sm text-gray-500 mt-1">Media buyer performance</p>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {syncStatus?.status === 'complete' && (
+            <span className="text-xs text-gray-400">
+              Last sync: {new Date(syncStatus.completed_at).toLocaleString()}
+            </span>
+          )}
+          {syncStatus?.status === 'running' && (
+            <span className="text-xs text-blue-500 font-medium">
+              {syncStatus.phase === 'offers'
+                ? `Syncing offers ${syncStatus.offer_sync?.processed ?? 0} / ${syncStatus.offer_sync?.total ?? '?'}…`
+                : `Syncing campaigns ${syncStatus.processed} / ${syncStatus.total}…`}
+            </span>
+          )}
+          <SyncButton dateFrom={applied.date_from} dateTo={applied.date_to} onSynced={onSynced} />
+        </div>
       </div>
 
       {/* Controls */}
-      <div className="card p-4 mb-4 flex flex-col gap-3">
+      <div className="card p-4 mb-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex items-center gap-1">
             {[7, 30, 90, 180].map((d) => {
@@ -759,21 +776,6 @@ export default function ReportsPage() {
           <button type="button" onClick={applyRange} disabled={isFetching} className="btn-primary">
             {isFetching ? 'Loading…' : 'Apply'}
           </button>
-        </div>
-        <div className="flex items-center justify-end gap-3">
-          {syncStatus?.status === 'complete' && (
-            <span className="text-xs text-gray-400">
-              Last sync: {new Date(syncStatus.completed_at).toLocaleString()}
-            </span>
-          )}
-          {syncStatus?.status === 'running' && (
-            <span className="text-xs text-blue-500 font-medium">
-              {syncStatus.phase === 'offers'
-                ? `Syncing offers ${syncStatus.offer_sync?.processed ?? 0} / ${syncStatus.offer_sync?.total ?? '?'}…`
-                : `Syncing campaigns ${syncStatus.processed} / ${syncStatus.total}…`}
-            </span>
-          )}
-          <SyncButton dateFrom={applied.date_from} dateTo={applied.date_to} onSynced={onSynced} />
         </div>
       </div>
 
