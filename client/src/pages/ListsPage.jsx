@@ -32,10 +32,10 @@ function SortIcon({ sorted }) {
   return <span className="text-indigo-500 ml-0.5 text-[10px]">{sorted === 'asc' ? '▲' : '▼'}</span>;
 }
 
-function CampaignRows({ listKey, days, colSpan }) {
+function CampaignRows({ listKey, dateFrom, dateTo, colSpan }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['reports', 'lists', 'campaigns', listKey, days],
-    queryFn: () => api.getListCampaigns(listKey, days),
+    queryKey: ['reports', 'lists', 'campaigns', listKey, dateFrom, dateTo],
+    queryFn: () => api.getListCampaigns(listKey, dateFrom, dateTo),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
@@ -75,7 +75,6 @@ function CampaignRows({ listKey, days, colSpan }) {
 }
 
 export default function ListsPage() {
-  const campaignDays = 180;
   const today = new Date().toISOString().slice(0, 10);
   const sixMonthsAgo = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
 
@@ -336,15 +335,15 @@ export default function ListsPage() {
                               <th className="px-3 py-2 text-left font-medium text-indigo-600 uppercase tracking-wide" colSpan={2}>Campaign title</th>
                               <th className="px-3 py-2 text-center font-medium text-indigo-600 uppercase tracking-wide">Buyer</th>
                               <th className="px-3 py-2 text-left font-medium text-indigo-600 uppercase tracking-wide">Route · Carrier</th>
-                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Clicks {campaignDays}d</th>
-                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Conv {campaignDays}d</th>
-                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">EPC {campaignDays}d</th>
-                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Profit {campaignDays}d</th>
+                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Clicks</th>
+                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Conv</th>
+                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">EPC</th>
+                              <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Profit</th>
                               <th className="px-3 py-2 text-right font-medium text-indigo-600 uppercase tracking-wide">Created</th>
                             </tr>
                           </thead>
                           <tbody>
-                            <CampaignRows listKey={row.id} days={campaignDays} colSpan={visibleLeafCount} />
+                            <CampaignRows listKey={row.id} dateFrom={dateFrom} dateTo={dateTo} colSpan={visibleLeafCount} />
                           </tbody>
                         </table>
                       </td>

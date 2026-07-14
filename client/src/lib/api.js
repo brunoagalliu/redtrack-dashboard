@@ -105,7 +105,7 @@ export const api = {
   },
   getInsights: (days = 30) => request(`/reports/insights?days=${days}`),
   getListDailyStats: (listKey) => request(`/reports/lists/daily?list_key=${encodeURIComponent(listKey)}`),
-  getListCampaigns: (listKey, days = 30) => request(`/reports/lists/campaigns?list_key=${encodeURIComponent(listKey)}&days=${days}`),
+  getListCampaigns: (listKey, dateFrom, dateTo) => request(`/reports/lists/campaigns?list_key=${encodeURIComponent(listKey)}&date_from=${dateFrom}&date_to=${dateTo}`),
   getListsReport: (params = {}) => {
     const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
     return request(`/reports/lists${qs ? `?${qs}` : ''}`);

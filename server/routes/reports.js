@@ -1694,13 +1694,15 @@ router.post('/lists/backfill', async (req, res) => {
   }
 });
 
-// GET /reports/lists/campaigns?list_key=... — all campaigns for a list, last 30d stats, oldest first
+// GET /reports/lists/campaigns?list_key=...&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
 router.get('/lists/campaigns', async (req, res) => {
   try {
     const listKey = req.query.list_key;
     if (!listKey) return res.status(400).json({ error: 'list_key required' });
 
-    const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), MAX_HISTORY_DAYS);
+    const today = new Date().toISOString().slice(0, 10);
+    const dateFrom = req.query.date_from || new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+    const dateTo   = req.query.date_to   || today;
 
     const { rows } = await pool.query(`
       SELECT
@@ -1723,11 +1725,11 @@ router.get('/lists/campaigns', async (req, res) => {
       FROM rt_campaigns c
       LEFT JOIN rt_campaign_stats cs
         ON cs.campaign_id = c.id
-        AND cs.stat_date >= CURRENT_DATE - ($2 || ' days')::interval
+        AND cs.stat_date BETWEEN $2 AND $3
       WHERE c.data_list = $1
       GROUP BY c.id, c.title, c.buyer, c.route, c.carrier, c.vertical, c.created_at, c.list_last_used
       ORDER BY c.created_at ASC
-    `, [listKey, days]);
+    `, [listKey, dateFrom, dateTo]);
 
     res.json({ rows });
   } catch (err) {
