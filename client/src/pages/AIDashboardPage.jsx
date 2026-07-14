@@ -274,8 +274,8 @@ export default function AIDashboardPage() {
   const listSections     = parseContent(listReport?.content);
   const campaignGeneral  = campaignSections.filter(s => !isBuyerSection(s.heading));
   const listGeneral      = listSections.filter(s => !isBuyerSection(s.heading));
-  const campaignBuyer    = b => campaignSections.find(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
-  const listBuyer        = b => listSections.find(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
+  const campaignBuyer    = b => campaignSections.filter(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
+  const listBuyer        = b => listSections.filter(s => isBuyerSection(s.heading) && buyerOf(s.heading) === b);
 
   const isLoading   = loadingHistory || loadingCampaign || loadingList;
   const hasAnything = campaignReport || listReport;
@@ -440,28 +440,20 @@ export default function AIDashboardPage() {
       {/* ── BUYER VIEW ── */}
       {BUYERS.includes(buyer) && hasAnything && !isLoading && !generating && (
         <div className="space-y-6">
-          <SectionGroup icon="📊" label="Campaign Recommendations" sublabel={`${days}d window`} color="indigo">
+          <SectionGroup icon="📊" label={`${buyer} — Campaign Analysis`} sublabel={`${days}d window`} color="indigo">
             {!campaignReport
               ? <p className="text-sm text-gray-400 px-1">No {days}-day campaign report — click Generate.</p>
-              : <>
-                  {campaignGeneral.map((sec, i) => <Section key={i} sec={sec} />)}
-                  {campaignBuyer(buyer) && <Section sec={campaignBuyer(buyer)} />}
-                  {campaignGeneral.length === 0 && !campaignBuyer(buyer) && (
-                    <p className="text-sm text-gray-400 px-1">No sections found for this report.</p>
-                  )}
-                </>
+              : campaignBuyer(buyer).length > 0
+                ? campaignBuyer(buyer).map((sec, i) => <Section key={i} sec={sec} />)
+                : <p className="text-sm text-gray-400 px-1">No {buyer} sections in this report — regenerate to get per-buyer analysis.</p>
             }
           </SectionGroup>
-          <SectionGroup icon="📋" label="List Intelligence" color="teal">
+          <SectionGroup icon="📋" label={`${buyer} — List Intelligence`} color="teal">
             {!listReport
               ? <p className="text-sm text-gray-400 px-1">No list analysis — click Generate.</p>
-              : <>
-                  {listGeneral.map((sec, i) => <Section key={i} sec={sec} />)}
-                  {listBuyer(buyer) && <Section sec={listBuyer(buyer)} />}
-                  {listGeneral.length === 0 && !listBuyer(buyer) && (
-                    <p className="text-sm text-gray-400 px-1">No list sections found.</p>
-                  )}
-                </>
+              : listBuyer(buyer).length > 0
+                ? listBuyer(buyer).map((sec, i) => <Section key={i} sec={sec} />)
+                : <p className="text-sm text-gray-400 px-1">No {buyer} list sections found — regenerate to get per-buyer list queue.</p>
             }
           </SectionGroup>
         </div>

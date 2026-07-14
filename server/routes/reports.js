@@ -1133,20 +1133,101 @@ One row per test. Buyer = TK/MA/DS only.
 
 ---
 
-## 👤 TK
-One row per action. This team creates new campaigns — recommend specific new setups. Action Type = Scale / Cut / Test / Launch.
-| Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
+Now produce FULL per-buyer reports. Each buyer's sections must contain ONLY their campaigns from the data above (filter by Buyer column). Do not mix buyers. Be as thorough as the global sections above.
+
+## 👤 TK — 💰 Best Combinations to Scale
+TK campaigns ONLY. One row per profitable combo. ${hasOsData ? 'Note iOS-only opportunity in Action where iOS EPC beats Android.' : ''}
+| Vertical/Offer | Route | Carrier | EPC | ROI | Conv | Action |
+|---|---|---|---|---|---|---|
+
+## 👤 TK — 🔴 Cut Immediately
+TK losing combos ONLY. Every loser — no omissions.
+| Vertical/Offer | Route | Carrier | Loss ($) | Action |
+|---|---|---|---|---|
+
+## 👤 TK — 🔁 Budget Reallocation
+Budget moves TK specifically should make — from their losers to their winners.
+| From Vertical/Offer | From Route | From Carrier | To Vertical/Offer | To Route | To Carrier | Why |
+|---|---|---|---|---|---|---|
+
+## 👤 TK — 📡 Route & Carrier Intelligence
+Which routes and carriers perform best/worst for TK's campaigns specifically.
+| Type | Name | Avg EPC | Best Vertical | Trend | Note |
 |---|---|---|---|---|---|
 
-## 👤 MA
-Same format. Action Type = Scale / Cut / Test / Launch.
-| Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
+## 👤 TK — 🤝 Partner & Offer Analysis
+TK's offers ranked by EPC and profitability.
+| Offer | Partner | EPC | ROI | Verdict |
+|---|---|---|---|---|
+
+## 👤 TK — 🧪 Highest-Upside Tests
+New setups TK should launch or test, based on winning patterns seen in the data.
+| Vertical/Offer | Route | Carrier | Target EPC | Rationale |
+|---|---|---|---|---|
+
+---
+
+## 👤 MA — 💰 Best Combinations to Scale
+MA campaigns ONLY. One row per profitable combo.
+| Vertical/Offer | Route | Carrier | EPC | ROI | Conv | Action |
+|---|---|---|---|---|---|---|
+
+## 👤 MA — 🔴 Cut Immediately
+MA losing combos ONLY. Every loser — no omissions.
+| Vertical/Offer | Route | Carrier | Loss ($) | Action |
+|---|---|---|---|---|
+
+## 👤 MA — 🔁 Budget Reallocation
+Budget moves MA specifically should make.
+| From Vertical/Offer | From Route | From Carrier | To Vertical/Offer | To Route | To Carrier | Why |
+|---|---|---|---|---|---|---|
+
+## 👤 MA — 📡 Route & Carrier Intelligence
+Which routes and carriers perform best/worst for MA's campaigns specifically.
+| Type | Name | Avg EPC | Best Vertical | Trend | Note |
 |---|---|---|---|---|---|
 
-## 👤 DS
-Same format. Action Type = Scale / Cut / Test / Launch.
-| Action Type | Offer/Vertical | Route | Carrier | Key Metric | Note |
-|---|---|---|---|---|---|`;
+## 👤 MA — 🤝 Partner & Offer Analysis
+MA's offers ranked by EPC and profitability.
+| Offer | Partner | EPC | ROI | Verdict |
+|---|---|---|---|---|
+
+## 👤 MA — 🧪 Highest-Upside Tests
+New setups MA should launch or test.
+| Vertical/Offer | Route | Carrier | Target EPC | Rationale |
+|---|---|---|---|---|
+
+---
+
+## 👤 DS — 💰 Best Combinations to Scale
+DS campaigns ONLY. One row per profitable combo.
+| Vertical/Offer | Route | Carrier | EPC | ROI | Conv | Action |
+|---|---|---|---|---|---|---|
+
+## 👤 DS — 🔴 Cut Immediately
+DS losing combos ONLY. Every loser — no omissions.
+| Vertical/Offer | Route | Carrier | Loss ($) | Action |
+|---|---|---|---|---|
+
+## 👤 DS — 🔁 Budget Reallocation
+Budget moves DS specifically should make.
+| From Vertical/Offer | From Route | From Carrier | To Vertical/Offer | To Route | To Carrier | Why |
+|---|---|---|---|---|---|---|
+
+## 👤 DS — 📡 Route & Carrier Intelligence
+Which routes and carriers perform best/worst for DS's campaigns specifically.
+| Type | Name | Avg EPC | Best Vertical | Trend | Note |
+|---|---|---|---|---|---|
+
+## 👤 DS — 🤝 Partner & Offer Analysis
+DS's offers ranked by EPC and profitability.
+| Offer | Partner | EPC | ROI | Verdict |
+|---|---|---|---|---|
+
+## 👤 DS — 🧪 Highest-Upside Tests
+New setups DS should launch or test.
+| Vertical/Offer | Route | Carrier | Target EPC | Rationale |
+|---|---|---|---|---|`;
 
 
 
@@ -1154,7 +1235,7 @@ Same format. Action Type = Scale / Cut / Test / Launch.
     const MODEL = 'claude-sonnet-4-6';
     const first = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 8000,
+      max_tokens: 16000,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -1164,7 +1245,7 @@ Same format. Action Type = Scale / Cut / Test / Launch.
       console.warn('[ai] response hit max_tokens — continuing...');
       const second = await anthropic.messages.create({
         model: MODEL,
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages: [
           { role: 'user', content: prompt },
           { role: 'assistant', content },
