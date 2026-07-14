@@ -1,5 +1,6 @@
 import { useState, useMemo, Fragment } from 'react';
 import RoiFilterPopover from '../components/RoiFilterPopover';
+import DateRangePicker from '../components/DateRangePicker';
 import { useQuery } from '@tanstack/react-query';
 import {
   useReactTable,
@@ -247,36 +248,12 @@ export default function ListsPage() {
         <p className="text-sm text-gray-500 mt-1">Click any list to expand all campaigns that used it, oldest to newest</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        {/* Quick-select buttons */}
-        <div className="flex items-end gap-1">
-          {[7, 30, 90, 180].map((d) => {
-            const from = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
-            const active = dateFrom === from && dateTo === today;
-            return (
-              <button key={d} type="button"
-                onClick={() => { setDateFrom(from); setDateTo(today); }}
-                className={`px-2.5 py-1.5 text-xs font-medium rounded border transition-colors ${
-                  active ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}>
-                {d}d
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">From</label>
-          <input type="date" value={dateFrom} max={dateTo}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">To</label>
-          <input type="date" value={dateTo} min={dateFrom} max={today}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
-        </div>
-        {/* Search */}
+      <div className="flex flex-wrap items-center gap-3">
+        <DateRangePicker
+          from={dateFrom}
+          to={dateTo}
+          onChange={({ from, to }) => { setDateFrom(from); setDateTo(to); }}
+        />
         <div className="relative">
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
@@ -284,7 +261,7 @@ export default function ListsPage() {
           <input type="text" placeholder="Search list…" value={search} onChange={e => setSearch(e.target.value)}
             className="border border-gray-200 rounded pl-8 pr-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
         </div>
-        <span className="text-xs text-gray-400 ml-auto self-center">{table.getRowModel().rows.length} lists</span>
+        <span className="text-xs text-gray-400 ml-auto">{table.getRowModel().rows.length} lists</span>
       </div>
 
       {isLoading && <div className="card p-10 text-center"><div className="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" /></div>}
