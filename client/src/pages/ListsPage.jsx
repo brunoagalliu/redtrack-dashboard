@@ -169,6 +169,15 @@ export default function ListsPage() {
       cell: ({ getValue }) => fmtRate(getValue()),
     },
     {
+      id: 'cost',
+      accessorKey: 'cost',
+      header: 'Cost',
+      size: 88,
+      enableSorting: true,
+      meta: { right: true },
+      cell: ({ getValue }) => fmtMoney(getValue()),
+    },
+    {
       id: 'profit',
       accessorKey: 'profit',
       header: 'Profit',
