@@ -379,6 +379,7 @@ export default function OffersPage() {
       </div>
 
       {/* Filters */}
+      <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex items-end gap-1">
           {[7, 30, 90, 180].map((d) => {
@@ -443,34 +444,32 @@ export default function OffersPage() {
             {(data?.dataPartners || []).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
-        <div className="flex items-end gap-2 ml-auto">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Rows</label>
-            <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
-              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white">
-              {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => setShowColPicker((v) => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
-              </svg>
-              Columns
-            </button>
-            {showColPicker && (
-              <ColumnPicker
-                allColumns={OFFERS_ALL_COLUMNS}
-                fixedStart={OFFERS_FIXED_START}
-                table={table}
-                onClose={() => setShowColPicker(false)}
-              />
-            )}
-          </div>
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
+          className="border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 bg-white">
+          {[25, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <div className="relative">
+          <button
+            onClick={() => setShowColPicker((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+            </svg>
+            Columns
+          </button>
+          {showColPicker && (
+            <ColumnPicker
+              allColumns={OFFERS_ALL_COLUMNS}
+              fixedStart={OFFERS_FIXED_START}
+              table={table}
+              onClose={() => setShowColPicker(false)}
+            />
+          )}
         </div>
+      </div>
       </div>
 
       {/* Empty state */}
