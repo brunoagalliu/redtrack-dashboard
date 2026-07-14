@@ -1769,12 +1769,15 @@ router.get('/lists/daily', async (req, res) => {
 
 router.get('/lists', async (req, res) => {
   try {
-    const buyer   = req.query.buyer   || null;
-    const route   = req.query.route   || null;
-    const carrier = req.query.carrier || null;
+    const defaults = defaultDateRange();
+    const dateFrom = req.query.date_from || new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+    const dateTo   = req.query.date_to   || defaults.date_to;
+    const buyer    = req.query.buyer   || null;
+    const route    = req.query.route   || null;
+    const carrier  = req.query.carrier || null;
 
-    const conditions = [`c.data_list IS NOT NULL`];
-    const params = [];
+    const conditions = [`c.data_list IS NOT NULL`, `cs.stat_date BETWEEN $1 AND $2`];
+    const params = [dateFrom, dateTo];
     if (buyer)   { params.push(buyer);   conditions.push(`c.buyer = $${params.length}`); }
     if (route)   { params.push(route);   conditions.push(`c.route = $${params.length}`); }
     if (carrier) { params.push(carrier); conditions.push(`c.carrier = $${params.length}`); }
@@ -1800,16 +1803,6 @@ router.get('/lists', async (req, res) => {
         CASE WHEN SUM(cs.cost) > 0
              THEN ROUND(SUM(cs.profit)::numeric / SUM(cs.cost) * 100, 2)
              ELSE 0 END                                         AS roi,
-        -- EPC for campaigns whose stats are within the last 30 days
-        CASE WHEN SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - INTERVAL '30 days'
-                           THEN cs.clicks ELSE 0 END) > 0
-             THEN ROUND(
-               SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - INTERVAL '30 days' THEN cs.revenue ELSE 0 END)::numeric /
-               SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - INTERVAL '30 days' THEN cs.clicks  ELSE 0 END),
-               4)
-             ELSE 0 END                                         AS epc_recent,
-        SUM(CASE WHEN cs.stat_date >= CURRENT_DATE - INTERVAL '30 days'
-                 THEN cs.clicks ELSE 0 END)                     AS clicks_recent,
         -- days since last campaign using this list was created
         EXTRACT(DAY FROM NOW() - MAX(c.created_at::timestamptz))::int AS days_since_last_use
       FROM rt_campaigns c
