@@ -11,7 +11,7 @@ import {
 } from '@tanstack/react-table';
 import { api } from '../lib/api';
 
-const BUYERS = ['TK', 'MA', 'DS'];
+const BUYERS = ['TK', 'MA', 'DS', 'KG'];
 
 const OFFERS_ALL_COLUMNS = [
   { id: 'buyer',        label: 'Buyer',        defaultVisible: true },

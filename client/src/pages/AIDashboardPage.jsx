@@ -145,7 +145,7 @@ function SectionGroup({ icon, label, sublabel, color, children }) {
   );
 }
 
-const BUYERS = ['TK', 'MA', 'DS'];
+const BUYERS = ['TK', 'MA', 'DS', 'KG'];
 const DAY_OPTIONS = [7, 14, 30, 60, 90, 180];
 
 // ── Main Page ─────────────────────────────────────────────────────────────────

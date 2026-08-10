@@ -66,7 +66,7 @@ function CreatableSelect({ value, onChange, items = [], onAdd, onDelete, addLabe
 }
 
 // ── Traffic source constants ──────────────────────────────────────────────────
-const BUYERS = ['TK', 'MA', 'DS'];
+const BUYERS = ['TK', 'MA', 'DS', 'KG'];
 
 // Self-routing sources: selecting them auto-sets the name segment; no sub-picker
 const SELF_ROUTING = { UPM: 'USMS', Ranhog: 'Ranhog', TechStar: 'TechStar' };

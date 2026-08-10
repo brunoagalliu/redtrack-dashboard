@@ -55,7 +55,7 @@ function saveColConfig(order, visible) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ order, visible }));
 }
 
-const BUYERS = ['TK', 'MA', 'DS'];
+const BUYERS = ['TK', 'MA', 'DS', 'KG'];
 const BUYER_COLORS = {
   TK: 'bg-blue-100 text-blue-700',
   MA: 'bg-purple-100 text-purple-700',

@@ -286,7 +286,7 @@ export default function VerticalsPage() {
           <label className="label">Buyer</label>
           <select value={buyerFilter} onChange={(e) => { setBuyerFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }} className="input">
             <option value="ALL">All buyers</option>
-            {['TK', 'MA', 'DS'].map((b) => <option key={b} value={b}>{b}</option>)}
+            {['TK', 'MA', 'DS', 'KG'].map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
         </div>
         <div>

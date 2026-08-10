@@ -7,7 +7,7 @@ const BUYER_COLORS = {
   MA: { badge: 'bg-purple-100 text-purple-700', ring: 'ring-purple-200', bar: 'bg-purple-500', line: '#a855f7' },
   DS: { badge: 'bg-orange-100 text-orange-700', ring: 'ring-orange-200', bar: 'bg-orange-500', line: '#f97316' },
 };
-const BUYERS = ['TK', 'MA', 'DS'];
+const BUYERS = ['TK', 'MA', 'DS', 'KG'];
 
 function fmt(n)      { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
 function fmtMoney(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }

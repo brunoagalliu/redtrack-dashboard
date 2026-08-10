@@ -143,15 +143,15 @@ function sectionStyle(title) {
 function parseContent(content) {
   if (!content) return { buyers: {}, sections: [] };
 
-  const splitRe = /(?=^#{1,3} ?(?:👤 ?)?(?:TK|MA|DS)\b)/m;
-  const matchRe = /^#{1,3} ?(?:👤 ?)?(TK|MA|DS)\b/;
+  const splitRe = /(?=^#{1,3} ?(?:👤 ?)?(?:TK|MA|DS|KG)\b)/m;
+  const matchRe = /^#{1,3} ?(?:👤 ?)?(TK|MA|DS|KG)\b/;
   let parts = content.split(splitRe);
-  if (parts.length === 1) parts = content.split(/(?=^\*\*(?:TK|MA|DS)\*\*)/m);
+  if (parts.length === 1) parts = content.split(/(?=^\*\*(?:TK|MA|DS|KG)\*\*)/m);
 
   const overall = parts[0].trim();
   const buyers = {};
   for (const part of parts.slice(1)) {
-    const m = part.match(matchRe) || part.match(/^\*\*(TK|MA|DS)\*\*/);
+    const m = part.match(matchRe) || part.match(/^\*\*(TK|MA|DS|KG)\*\*/);
     if (m) buyers[m[1]] = part.replace(/^.*\n/, '').trim();
   }
 
@@ -432,7 +432,8 @@ const OS_COLS = [
           <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
             b === 'TK' ? 'bg-blue-100 text-blue-700' :
             b === 'MA' ? 'bg-purple-100 text-purple-700' :
-            'bg-orange-100 text-orange-700'
+            b === 'DS' ? 'bg-orange-100 text-orange-700' :
+            'bg-green-100 text-green-700'
           }`}>{b}</span>
         </div>
       );
@@ -640,7 +641,7 @@ export default function AIRecommendationsPage() {
     getRowId: (row) => row.offer,
   });
 
-  const chartData = ['TK', 'MA', 'DS'].map((b) => {
+  const chartData = ['TK', 'MA', 'DS', 'KG'].map((b) => {
     const row = buyerRows.find((r) => r.buyer === b) || {};
     return {
       buyer: b,
@@ -786,7 +787,7 @@ export default function AIRecommendationsPage() {
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Buyer Performance</h2>
               <div className="grid grid-cols-3 gap-4">
-                {['TK', 'MA', 'DS'].map((buyer) => {
+                {['TK', 'MA', 'DS', 'KG'].map((buyer) => {
                   const row = buyerRows.find((r) => r.buyer === buyer);
                   if (!row) return null;
                   const style  = BUYER_STYLES[buyer];
@@ -952,7 +953,7 @@ export default function AIRecommendationsPage() {
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Actions Per Buyer</h2>
               <div className="grid grid-cols-3 gap-4">
-                {['TK', 'MA', 'DS'].map((buyer) => {
+                {['TK', 'MA', 'DS', 'KG'].map((buyer) => {
                   const aiText = buyers[buyer];
                   const style  = BUYER_STYLES[buyer];
                   const buyerOffers = offerCombos.filter((r) => r.buyer === buyer);
