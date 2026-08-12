@@ -228,6 +228,8 @@ function GeneratorTab() {
   const stopRef = useRef(false);
   const seenRef = useRef(new Set());
 
+  function resetResults() { setAvailable([]); setChecked(0); setDone(false); setError(''); }
+
   function generateBatch() {
     const batch = [];
     while (batch.length < BATCH_SIZE) {
@@ -289,19 +291,19 @@ function GeneratorTab() {
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Find how many</label>
-            <input type="number" value={target} min={1} onChange={e => setTarget(Math.max(1, Number(e.target.value)))}
+            <input type="number" value={target} min={1} onChange={e => { setTarget(Math.max(1, Number(e.target.value))); resetResults(); }}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Name length (chars)</label>
-            <select value={length} onChange={e => setLength(Number(e.target.value))}
+            <select value={length} onChange={e => { setLength(Number(e.target.value)); resetResults(); }}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               {[4, 5, 6, 7, 8, 9, 10].map(n => <option key={n} value={n}>{n} chars</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">TLD</label>
-            <select value={tld} onChange={e => setTld(e.target.value)}
+            <select value={tld} onChange={e => { setTld(e.target.value); resetResults(); }}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               {TLDS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
