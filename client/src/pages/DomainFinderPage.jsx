@@ -296,10 +296,8 @@ function GeneratorTab() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Name length (chars)</label>
-            <select value={length} onChange={e => { setLength(Number(e.target.value)); resetResults(); }}
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              {[4, 5, 6, 7, 8, 9, 10].map(n => <option key={n} value={n}>{n} chars</option>)}
-            </select>
+            <input type="number" value={length} min={1} max={63} onChange={e => { setLength(Math.max(1, Number(e.target.value))); resetResults(); }}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">TLD</label>
