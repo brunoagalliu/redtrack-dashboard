@@ -485,8 +485,12 @@ function CloudflareTab() {
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [fetchError, setFetchError] = useState('');
   const [security, setSecurity] = useState({ botFightMode: false, aiLabyrinth: false, aiBotsProtection: false });
-  const [network, setNetwork] = useState({ proxy: false, sslMode: 'none' });
-  const [records, setRecords] = useState([{ id: '1', type: 'A', name: '@', content: '' }]);
+  const [network, setNetwork] = useState({ proxy: true, sslMode: 'flexible' });
+  const [records, setRecords] = useState([
+    { id: '1', type: 'A', name: '@',   content: '47.236.21.233' },
+    { id: '2', type: 'A', name: 'www', content: '47.236.21.233' },
+    { id: '3', type: 'A', name: '*',   content: '47.236.21.233' },
+  ]);
   const [jobs, setJobs] = useState([]);
   const [provisioning, setProvisioning] = useState(false);
   const [started, setStarted] = useState(false);
