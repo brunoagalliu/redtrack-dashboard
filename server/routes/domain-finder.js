@@ -126,4 +126,263 @@ router.post('/check-domains', async (req, res) => {
   }
 });
 
+// ─── Namecheap helpers ────────────────────────────────────────────────────────
+
+function ncBase() {
+  const { NAMECHEAP_API_USER, NAMECHEAP_API_KEY, NAMECHEAP_USERNAME } = process.env;
+  if (!NAMECHEAP_API_USER || !NAMECHEAP_API_KEY || !NAMECHEAP_USERNAME) return null;
+  return { ApiUser: NAMECHEAP_API_USER, ApiKey: NAMECHEAP_API_KEY, UserName: NAMECHEAP_USERNAME };
+}
+
+function parseDomainsFromXml(xml) {
+  const tags = [...xml.matchAll(/<Domain\s[\s\S]*?\/>/g)];
+  return tags.map(m => {
+    const tag = m[0];
+    const get = (key) => (tag.match(new RegExp(`${key}="([^"]*)"`)))?.[1] ?? '';
+    return { name: get('Name').toLowerCase(), isOurDNS: get('IsOurDNS') === 'true', expires: get('Expires'), created: get('Created') };
+  }).filter(d => d.name);
+}
+
+// GET /domains — list all Namecheap domains
+router.get('/domains', async (req, res) => {
+  const base = ncBase();
+  if (!base) return res.status(500).json({ error: 'Namecheap credentials not configured' });
+  try {
+    const clientIp = await getOutboundIp();
+    const all = [];
+    let page = 1;
+    let total = Infinity;
+    while (all.length < total) {
+      const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.getList', PageSize: '100', Page: String(page) });
+      const r = await fetch(`https://api.namecheap.com/xml.response?${params}`);
+      const xml = await r.text();
+      if (xml.includes('Status="ERROR"')) {
+        const m = xml.match(/<Error[^>]*>([^<]+)<\/Error>/);
+        return res.status(502).json({ error: m?.[1]?.trim() ?? 'Namecheap error' });
+      }
+      const tm = xml.match(/<TotalItems>(\d+)<\/TotalItems>/);
+      if (tm) total = parseInt(tm[1]);
+      const domains = parseDomainsFromXml(xml);
+      if (!domains.length) break;
+      all.push(...domains);
+      page++;
+    }
+    res.json({ domains: all, total: all.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Cloudflare helpers ───────────────────────────────────────────────────────
+
+async function cfetch(path, method = 'GET', body) {
+  const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`, 'Content-Type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  try { return await res.json(); } catch { return { success: false, errors: [{ message: `HTTP ${res.status}` }] }; }
+}
+
+// POST /provision — add domain to Cloudflare, set DNS records, update Namecheap NS
+router.post('/provision', async (req, res) => {
+  const { domain, security = {}, network = { proxy: false, sslMode: 'none' }, records = [] } = req.body;
+  const steps = [];
+
+  try {
+    const base = ncBase();
+    const clientIp = await getOutboundIp();
+    let zoneId, nameservers;
+
+    // 1. Add zone to Cloudflare
+    const zoneRes = await cfetch('/zones', 'POST', { name: domain, type: 'full', account: { id: process.env.CLOUDFLARE_ACCOUNT_ID } });
+    if (zoneRes.success) {
+      zoneId = zoneRes.result.id;
+      nameservers = zoneRes.result.name_servers;
+      steps.push({ name: 'Add to Cloudflare', status: 'ok' });
+    } else {
+      const alreadyExists = zoneRes.errors?.some(e => e.code === 1049 || e.code === 1061 || e.code === 1097 || e.message?.toLowerCase().includes('already'));
+      if (alreadyExists) {
+        const existing = await cfetch(`/zones?name=${domain}`);
+        if (!existing.success || !existing.result?.[0]) {
+          steps.push({ name: 'Add to Cloudflare', status: 'error', detail: 'Zone exists but could not be fetched' });
+          return res.json({ steps });
+        }
+        zoneId = existing.result[0].id;
+        const zoneDetail = await cfetch(`/zones/${zoneId}`);
+        nameservers = zoneDetail.result?.name_servers ?? existing.result[0].name_servers ?? [];
+        steps.push({ name: 'Add to Cloudflare', status: 'ok', detail: 'Zone already existed' });
+      } else {
+        steps.push({ name: 'Add to Cloudflare', status: 'error', detail: zoneRes.errors?.[0]?.message });
+        return res.json({ steps });
+      }
+    }
+
+    // 2. DNS records
+    for (const rec of records) {
+      const cfName = rec.name === '@' ? domain : rec.name;
+      const r = await cfetch(`/zones/${zoneId}/dns_records`, 'POST', { type: rec.type, name: cfName, content: rec.content, ttl: 1, proxied: !!network.proxy });
+      if (!r.success) {
+        const dup = r.errors?.some(e => e.code === 81057 || e.message?.toLowerCase().includes('already'));
+        if (dup) {
+          const qName = rec.name === '*' ? `*.${domain}` : rec.name === '@' ? domain : `${rec.name}.${domain}`;
+          const existing = await cfetch(`/zones/${zoneId}/dns_records?type=${rec.type}&name=${qName}`);
+          const recId = existing.result?.[0]?.id;
+          if (recId) {
+            const patch = await cfetch(`/zones/${zoneId}/dns_records/${recId}`, 'PATCH', { content: rec.content, proxied: !!network.proxy, ttl: 1 });
+            if (!patch.success) { steps.push({ name: 'Add DNS records', status: 'error', detail: patch.errors?.[0]?.message }); return res.json({ steps }); }
+          }
+        } else {
+          steps.push({ name: 'Add DNS records', status: 'error', detail: r.errors?.[0]?.message });
+          return res.json({ steps });
+        }
+      }
+    }
+    steps.push({ name: 'Add DNS records', status: 'ok', detail: records.map(r => `${r.type} ${r.name}`).join(', ') });
+
+    // 3. Security
+    const anySecurityEnabled = security.botFightMode || security.aiLabyrinth || security.aiBotsProtection;
+    if (anySecurityEnabled) {
+      const body = {
+        ...(security.botFightMode     ? { fight_mode: true, enable_js: true }     : {}),
+        ...(security.aiLabyrinth      ? { crawler_protection: 'enabled' }         : {}),
+        ...(security.aiBotsProtection ? { ai_bots_protection: 'block' }           : {}),
+      };
+      const r = await cfetch(`/zones/${zoneId}/bot_management`, 'PUT', body);
+      steps.push({ name: 'Enable security', status: r.success ? 'ok' : 'error', detail: r.success
+        ? [security.botFightMode && 'Bot Fight Mode', security.aiLabyrinth && 'AI Labyrinth', security.aiBotsProtection && 'AI Bots Protection'].filter(Boolean).join(', ')
+        : r.errors?.[0]?.message });
+    }
+
+    // 4. SSL/TLS
+    if (network.sslMode && network.sslMode !== 'none') {
+      const r = await cfetch(`/zones/${zoneId}/settings/ssl`, 'PATCH', { value: network.sslMode });
+      steps.push({ name: 'Set SSL/TLS', status: r.success ? 'ok' : 'error', detail: r.success ? network.sslMode : r.errors?.[0]?.message });
+    }
+
+    // 5. Namecheap NS
+    if (base) {
+      const parts = domain.split('.');
+      const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setCustom', SLD: parts[0], TLD: parts.slice(1).join('.'), Nameservers: nameservers.join(',') });
+      const nsRes = await fetch(`https://api.namecheap.com/xml.response?${params}`);
+      const nsXml = await nsRes.text();
+      const nsOk = nsXml.includes('Update="true"') || (nsXml.includes('Status="OK"') && !nsXml.includes('Status="ERROR"'));
+      const nsErr = nsXml.match(/<Error[^>]*>([^<]+)<\/Error>/)?.[1]?.trim() ?? nsXml.slice(0, 200);
+      steps.push({ name: 'Set nameservers', status: nsOk ? 'ok' : 'error', detail: nsOk ? nameservers.join(', ') : nsErr });
+    }
+
+    res.json({ nameservers, steps });
+  } catch (err) {
+    steps.push({ name: 'Unexpected error', status: 'error', detail: err.message });
+    res.json({ steps });
+  }
+});
+
+// ─── Vercel helpers ───────────────────────────────────────────────────────────
+
+async function vfetch(path, method = 'GET', body) {
+  const res = await fetch(`https://api.vercel.com${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}`, 'Content-Type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  return res.json();
+}
+
+function parseHostsFromXml(xml) {
+  const hosts = [];
+  const regex = /<host[^>]+>/gi;
+  let m;
+  while ((m = regex.exec(xml)) !== null) {
+    const tag = m[0];
+    const get = (k) => tag.match(new RegExp(`${k}="([^"]*)"`, 'i'))?.[1] ?? '';
+    const name = get('Name'); const type = get('Type');
+    if (!name || !type) continue;
+    hosts.push({ name, type, address: get('Address'), mxPref: get('MXPref') || '10', ttl: get('TTL') || '1800' });
+  }
+  return hosts;
+}
+
+// POST /vercel-provision
+router.post('/vercel-provision', async (req, res) => {
+  const { domains, mode = 'nameservers' } = req.body;
+  const VERCEL_NS = ['ns1.vercel-dns.com', 'ns2.vercel-dns.com'];
+  const VERCEL_A_FALLBACK = '216.150.1.1';
+  const projectId = process.env.VERCEL_PROJECT_ID;
+  if (!projectId || !process.env.VERCEL_TOKEN) return res.status(500).json({ error: 'VERCEL_TOKEN and VERCEL_PROJECT_ID must be set' });
+  const base = ncBase();
+  if (!base) return res.status(500).json({ error: 'Namecheap credentials not configured' });
+
+  const clientIp = await getOutboundIp();
+  const results = [];
+
+  for (const domain of domains) {
+    const steps = [];
+    const parts = domain.split('.');
+    const sld = parts[0]; const tld = parts.slice(1).join('.');
+
+    // 1. Add to Vercel
+    const vercelRes = await vfetch(`/v9/projects/${projectId}/domains`, 'POST', { name: domain });
+    if (vercelRes.error) {
+      const msg = vercelRes.error.message ?? '';
+      const alreadyExists = vercelRes.error.code === 'domain_already_in_project' || msg.toLowerCase().includes('already');
+      if (alreadyExists) steps.push({ name: 'Add to Vercel', status: 'ok', detail: 'Already in project' });
+      else { steps.push({ name: 'Add to Vercel', status: 'error', detail: msg }); results.push({ domain, steps }); continue; }
+    } else {
+      steps.push({ name: 'Add to Vercel', status: 'ok' });
+    }
+
+    // 2. DNS
+    if (mode === 'nameservers') {
+      const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setCustom', SLD: sld, TLD: tld, Nameservers: VERCEL_NS.join(',') });
+      const nsRes = await fetch(`https://api.namecheap.com/xml.response?${params}`);
+      const nsXml = await nsRes.text();
+      const nsOk = nsXml.includes('Update="true"') || (nsXml.includes('Status="OK"') && !nsXml.includes('Status="ERROR"'));
+      const nsErr = nsXml.match(/<Error[^>]*>([^<]+)<\/Error>/)?.[1]?.trim() ?? nsXml.slice(0, 200);
+      steps.push({ name: 'Set nameservers', status: nsOk ? 'ok' : 'error', detail: nsOk ? VERCEL_NS.join(', ') : nsErr });
+    } else {
+      // A record mode
+      let aIp = VERCEL_A_FALLBACK;
+      try {
+        const cfg = await vfetch(`/v9/projects/${projectId}/domains/${domain}`);
+        const aRecord = cfg.verification?.find(v => v.type === 'A');
+        if (aRecord?.value) aIp = aRecord.value;
+      } catch {}
+
+      const getParams = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.getHosts', SLD: sld, TLD: tld });
+      let getXml = await (await fetch(`https://api.namecheap.com/xml.response?${getParams}`)).text();
+
+      if (getXml.includes('Status="ERROR"')) {
+        const errMsg = getXml.match(/<Error[^>]*>([^<]+)<\/Error>/)?.[1]?.trim() ?? '';
+        const isCustomNs = /custom|nameserver|dns server|proper dns|not using/i.test(errMsg);
+        if (!isCustomNs) { steps.push({ name: 'Set A record', status: 'error', detail: errMsg }); results.push({ domain, steps }); continue; }
+        const resetParams = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setDefault', SLD: sld, TLD: tld });
+        const resetXml = await (await fetch(`https://api.namecheap.com/xml.response?${resetParams}`)).text();
+        const resetOk = resetXml.includes('Update="true"') || (resetXml.includes('Status="OK"') && !resetXml.includes('Status="ERROR"'));
+        steps.push({ name: 'Reset to Namecheap DNS', status: resetOk ? 'ok' : 'error' });
+        if (!resetOk) { results.push({ domain, steps }); continue; }
+        getXml = await (await fetch(`https://api.namecheap.com/xml.response?${getParams}`)).text();
+      }
+
+      const existing = parseHostsFromXml(getXml).filter(h => !(h.name === '@' && h.type === 'A'));
+      const newHosts = [...existing, { name: '@', type: 'A', address: aIp, mxPref: '10', ttl: '1800' }];
+      const setParams = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setHosts', SLD: sld, TLD: tld });
+      newHosts.forEach((h, i) => {
+        const n = i + 1;
+        setParams.set(`HostName${n}`, h.name); setParams.set(`RecordType${n}`, h.type);
+        setParams.set(`Address${n}`, h.address); setParams.set(`MXPref${n}`, h.mxPref); setParams.set(`TTL${n}`, h.ttl);
+      });
+      const setXml = await (await fetch(`https://api.namecheap.com/xml.response?${setParams}`)).text();
+      const setOk = setXml.includes('IsSuccess="true"');
+      const setErr = setXml.match(/<Error[^>]*>([^<]+)<\/Error>/)?.[1]?.trim();
+      steps.push({ name: 'Set A record', status: setOk ? 'ok' : 'error', detail: setOk ? `@ → ${aIp}` : setErr ?? 'Failed' });
+    }
+
+    results.push({ domain, steps });
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  res.json({ results });
+});
+
 module.exports = router;
