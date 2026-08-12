@@ -16,6 +16,7 @@ import CostUpdaterPage from './pages/CostUpdaterPage';
 import RevenueUpdaterPage from './pages/RevenueUpdaterPage';
 import SyncLogsPage from './pages/SyncLogsPage';
 import ClicksExportPage from './pages/ClicksExportPage';
+import DomainFinderPage from './pages/DomainFinderPage';
 import LoginPage from './pages/LoginPage';
 import { getToken, clearToken } from './lib/api';
 
@@ -131,6 +132,13 @@ function Sidebar() {
             </svg>
             {!collapsed && 'Clicks Export'}
           </NavLink>
+          <NavLink to="/tools/domain-finder" className={linkClass} title={collapsed ? 'Domain Finder' : undefined}>
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+            </svg>
+            {!collapsed && 'Domain Finder'}
+          </NavLink>
         </div>
       </nav>
 
@@ -174,6 +182,7 @@ function AppLayout() {
           <Route path="/tools/revenue-updater" element={<RevenueUpdaterPage />} />
           <Route path="/tools/import-logs" element={<SyncLogsPage />} />
           <Route path="/tools/clicks-export" element={<ClicksExportPage />} />
+          <Route path="/tools/domain-finder" element={<DomainFinderPage />} />
         </Routes>
       </main>
     </div>

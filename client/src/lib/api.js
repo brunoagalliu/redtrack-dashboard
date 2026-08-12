@@ -125,6 +125,10 @@ export const api = {
     return request(`/reports/verticals${qs ? `?${qs}` : ''}`);
   },
 
+  // Domain finder
+  brainstormDomains: (description) => request('/domain-finder/brainstorm', { method: 'POST', body: JSON.stringify({ description }) }),
+  checkDomains: (domains) => request('/domain-finder/check-domains', { method: 'POST', body: JSON.stringify({ domains }) }),
+
   // Clicks export
   getClicksExportCampaigns: () => request('/clicks-export/campaigns'),
   getClicksExportSources:   () => request('/clicks-export/sources'),
