@@ -125,6 +125,22 @@ export const api = {
     return request(`/reports/verticals${qs ? `?${qs}` : ''}`);
   },
 
+  // Clicks export
+  getClicksExportCampaigns: () => request('/clicks-export/campaigns'),
+  getClicksExportSources:   () => request('/clicks-export/sources'),
+  getClicksExportNetworks:  () => request('/clicks-export/networks'),
+  getClicksExportOffers:    () => request('/clicks-export/offers'),
+  downloadClicksExport: async (params) => {
+    const token = getToken();
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))).toString();
+    const res = await fetch(`${BASE}/clicks-export/download?${qs}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) { clearToken(); window.location.href = '/login'; return; }
+    if (!res.ok) throw new Error(await res.text());
+    return res;
+  },
+
       searchDataSources: async (searchKey, page = 0, size = 10, sort = 'email,asc', searchField = 'email') => {
     try {
       const params = new URLSearchParams();

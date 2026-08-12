@@ -15,6 +15,7 @@ import ListsAIPage from './pages/ListsAIPage';
 import CostUpdaterPage from './pages/CostUpdaterPage';
 import RevenueUpdaterPage from './pages/RevenueUpdaterPage';
 import SyncLogsPage from './pages/SyncLogsPage';
+import ClicksExportPage from './pages/ClicksExportPage';
 import LoginPage from './pages/LoginPage';
 import { getToken, clearToken } from './lib/api';
 
@@ -123,6 +124,13 @@ function Sidebar() {
             </svg>
             {!collapsed && 'Import Logs'}
           </NavLink>
+          <NavLink to="/tools/clicks-export" className={linkClass} title={collapsed ? 'Clicks Export' : undefined}>
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            {!collapsed && 'Clicks Export'}
+          </NavLink>
         </div>
       </nav>
 
@@ -165,6 +173,7 @@ function AppLayout() {
           <Route path="/tools/cost-updater" element={<CostUpdaterPage />} />
           <Route path="/tools/revenue-updater" element={<RevenueUpdaterPage />} />
           <Route path="/tools/import-logs" element={<SyncLogsPage />} />
+          <Route path="/tools/clicks-export" element={<ClicksExportPage />} />
         </Routes>
       </main>
     </div>
