@@ -216,6 +216,7 @@ function BrainstormTab() {
 // ─── RANDOM GENERATOR TAB ────────────────────────────────────────────────────
 
 function GeneratorTab() {
+  const [target,  setTarget]  = useState(50);
   const [length,  setLength]  = useState(6);
   const [tld,     setTld]     = useState('.com');
   const [available, setAvailable] = useState([]);
@@ -246,7 +247,7 @@ function GeneratorTab() {
     setRunning(true);
 
     let found = [];
-    while (!stopRef.current) {
+    while (found.length < target && !stopRef.current) {
       const batch = generateBatch();
       try {
         const data = await api.checkDomains(batch);
@@ -285,7 +286,12 @@ function GeneratorTab() {
         <h2 className="text-sm font-semibold text-gray-700">Random Domain Generator</h2>
         <p className="text-xs text-gray-500">Scans consonant-only random names for availability — great for finding short, pronounceable brandable domains.</p>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Find how many</label>
+            <input type="number" value={target} min={1} onChange={e => setTarget(Math.max(1, Number(e.target.value)))}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Name length (chars)</label>
             <select value={length} onChange={e => setLength(Number(e.target.value))}
@@ -316,12 +322,12 @@ function GeneratorTab() {
           )}
           {running && (
             <span className="text-sm text-gray-500">
-              Checked <span className="font-medium text-gray-700">{checked.toLocaleString()}</span> — found <span className="font-medium text-emerald-600">{available.length}</span> available
+              Checked <span className="font-medium text-gray-700">{checked.toLocaleString()}</span> — found <span className="font-medium text-emerald-600">{available.length}</span> of {target}
             </span>
           )}
           {done && !running && (
             <span className="text-sm text-gray-500">
-              Stopped — found <span className="font-medium text-emerald-600">{available.length}</span> available out of {checked.toLocaleString()} checked
+              Done — found <span className="font-medium text-emerald-600">{available.length}</span> available out of {checked.toLocaleString()} checked
             </span>
           )}
         </div>
