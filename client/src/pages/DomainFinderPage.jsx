@@ -254,7 +254,7 @@ function GeneratorTab() {
       try {
         const data = await api.checkDomains(batch);
         const newAvail = (data.results ?? []).filter(r => r.available).map(r => r.domain);
-        found = [...found, ...newAvail];
+        found = [...found, ...newAvail].slice(0, target);
         setAvailable([...found]);
         setChecked(prev => prev + batch.length);
       } catch (e) {
