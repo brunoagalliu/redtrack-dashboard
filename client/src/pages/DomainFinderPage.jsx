@@ -508,16 +508,12 @@ function CloudflareTab() {
   function removeRecord(id) { setRecords(r => r.filter(x => x.id !== id)); }
   function updateRecord(id, patch) { setRecords(r => r.map(x => x.id === id ? { ...x, ...patch } : x)); }
 
-  async function handleProvision() {
-    const newJobs = selected.map(d => ({ id: crypto.randomUUID(), domain: d.name, state: 'pending', steps: [], nameservers: null }));
-    setJobs(newJobs);
-    setStarted(true);
+  async function runProvision(jobsToRun) {
     setProvisioning(true);
-
     const CONCURRENCY = 3;
-    for (let i = 0; i < newJobs.length; i += CONCURRENCY) {
-      await Promise.all(newJobs.slice(i, i + CONCURRENCY).map(async job => {
-        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, state: 'running' } : j));
+    for (let i = 0; i < jobsToRun.length; i += CONCURRENCY) {
+      await Promise.all(jobsToRun.slice(i, i + CONCURRENCY).map(async job => {
+        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, state: 'running', steps: [] } : j));
         try {
           const data = await api.provisionDomain({ domain: job.domain, security, network, records });
           const allOk = data.steps?.every(s => s.status === 'ok');
@@ -528,6 +524,25 @@ function CloudflareTab() {
       }));
     }
     setProvisioning(false);
+  }
+
+  async function handleProvision() {
+    const newJobs = selected.map(d => ({ id: crypto.randomUUID(), domain: d.name, state: 'pending', steps: [], nameservers: null }));
+    setJobs(newJobs);
+    setStarted(true);
+    await runProvision(newJobs);
+  }
+
+  async function handleRetry(jobId) {
+    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, state: 'pending', steps: [], nameservers: null } : j));
+    const job = jobs.find(j => j.id === jobId);
+    if (job) await runProvision([{ ...job, state: 'pending', steps: [], nameservers: null }]);
+  }
+
+  async function handleRetryAll() {
+    const failed = jobs.filter(j => j.state === 'error').map(j => ({ ...j, state: 'pending', steps: [], nameservers: null }));
+    setJobs(prev => prev.map(j => j.state === 'error' ? { ...j, state: 'pending', steps: [], nameservers: null } : j));
+    await runProvision(failed);
   }
 
   const canNext1 = selected.length > 0;
@@ -671,6 +686,11 @@ function CloudflareTab() {
                 {provisioning ? <span className="text-indigo-600 animate-pulse">Running…</span> : <span className="text-gray-500">Done —</span>}
                 {done > 0 && <span className="text-emerald-600 font-medium">{done} succeeded</span>}
                 {errors > 0 && <span className="text-red-600 font-medium">{errors} failed</span>}
+                {!provisioning && errors > 0 && (
+                  <button onClick={handleRetryAll} className="ml-auto text-xs px-2.5 py-1 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 transition-colors">
+                    Retry failed ({errors})
+                  </button>
+                )}
               </div>
               <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="w-full text-xs">
@@ -679,6 +699,7 @@ function CloudflareTab() {
                       <th className="text-left px-3 py-2 font-medium text-gray-500">Domain</th>
                       {CF_STEP_NAMES.map(s => <th key={s} className="text-center px-2 py-2 font-medium text-gray-500 whitespace-nowrap">{s}</th>)}
                       <th className="text-left px-3 py-2 font-medium text-gray-500">Nameservers</th>
+                      <th className="px-2 py-2" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -694,6 +715,11 @@ function CloudflareTab() {
                         ))}
                         <td className="px-3 py-2 font-mono text-gray-500 text-xs">
                           {job.nameservers ? job.nameservers.join(', ') : job.state === 'running' ? <span className="animate-pulse text-gray-300">…</span> : '—'}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          {job.state === 'error' && !provisioning && (
+                            <button onClick={() => handleRetry(job.id)} className="text-xs text-gray-400 hover:text-red-600 transition-colors">Retry</button>
+                          )}
                         </td>
                       </tr>
                     ))}
