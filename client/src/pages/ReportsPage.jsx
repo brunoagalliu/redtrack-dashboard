@@ -802,16 +802,15 @@ export default function ReportsPage() {
         <div className="card overflow-hidden">
           {/* Summary chips + column picker */}
           <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3 flex-wrap">
-            {(buyerFilter === 'ALL' ? BUYERS : [buyerFilter]).map((b) => {
+            {BUYERS.map((b) => {
               const campaigns = allCampaigns.filter((c) => c.buyer === b);
               if (!campaigns.length) return null;
+              const isActive = buyerFilter === 'ALL' || buyerFilter === b;
               return (
                 <button key={b}
                   onClick={() => { setBuyerFilter(buyerFilter === b ? 'ALL' : b); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                    buyerFilter === b || buyerFilter === 'ALL'
-                      ? BUYER_COLORS[b] + ' border-transparent'
-                      : 'bg-gray-50 text-gray-400 border-gray-200'
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+                    isActive ? BUYER_COLORS[b] + ' border-transparent' : 'bg-gray-100 text-gray-400 border-transparent opacity-50'
                   }`}>
                   <span>{b}</span><span className="opacity-70">{campaigns.length}</span>
                 </button>
