@@ -2,8 +2,11 @@ const express = require('express');
 const router  = express.Router();
 const redtrack = require('../redtrack');
 
-const PAGE_SIZE   = 10000;
-const CONCURRENCY = 5;
+const PAGE_SIZE     = 10000;
+const CONCURRENCY   = 5;
+const BATCH_DELAY_MS = 150;
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function escapeCSV(v) {
   const s = v == null ? '' : String(v);
@@ -113,6 +116,7 @@ router.get('/download', async (req, res) => {
     for (const item of first.data.items ?? []) res.write(toLine(item));
 
     for (let p = 2; p <= pageCount; p += CONCURRENCY) {
+      if (p > 2) await sleep(BATCH_DELAY_MS);
       const batch = [];
       for (let q = p; q < p + CONCURRENCY && q <= pageCount; q++) batch.push(q);
       const pages = await Promise.all(
