@@ -2,9 +2,9 @@ const express = require('express');
 const router  = express.Router();
 const redtrack = require('../redtrack');
 
-const PAGE_SIZE     = 10000;
-const CONCURRENCY   = 5;
-const BATCH_DELAY_MS = 150;
+const PAGE_SIZE      = 10000;
+const CONCURRENCY    = 2;
+const BATCH_DELAY_MS = 400;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
