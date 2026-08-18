@@ -50,6 +50,20 @@ function localDateStr(date) {
 function today()     { return localDateStr(new Date()); }
 function yesterday() { return localDateStr(new Date(Date.now() - 86400000)); }
 
+function monthlyChunks(from, to) {
+  const chunks = [];
+  let cur = new Date(from + 'T12:00:00');
+  const end = new Date(to + 'T12:00:00');
+  while (cur <= end) {
+    const chunkFrom = localDateStr(cur);
+    const lastOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+    const chunkTo = localDateStr(lastOfMonth <= end ? lastOfMonth : end);
+    chunks.push({ from: chunkFrom, to: chunkTo });
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+  }
+  return chunks;
+}
+
 export default function ClicksExportPage() {
   const [dateFrom, setDateFrom] = useState(yesterday);
   const [dateTo, setDateTo]     = useState(today);
@@ -60,7 +74,8 @@ export default function ClicksExportPage() {
   const [clickId,    setClickId]    = useState('');
   const [cols, setCols]             = useState(() => new Set(DEFAULT_COLS));
   const [downloading, setDownloading] = useState(false);
-  const [error, setError]           = useState(null);
+  const [progress,    setProgress]    = useState('');
+  const [error, setError]             = useState(null);
 
   const { data: campaigns = [] } = useQuery({ queryKey: ['clicks-export', 'campaigns'], queryFn: api.getClicksExportCampaigns });
   const { data: sources   = [] } = useQuery({ queryKey: ['clicks-export', 'sources'],   queryFn: api.getClicksExportSources });
@@ -85,10 +100,10 @@ export default function ClicksExportPage() {
 
     setDownloading(true);
     setError(null);
+    setProgress('');
+
     try {
-      const params = {
-        date_from:   dateFrom,
-        date_to:     dateTo,
+      const baseParams = {
         campaign_id: campaignId || undefined,
         source_id:   sourceId   || undefined,
         network_id:  networkId  || undefined,
@@ -96,9 +111,30 @@ export default function ClicksExportPage() {
         click_id:    clickId    || undefined,
         columns:     [...cols].join(','),
       };
-      const res = await api.downloadClicksExport(params);
-      if (!res) return;
-      const blob = await res.blob();
+
+      const chunks = monthlyChunks(dateFrom, dateTo);
+      let csvParts = [];
+
+      for (let i = 0; i < chunks.length; i++) {
+        const { from, to } = chunks[i];
+        setProgress(chunks.length > 1
+          ? `Downloading chunk ${i + 1} of ${chunks.length} (${from} → ${to})…`
+          : 'Downloading…');
+
+        const res = await api.downloadClicksExport({ ...baseParams, date_from: from, date_to: to });
+        if (!res) return;
+        const text = await res.text();
+
+        if (i === 0) {
+          csvParts.push(text);
+        } else {
+          // strip the header row from subsequent chunks
+          const newline = text.indexOf('\n');
+          if (newline !== -1) csvParts.push(text.slice(newline + 1));
+        }
+      }
+
+      const blob = new Blob(csvParts, { type: 'text/csv;charset=utf-8;' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
@@ -111,6 +147,7 @@ export default function ClicksExportPage() {
       setError(err.message || 'Download failed.');
     } finally {
       setDownloading(false);
+      setProgress('');
     }
   }
 
@@ -259,7 +296,7 @@ export default function ClicksExportPage() {
 
       {downloading && (
         <p className="text-sm text-gray-500 text-center">
-          Fetching click data from RedTrack — this may take a moment for large date ranges…
+          {progress || 'Preparing download…'}
         </p>
       )}
     </div>

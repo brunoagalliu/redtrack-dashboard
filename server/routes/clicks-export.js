@@ -5,6 +5,7 @@ const redtrack = require('../redtrack');
 const PAGE_SIZE = 10000;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+const PAGE_DELAY_MS = 80;
 
 function escapeCSV(v) {
   const s = v == null ? '' : String(v);
@@ -114,7 +115,7 @@ router.get('/download', async (req, res) => {
     for (const item of first.data.items ?? []) res.write(toLine(item));
 
     for (let page = 2; page <= pageCount; page++) {
-      await sleep(350);
+      await sleep(PAGE_DELAY_MS);
       const { data } = await redtrack.get('/tracks', { params: { ...trackParams, per: PAGE_SIZE, page } });
       for (const item of data.items ?? []) res.write(toLine(item));
     }
