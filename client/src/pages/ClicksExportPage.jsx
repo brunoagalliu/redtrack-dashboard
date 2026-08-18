@@ -40,13 +40,15 @@ const DEFAULT_COLS = new Set([
   'sub1', 'sub2', 'sub3', 'country', 'device', 'os', 'browser', 'offer', 'cost',
 ]);
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
+function localDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
-function yesterday() {
-  return new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-}
+function today()     { return localDateStr(new Date()); }
+function yesterday() { return localDateStr(new Date(Date.now() - 86400000)); }
 
 export default function ClicksExportPage() {
   const [dateFrom, setDateFrom] = useState(yesterday);
