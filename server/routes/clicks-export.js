@@ -4,7 +4,7 @@ const redtrack = require('../redtrack');
 
 const PAGE_SIZE      = 10000;
 const CONCURRENCY    = 2;
-const BATCH_DELAY_MS = 400;
+const BATCH_DELAY_MS = 600;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
