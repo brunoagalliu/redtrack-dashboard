@@ -737,6 +737,7 @@ function CloudflareTab() {
 // ─── VERCEL PROVISION TAB ────────────────────────────────────────────────────
 
 function VercelTab() {
+  const [provider, setProvider] = useState('namecheap');
   const [domains, setDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [fetchError, setFetchError] = useState('');
@@ -747,9 +748,11 @@ function VercelTab() {
   const selected = domains.filter(d => d.selected);
 
   async function fetchDomains() {
-    setLoadingDomains(true); setFetchError('');
+    setLoadingDomains(true); setFetchError(''); setDomains([]);
     try {
-      const data = await api.getNamecheapDomains();
+      const data = provider === 'godaddy'
+        ? await api.getGodaddyDomains()
+        : await api.getNamecheapDomains();
       setDomains(data.domains.map(d => ({ ...d, selected: false })));
     } catch (e) { setFetchError(e.message || 'Failed to fetch'); }
     finally { setLoadingDomains(false); }
@@ -760,7 +763,7 @@ function VercelTab() {
     for (const domain of domainNames) {
       setJobs(prev => prev.map(j => j.domain === domain ? { ...j, state: 'running', steps: [] } : j));
       try {
-        const data = await api.vercelProvision({ domains: [domain], mode });
+        const data = await api.vercelProvision({ domains: [domain], mode, dnsProvider: provider });
         const result = data.results?.[0];
         const allOk = result?.steps.every(s => s.status === 'ok');
         setJobs(prev => prev.map(j => j.domain === domain ? { ...j, state: allOk ? 'done' : 'error', steps: result?.steps ?? [] } : j));
@@ -787,6 +790,19 @@ function VercelTab() {
 
   return (
     <div className="space-y-5">
+      {/* Provider toggle */}
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-medium text-gray-500">Registrar</span>
+        <div className="flex p-0.5 bg-gray-100 rounded-lg">
+          {[['namecheap', 'Namecheap'], ['godaddy', 'GoDaddy']].map(([p, label]) => (
+            <button key={p} onClick={() => { setProvider(p); setDomains([]); setJobs([]); }}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${provider === p ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <DomainSelector domains={domains} setDomains={setDomains} loading={loadingDomains} onFetch={fetchDomains} error={fetchError} />
 
       {selected.length > 0 && jobs.length === 0 && (

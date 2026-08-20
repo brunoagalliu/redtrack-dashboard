@@ -129,6 +129,7 @@ export const api = {
   brainstormDomains: (description) => request('/domain-finder/brainstorm', { method: 'POST', body: JSON.stringify({ description }) }),
   checkDomains: (domains) => request('/domain-finder/check-domains', { method: 'POST', body: JSON.stringify({ domains }) }),
   getNamecheapDomains: () => request('/domain-finder/domains'),
+  getGodaddyDomains: () => request('/domain-finder/godaddy-domains'),
   provisionDomain: (body) => request('/domain-finder/provision', { method: 'POST', body: JSON.stringify(body) }),
   vercelProvision: (body) => request('/domain-finder/vercel-provision', { method: 'POST', body: JSON.stringify(body) }),
 

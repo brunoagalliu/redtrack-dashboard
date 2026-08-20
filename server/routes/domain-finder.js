@@ -278,6 +278,38 @@ router.post('/provision', async (req, res) => {
   }
 });
 
+// ─── GoDaddy helpers ─────────────────────────────────────────────────────────
+
+function gdfetch(path, method = 'GET', body) {
+  const { GODADDY_API_KEY, GODADDY_API_SECRET, GODADDY_SHOPPER_ID } = process.env;
+  return fetch(`https://api.godaddy.com/v1${path}`, {
+    method,
+    headers: {
+      Authorization: `sso-key ${GODADDY_API_KEY}:${GODADDY_API_SECRET}`,
+      'Content-Type': 'application/json',
+      ...(GODADDY_SHOPPER_ID ? { 'X-Shopper-Id': GODADDY_SHOPPER_ID } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  }).then(r => r.status === 204 || r.headers.get('content-length') === '0' ? { success: true } : r.json());
+}
+
+router.get('/godaddy-domains', async (req, res) => {
+  const { GODADDY_API_KEY, GODADDY_API_SECRET } = process.env;
+  if (!GODADDY_API_KEY || !GODADDY_API_SECRET) return res.status(500).json({ error: 'GODADDY_API_KEY and GODADDY_API_SECRET not configured' });
+  try {
+    let all = []; let marker = null;
+    do {
+      const qs = new URLSearchParams({ limit: '500', statuses: 'ACTIVE', ...(marker ? { marker } : {}) });
+      const data = await gdfetch(`/domains?${qs}`);
+      if (data.code) return res.status(502).json({ error: data.message ?? 'GoDaddy API error' });
+      const page = Array.isArray(data) ? data : [];
+      all.push(...page.map(d => ({ name: d.domain.toLowerCase(), expires: d.expires, created: d.createdAt })));
+      marker = page.length === 500 ? page[page.length - 1].domain : null;
+    } while (marker);
+    res.json({ domains: all, total: all.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Vercel helpers ───────────────────────────────────────────────────────────
 
 async function vfetch(path, method = 'GET', body) {
@@ -305,15 +337,20 @@ function parseHostsFromXml(xml) {
 
 // POST /vercel-provision
 router.post('/vercel-provision', async (req, res) => {
-  const { domains, mode = 'nameservers' } = req.body;
+  const { domains, mode = 'nameservers', dnsProvider = 'namecheap' } = req.body;
   const VERCEL_NS = ['ns1.vercel-dns.com', 'ns2.vercel-dns.com'];
   const VERCEL_A_FALLBACK = '216.150.1.1';
   const projectId = process.env.VERCEL_PROJECT_ID;
   if (!projectId || !process.env.VERCEL_TOKEN) return res.status(500).json({ error: 'VERCEL_TOKEN and VERCEL_PROJECT_ID must be set' });
-  const base = ncBase();
-  if (!base) return res.status(500).json({ error: 'Namecheap credentials not configured' });
 
-  const clientIp = await getOutboundIp();
+  const isGodaddy = dnsProvider === 'godaddy';
+  const base = isGodaddy ? null : ncBase();
+  if (!isGodaddy && !base) return res.status(500).json({ error: 'Namecheap credentials not configured' });
+  if (isGodaddy && (!process.env.GODADDY_API_KEY || !process.env.GODADDY_API_SECRET)) {
+    return res.status(500).json({ error: 'GODADDY_API_KEY and GODADDY_API_SECRET not configured' });
+  }
+
+  const clientIp = isGodaddy ? null : await getOutboundIp();
   const results = [];
 
   for (const domain of domains) {
@@ -332,8 +369,26 @@ router.post('/vercel-provision', async (req, res) => {
       steps.push({ name: 'Add to Vercel', status: 'ok' });
     }
 
-    // 2. DNS
-    if (mode === 'nameservers') {
+    // 2. DNS — GoDaddy branch
+    if (isGodaddy) {
+      if (mode === 'nameservers') {
+        const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: VERCEL_NS });
+        const ok = data.success || (!data.code && !data.message);
+        steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? VERCEL_NS.join(', ') : (data.message ?? JSON.stringify(data)) });
+      } else {
+        let aIp = VERCEL_A_FALLBACK;
+        try {
+          const cfg = await vfetch(`/v9/projects/${projectId}/domains/${domain}`);
+          const aRecord = cfg.verification?.find(v => v.type === 'A');
+          if (aRecord?.value) aIp = aRecord.value;
+        } catch {}
+        const data = await gdfetch(`/domains/${domain}/records/A/@`, 'PUT', [{ data: aIp, ttl: 600 }]);
+        const ok = data.success || (!data.code && !data.message);
+        steps.push({ name: 'Set A record', status: ok ? 'ok' : 'error', detail: ok ? `@ → ${aIp}` : (data.message ?? JSON.stringify(data)) });
+      }
+
+    // 2. DNS — Namecheap branch
+    } else if (mode === 'nameservers') {
       const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setCustom', SLD: sld, TLD: tld, Nameservers: VERCEL_NS.join(',') });
       const nsRes = await fetch(`https://api.namecheap.com/xml.response?${params}`);
       const nsXml = await nsRes.text();
@@ -341,7 +396,7 @@ router.post('/vercel-provision', async (req, res) => {
       const nsErr = nsXml.match(/<Error[^>]*>([^<]+)<\/Error>/)?.[1]?.trim() ?? nsXml.slice(0, 200);
       steps.push({ name: 'Set nameservers', status: nsOk ? 'ok' : 'error', detail: nsOk ? VERCEL_NS.join(', ') : nsErr });
     } else {
-      // A record mode
+      // Namecheap A record mode
       let aIp = VERCEL_A_FALLBACK;
       try {
         const cfg = await vfetch(`/v9/projects/${projectId}/domains/${domain}`);
