@@ -282,7 +282,7 @@ router.post('/provision', async (req, res) => {
     // 5. Update nameservers at registrar
     if (registrar === 'godaddy') {
       const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: nameservers });
-      const ok = data.success || (!data.code && !data.message);
+      const ok = data._ok === true;
       steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? nameservers.join(', ') : (data.message ?? JSON.stringify(data)) });
     } else if (base) {
       const parts = domain.split('.');
@@ -303,9 +303,9 @@ router.post('/provision', async (req, res) => {
 
 // ─── GoDaddy helpers ─────────────────────────────────────────────────────────
 
-function gdfetch(path, method = 'GET', body) {
+async function gdfetch(path, method = 'GET', body) {
   const { GODADDY_API_KEY, GODADDY_API_SECRET, GODADDY_SHOPPER_ID } = process.env;
-  return fetch(`https://api.godaddy.com/v1${path}`, {
+  const r = await fetch(`https://api.godaddy.com/v1${path}`, {
     method,
     headers: {
       Authorization: `sso-key ${GODADDY_API_KEY}:${GODADDY_API_SECRET}`,
@@ -313,7 +313,15 @@ function gdfetch(path, method = 'GET', body) {
       ...(GODADDY_SHOPPER_ID ? { 'X-Shopper-Id': GODADDY_SHOPPER_ID } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
-  }).then(r => r.status === 204 || r.headers.get('content-length') === '0' ? { success: true } : r.json());
+  });
+  const text = await r.text();
+  console.log(`[gdfetch] ${method} ${path} → ${r.status}: ${text.slice(0, 300)}`);
+  if (r.status === 204 || !text.trim()) return { _ok: true };
+  try {
+    return { ...JSON.parse(text), _ok: r.status >= 200 && r.status < 300 };
+  } catch {
+    return { _ok: false, message: text.slice(0, 200) };
+  }
 }
 
 router.get('/godaddy-domains', async (req, res) => {
@@ -396,7 +404,7 @@ router.post('/vercel-provision', async (req, res) => {
     if (isGodaddy) {
       if (mode === 'nameservers') {
         const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: VERCEL_NS });
-        const ok = data.success || (!data.code && !data.message);
+        const ok = data._ok === true;
         steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? VERCEL_NS.join(', ') : (data.message ?? JSON.stringify(data)) });
       } else {
         let aIp = VERCEL_A_FALLBACK;
@@ -406,7 +414,7 @@ router.post('/vercel-provision', async (req, res) => {
           if (aRecord?.value) aIp = aRecord.value;
         } catch {}
         const data = await gdfetch(`/domains/${domain}/records/A/@`, 'PUT', [{ data: aIp, ttl: 600 }]);
-        const ok = data.success || (!data.code && !data.message);
+        const ok = data._ok === true;
         steps.push({ name: 'Set A record', status: ok ? 'ok' : 'error', detail: ok ? `@ → ${aIp}` : (data.message ?? JSON.stringify(data)) });
       }
 
