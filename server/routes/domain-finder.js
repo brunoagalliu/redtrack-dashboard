@@ -200,7 +200,7 @@ router.get('/cloudflare-accounts', (_req, res) => {
 
 // POST /provision — add domain to Cloudflare, set DNS records, update Namecheap NS
 router.post('/provision', async (req, res) => {
-  const { domain, security = {}, network = { proxy: false, sslMode: 'none' }, records = [], cloudflareAccount = 'adam' } = req.body;
+  const { domain, security = {}, network = { proxy: false, sslMode: 'none' }, records = [], cloudflareAccount = 'adam', registrar = 'namecheap' } = req.body;
   const steps = [];
 
   try {
@@ -209,8 +209,8 @@ router.post('/provision', async (req, res) => {
     const cfAccountId = cfAccount.accountId();
     const cf = (path, method, body) => cfetch(path, method, body, cfToken);
 
-    const base = ncBase();
-    const clientIp = await getOutboundIp();
+    const base = registrar === 'namecheap' ? ncBase() : null;
+    const clientIp = registrar === 'namecheap' ? await getOutboundIp() : null;
     let zoneId, nameservers;
 
     // 1. Add zone to Cloudflare
@@ -279,8 +279,12 @@ router.post('/provision', async (req, res) => {
       steps.push({ name: 'Set SSL/TLS', status: r.success ? 'ok' : 'error', detail: r.success ? network.sslMode : r.errors?.[0]?.message });
     }
 
-    // 5. Namecheap NS
-    if (base) {
+    // 5. Update nameservers at registrar
+    if (registrar === 'godaddy') {
+      const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: nameservers });
+      const ok = data.success || (!data.code && !data.message);
+      steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? nameservers.join(', ') : (data.message ?? JSON.stringify(data)) });
+    } else if (base) {
       const parts = domain.split('.');
       const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setCustom', SLD: parts[0], TLD: parts.slice(1).join('.'), Nameservers: nameservers.join(',') });
       const nsRes = await fetch(`https://api.namecheap.com/xml.response?${params}`);
