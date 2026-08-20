@@ -478,6 +478,7 @@ function StepBadge({ step }) {
 const CF_STEP_NAMES = ['Add to Cloudflare', 'Add DNS records', 'Enable security', 'Set SSL/TLS', 'Set nameservers'];
 
 function CloudflareTab() {
+  const [cfAccount, setCfAccount] = useState('adam');
   const [step, setStep] = useState(1);
   const [domains, setDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
@@ -515,7 +516,7 @@ function CloudflareTab() {
       await Promise.all(jobsToRun.slice(i, i + CONCURRENCY).map(async job => {
         setJobs(prev => prev.map(j => j.id === job.id ? { ...j, state: 'running', steps: [] } : j));
         try {
-          const data = await api.provisionDomain({ domain: job.domain, security, network, records });
+          const data = await api.provisionDomain({ domain: job.domain, security, network, records, cloudflareAccount: cfAccount });
           const allOk = data.steps?.every(s => s.status === 'ok');
           setJobs(prev => prev.map(j => j.id === job.id ? { ...j, state: allOk ? 'done' : 'error', steps: data.steps ?? [], nameservers: data.nameservers } : j));
         } catch (e) {
@@ -553,6 +554,19 @@ function CloudflareTab() {
   return (
     <div className="space-y-5">
       {/* Step indicator */}
+      {/* Account selector */}
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-medium text-gray-500">Cloudflare account</span>
+        <div className="flex p-0.5 bg-gray-100 rounded-lg">
+          {[['adam', 'Adam'], ['superior', 'Superior']].map(([id, label]) => (
+            <button key={id} onClick={() => { setCfAccount(id); setStep(1); setJobs([]); setStarted(false); setDomains([]); }}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cfAccount === id ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex items-center gap-1">
         {['Select Domains', 'Configure', 'Provision'].map((label, i) => {
           const n = i + 1;

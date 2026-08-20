@@ -175,27 +175,46 @@ router.get('/domains', async (req, res) => {
 
 // ─── Cloudflare helpers ───────────────────────────────────────────────────────
 
-async function cfetch(path, method = 'GET', body) {
-  const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+const CF_ACCOUNTS = {
+  adam:     { token: () => process.env.CLOUDFLARE_API_TOKEN,          accountId: () => process.env.CLOUDFLARE_ACCOUNT_ID },
+  superior: { token: () => process.env.CLOUDFLARE_API_TOKEN_SUPERIOR, accountId: () => process.env.CLOUDFLARE_ACCOUNT_ID_SUPERIOR },
+};
+
+function cfetch(path, method = 'GET', body, token) {
+  const t = token ?? process.env.CLOUDFLARE_API_TOKEN;
+  return fetch(`https://api.cloudflare.com/client/v4${path}`, {
     method,
-    headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  try { return await res.json(); } catch { return { success: false, errors: [{ message: `HTTP ${res.status}` }] }; }
+  }).then(r => r.json()).catch(() => ({ success: false, errors: [{ message: 'Parse error' }] }));
 }
+
+// GET /cloudflare-accounts — list configured accounts for UI
+router.get('/cloudflare-accounts', (_req, res) => {
+  const accounts = [
+    { id: 'adam',     name: 'Adam',     configured: !!(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID) },
+    { id: 'superior', name: 'Superior', configured: !!(process.env.CLOUDFLARE_API_TOKEN_SUPERIOR && process.env.CLOUDFLARE_ACCOUNT_ID_SUPERIOR) },
+  ];
+  res.json({ accounts });
+});
 
 // POST /provision — add domain to Cloudflare, set DNS records, update Namecheap NS
 router.post('/provision', async (req, res) => {
-  const { domain, security = {}, network = { proxy: false, sslMode: 'none' }, records = [] } = req.body;
+  const { domain, security = {}, network = { proxy: false, sslMode: 'none' }, records = [], cloudflareAccount = 'adam' } = req.body;
   const steps = [];
 
   try {
+    const cfAccount = CF_ACCOUNTS[cloudflareAccount] ?? CF_ACCOUNTS.adam;
+    const cfToken = cfAccount.token();
+    const cfAccountId = cfAccount.accountId();
+    const cf = (path, method, body) => cfetch(path, method, body, cfToken);
+
     const base = ncBase();
     const clientIp = await getOutboundIp();
     let zoneId, nameservers;
 
     // 1. Add zone to Cloudflare
-    const zoneRes = await cfetch('/zones', 'POST', { name: domain, type: 'full', account: { id: process.env.CLOUDFLARE_ACCOUNT_ID } });
+    const zoneRes = await cf('/zones', 'POST', { name: domain, type: 'full', account: { id: cfAccountId } });
     if (zoneRes.success) {
       zoneId = zoneRes.result.id;
       nameservers = zoneRes.result.name_servers;
@@ -203,13 +222,13 @@ router.post('/provision', async (req, res) => {
     } else {
       const alreadyExists = zoneRes.errors?.some(e => e.code === 1049 || e.code === 1061 || e.code === 1097 || e.message?.toLowerCase().includes('already'));
       if (alreadyExists) {
-        const existing = await cfetch(`/zones?name=${domain}`);
+        const existing = await cf(`/zones?name=${domain}`);
         if (!existing.success || !existing.result?.[0]) {
           steps.push({ name: 'Add to Cloudflare', status: 'error', detail: 'Zone exists but could not be fetched' });
           return res.json({ steps });
         }
         zoneId = existing.result[0].id;
-        const zoneDetail = await cfetch(`/zones/${zoneId}`);
+        const zoneDetail = await cf(`/zones/${zoneId}`);
         nameservers = zoneDetail.result?.name_servers ?? existing.result[0].name_servers ?? [];
         steps.push({ name: 'Add to Cloudflare', status: 'ok', detail: 'Zone already existed' });
       } else {
@@ -221,15 +240,15 @@ router.post('/provision', async (req, res) => {
     // 2. DNS records
     for (const rec of records) {
       const cfName = rec.name === '@' ? domain : rec.name;
-      const r = await cfetch(`/zones/${zoneId}/dns_records`, 'POST', { type: rec.type, name: cfName, content: rec.content, ttl: 1, proxied: !!network.proxy });
+      const r = await cf(`/zones/${zoneId}/dns_records`, 'POST', { type: rec.type, name: cfName, content: rec.content, ttl: 1, proxied: !!network.proxy });
       if (!r.success) {
         const dup = r.errors?.some(e => e.code === 81057 || e.message?.toLowerCase().includes('already'));
         if (dup) {
           const qName = rec.name === '*' ? `*.${domain}` : rec.name === '@' ? domain : `${rec.name}.${domain}`;
-          const existing = await cfetch(`/zones/${zoneId}/dns_records?type=${rec.type}&name=${qName}`);
+          const existing = await cf(`/zones/${zoneId}/dns_records?type=${rec.type}&name=${qName}`);
           const recId = existing.result?.[0]?.id;
           if (recId) {
-            const patch = await cfetch(`/zones/${zoneId}/dns_records/${recId}`, 'PATCH', { content: rec.content, proxied: !!network.proxy, ttl: 1 });
+            const patch = await cf(`/zones/${zoneId}/dns_records/${recId}`, 'PATCH', { content: rec.content, proxied: !!network.proxy, ttl: 1 });
             if (!patch.success) { steps.push({ name: 'Add DNS records', status: 'error', detail: patch.errors?.[0]?.message }); return res.json({ steps }); }
           }
         } else {
@@ -248,7 +267,7 @@ router.post('/provision', async (req, res) => {
         ...(security.aiLabyrinth      ? { crawler_protection: 'enabled' }         : {}),
         ...(security.aiBotsProtection ? { ai_bots_protection: 'block' }           : {}),
       };
-      const r = await cfetch(`/zones/${zoneId}/bot_management`, 'PUT', body);
+      const r = await cf(`/zones/${zoneId}/bot_management`, 'PUT', body);
       steps.push({ name: 'Enable security', status: r.success ? 'ok' : 'error', detail: r.success
         ? [security.botFightMode && 'Bot Fight Mode', security.aiLabyrinth && 'AI Labyrinth', security.aiBotsProtection && 'AI Bots Protection'].filter(Boolean).join(', ')
         : r.errors?.[0]?.message });
@@ -256,7 +275,7 @@ router.post('/provision', async (req, res) => {
 
     // 4. SSL/TLS
     if (network.sslMode && network.sslMode !== 'none') {
-      const r = await cfetch(`/zones/${zoneId}/settings/ssl`, 'PATCH', { value: network.sslMode });
+      const r = await cf(`/zones/${zoneId}/settings/ssl`, 'PATCH', { value: network.sslMode });
       steps.push({ name: 'Set SSL/TLS', status: r.success ? 'ok' : 'error', detail: r.success ? network.sslMode : r.errors?.[0]?.message });
     }
 
