@@ -284,14 +284,10 @@ router.post('/provision', async (req, res) => {
 
     // 5. Update nameservers at registrar
     if (registrar === 'godaddy') {
-      const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: nameservers }, gdKey, gdSecret);
+      const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: nameservers, renewAuto: false }, gdKey, gdSecret);
       const ok = data._ok === true;
       steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? nameservers.join(', ') : (data.message ?? JSON.stringify(data)) });
-      if (ok) {
-        const arData = await gdfetch(`/domains/${domain}`, 'PATCH', { renewAuto: false }, gdKey, gdSecret);
-        const arOk = arData._ok === true;
-        steps.push({ name: 'Disable auto-renew', status: arOk ? 'ok' : 'error', detail: arOk ? 'auto-renew disabled' : (arData.message ?? JSON.stringify(arData)) });
-      }
+      if (ok) steps.push({ name: 'Disable auto-renew', status: 'ok', detail: 'auto-renew disabled' });
     } else if (base) {
       const parts = domain.split('.');
       const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setCustom', SLD: parts[0], TLD: parts.slice(1).join('.'), Nameservers: nameservers.join(',') });
@@ -431,14 +427,10 @@ router.post('/vercel-provision', async (req, res) => {
     // 2. DNS — GoDaddy branch
     if (isGodaddy) {
       if (mode === 'nameservers') {
-        const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: VERCEL_NS }, gdKey, gdSecret);
+        const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: VERCEL_NS, renewAuto: false }, gdKey, gdSecret);
         const ok = data._ok === true;
         steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? VERCEL_NS.join(', ') : (data.message ?? JSON.stringify(data)) });
-        if (ok) {
-          const arData = await gdfetch(`/domains/${domain}`, 'PATCH', { renewAuto: false }, gdKey, gdSecret);
-          const arOk = arData._ok === true;
-          steps.push({ name: 'Disable auto-renew', status: arOk ? 'ok' : 'error', detail: arOk ? 'auto-renew disabled' : (arData.message ?? JSON.stringify(arData)) });
-        }
+        if (ok) steps.push({ name: 'Disable auto-renew', status: 'ok', detail: 'auto-renew disabled' });
       } else {
         let aIp = VERCEL_A_FALLBACK;
         try {
