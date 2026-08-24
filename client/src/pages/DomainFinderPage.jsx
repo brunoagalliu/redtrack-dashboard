@@ -480,6 +480,7 @@ const CF_STEP_NAMES = ['Add to Cloudflare', 'Add DNS records', 'Enable security'
 function CloudflareTab() {
   const [cfAccount, setCfAccount] = useState('adam');
   const [registrar, setRegistrar] = useState('namecheap');
+  const [gdAccount, setGdAccount] = useState('adam');
   const [step, setStep] = useState(1);
   const [domains, setDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
@@ -500,7 +501,9 @@ function CloudflareTab() {
   async function fetchDomains() {
     setLoadingDomains(true); setFetchError('');
     try {
-      const data = await api.getNamecheapDomains();
+      const data = registrar === 'godaddy'
+        ? await api.getGodaddyDomains(gdAccount)
+        : await api.getNamecheapDomains();
       setDomains(data.domains.map(d => ({ ...d, selected: false })));
     } catch (e) { setFetchError(e.message || 'Failed to fetch'); }
     finally { setLoadingDomains(false); }
@@ -517,7 +520,7 @@ function CloudflareTab() {
       await Promise.all(jobsToRun.slice(i, i + CONCURRENCY).map(async job => {
         setJobs(prev => prev.map(j => j.id === job.id ? { ...j, state: 'running', steps: [] } : j));
         try {
-          const data = await api.provisionDomain({ domain: job.domain, security, network, records, cloudflareAccount: cfAccount, registrar });
+          const data = await api.provisionDomain({ domain: job.domain, security, network, records, cloudflareAccount: cfAccount, registrar, godaddyAccount: gdAccount });
           const allOk = data.steps?.every(s => s.status === 'ok');
           setJobs(prev => prev.map(j => j.id === job.id ? { ...j, state: allOk ? 'done' : 'error', steps: data.steps ?? [], nameservers: data.nameservers } : j));
         } catch (e) {
@@ -579,6 +582,19 @@ function CloudflareTab() {
             ))}
           </div>
         </div>
+        {registrar === 'godaddy' && (
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-gray-500">GoDaddy account</span>
+            <div className="flex p-0.5 bg-gray-100 rounded-lg">
+              {[['adam', 'Adam'], ['superiorsms', 'SuperiorSMS']].map(([id, label]) => (
+                <button key={id} onClick={() => { setGdAccount(id); setStep(1); setJobs([]); setStarted(false); setDomains([]); }}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${gdAccount === id ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-1">
@@ -766,6 +782,7 @@ function CloudflareTab() {
 
 function VercelTab() {
   const [provider, setProvider] = useState('namecheap');
+  const [gdAccount, setGdAccount] = useState('adam');
   const [domains, setDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [fetchError, setFetchError] = useState('');
@@ -779,7 +796,7 @@ function VercelTab() {
     setLoadingDomains(true); setFetchError(''); setDomains([]);
     try {
       const data = provider === 'godaddy'
-        ? await api.getGodaddyDomains()
+        ? await api.getGodaddyDomains(gdAccount)
         : await api.getNamecheapDomains();
       setDomains(data.domains.map(d => ({ ...d, selected: false })));
     } catch (e) { setFetchError(e.message || 'Failed to fetch'); }
@@ -791,7 +808,7 @@ function VercelTab() {
     for (const domain of domainNames) {
       setJobs(prev => prev.map(j => j.domain === domain ? { ...j, state: 'running', steps: [] } : j));
       try {
-        const data = await api.vercelProvision({ domains: [domain], mode, dnsProvider: provider });
+        const data = await api.vercelProvision({ domains: [domain], mode, dnsProvider: provider, godaddyAccount: gdAccount });
         const result = data.results?.[0];
         const allOk = result?.steps.every(s => s.status === 'ok');
         setJobs(prev => prev.map(j => j.domain === domain ? { ...j, state: allOk ? 'done' : 'error', steps: result?.steps ?? [] } : j));
@@ -819,16 +836,31 @@ function VercelTab() {
   return (
     <div className="space-y-5">
       {/* Provider toggle */}
-      <div className="flex items-center gap-3">
-        <span className="text-xs font-medium text-gray-500">Registrar</span>
-        <div className="flex p-0.5 bg-gray-100 rounded-lg">
-          {[['namecheap', 'Namecheap'], ['godaddy', 'GoDaddy']].map(([p, label]) => (
-            <button key={p} onClick={() => { setProvider(p); setDomains([]); setJobs([]); }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${provider === p ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              {label}
-            </button>
-          ))}
+      <div className="flex items-center gap-5 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-medium text-gray-500">Registrar</span>
+          <div className="flex p-0.5 bg-gray-100 rounded-lg">
+            {[['namecheap', 'Namecheap'], ['godaddy', 'GoDaddy']].map(([p, label]) => (
+              <button key={p} onClick={() => { setProvider(p); setDomains([]); setJobs([]); }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${provider === p ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
+        {provider === 'godaddy' && (
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-gray-500">GoDaddy account</span>
+            <div className="flex p-0.5 bg-gray-100 rounded-lg">
+              {[['adam', 'Adam'], ['superiorsms', 'SuperiorSMS']].map(([id, label]) => (
+                <button key={id} onClick={() => { setGdAccount(id); setDomains([]); setJobs([]); }}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${gdAccount === id ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <DomainSelector domains={domains} setDomains={setDomains} loading={loadingDomains} onFetch={fetchDomains} error={fetchError} />

@@ -130,7 +130,8 @@ export const api = {
   checkDomains: (domains) => request('/domain-finder/check-domains', { method: 'POST', body: JSON.stringify({ domains }) }),
   getCloudflareAccounts: () => request('/domain-finder/cloudflare-accounts'),
   getNamecheapDomains: () => request('/domain-finder/domains'),
-  getGodaddyDomains: () => request('/domain-finder/godaddy-domains'),
+  getGodaddyAccounts: () => request('/domain-finder/godaddy-accounts'),
+  getGodaddyDomains: (account = 'adam') => request(`/domain-finder/godaddy-domains?account=${account}`),
   provisionDomain: (body) => request('/domain-finder/provision', { method: 'POST', body: JSON.stringify(body) }),
   vercelProvision: (body) => request('/domain-finder/vercel-provision', { method: 'POST', body: JSON.stringify(body) }),
 

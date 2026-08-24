@@ -198,9 +198,9 @@ router.get('/cloudflare-accounts', (_req, res) => {
   res.json({ accounts });
 });
 
-// POST /provision — add domain to Cloudflare, set DNS records, update Namecheap NS
+// POST /provision — add domain to Cloudflare, set DNS records, update Namecheap/GoDaddy NS
 router.post('/provision', async (req, res) => {
-  const { domain, security = {}, network = { proxy: false, sslMode: 'none' }, records = [], cloudflareAccount = 'adam', registrar = 'namecheap' } = req.body;
+  const { domain, security = {}, network = { proxy: false, sslMode: 'none' }, records = [], cloudflareAccount = 'adam', registrar = 'namecheap', godaddyAccount = 'adam' } = req.body;
   const steps = [];
 
   try {
@@ -208,6 +208,9 @@ router.post('/provision', async (req, res) => {
     const cfToken = cfAccount.token();
     const cfAccountId = cfAccount.accountId();
     const cf = (path, method, body) => cfetch(path, method, body, cfToken);
+
+    const gdAcc = GD_ACCOUNTS[godaddyAccount] ?? GD_ACCOUNTS.adam;
+    const gdKey = gdAcc.key(); const gdSecret = gdAcc.secret();
 
     const base = registrar === 'namecheap' ? ncBase() : null;
     const clientIp = registrar === 'namecheap' ? await getOutboundIp() : null;
@@ -281,7 +284,7 @@ router.post('/provision', async (req, res) => {
 
     // 5. Update nameservers at registrar
     if (registrar === 'godaddy') {
-      const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: nameservers });
+      const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: nameservers }, gdKey, gdSecret);
       const ok = data._ok === true;
       steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? nameservers.join(', ') : (data.message ?? JSON.stringify(data)) });
     } else if (base) {
@@ -303,14 +306,21 @@ router.post('/provision', async (req, res) => {
 
 // ─── GoDaddy helpers ─────────────────────────────────────────────────────────
 
-async function gdfetch(path, method = 'GET', body) {
-  const { GODADDY_API_KEY, GODADDY_API_SECRET, GODADDY_SHOPPER_ID } = process.env;
+const GD_ACCOUNTS = {
+  adam:        { key: () => process.env.GODADDY_API_KEY,             secret: () => process.env.GODADDY_API_SECRET },
+  superiorsms: { key: () => process.env.GODADDY_API_KEY_SUPERIORSMS, secret: () => process.env.GODADDY_API_SECRET_SUPERIORSMS },
+};
+
+async function gdfetch(path, method = 'GET', body, gdKey, gdSecret) {
+  const key    = gdKey    ?? process.env.GODADDY_API_KEY;
+  const secret = gdSecret ?? process.env.GODADDY_API_SECRET;
+  const shopperId = gdKey ? null : process.env.GODADDY_SHOPPER_ID;
   const r = await fetch(`https://api.godaddy.com/v1${path}`, {
     method,
     headers: {
-      Authorization: `sso-key ${GODADDY_API_KEY}:${GODADDY_API_SECRET}`,
+      Authorization: `sso-key ${key}:${secret}`,
       'Content-Type': 'application/json',
-      ...(GODADDY_SHOPPER_ID ? { 'X-Shopper-Id': GODADDY_SHOPPER_ID } : {}),
+      ...(shopperId ? { 'X-Shopper-Id': shopperId } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
@@ -324,14 +334,24 @@ async function gdfetch(path, method = 'GET', body) {
   }
 }
 
+router.get('/godaddy-accounts', (_req, res) => {
+  const accounts = [
+    { id: 'adam',        name: 'Adam',        configured: !!(process.env.GODADDY_API_KEY && process.env.GODADDY_API_SECRET) },
+    { id: 'superiorsms', name: 'SuperiorSMS', configured: !!(process.env.GODADDY_API_KEY_SUPERIORSMS && process.env.GODADDY_API_SECRET_SUPERIORSMS) },
+  ];
+  res.json({ accounts });
+});
+
 router.get('/godaddy-domains', async (req, res) => {
-  const { GODADDY_API_KEY, GODADDY_API_SECRET } = process.env;
-  if (!GODADDY_API_KEY || !GODADDY_API_SECRET) return res.status(500).json({ error: 'GODADDY_API_KEY and GODADDY_API_SECRET not configured' });
+  const account = req.query.account ?? 'adam';
+  const gdAcc = GD_ACCOUNTS[account] ?? GD_ACCOUNTS.adam;
+  const gdKey = gdAcc.key(); const gdSecret = gdAcc.secret();
+  if (!gdKey || !gdSecret) return res.status(500).json({ error: `GoDaddy credentials not configured for account "${account}"` });
   try {
     let all = []; let marker = null;
     do {
       const qs = new URLSearchParams({ limit: '500', statuses: 'ACTIVE', ...(marker ? { marker } : {}) });
-      const data = await gdfetch(`/domains?${qs}`);
+      const data = await gdfetch(`/domains?${qs}`, 'GET', null, gdKey, gdSecret);
       if (data.code) return res.status(502).json({ error: data.message ?? 'GoDaddy API error' });
       const page = Array.isArray(data) ? data : [];
       all.push(...page.map(d => ({ name: d.domain.toLowerCase(), expires: d.expires, created: d.createdAt })));
@@ -368,7 +388,7 @@ function parseHostsFromXml(xml) {
 
 // POST /vercel-provision
 router.post('/vercel-provision', async (req, res) => {
-  const { domains, mode = 'nameservers', dnsProvider = 'namecheap' } = req.body;
+  const { domains, mode = 'nameservers', dnsProvider = 'namecheap', godaddyAccount = 'adam' } = req.body;
   const VERCEL_NS = ['ns1.vercel-dns.com', 'ns2.vercel-dns.com'];
   const VERCEL_A_FALLBACK = '216.150.1.1';
   const projectId = process.env.VERCEL_PROJECT_ID;
@@ -377,8 +397,11 @@ router.post('/vercel-provision', async (req, res) => {
   const isGodaddy = dnsProvider === 'godaddy';
   const base = isGodaddy ? null : ncBase();
   if (!isGodaddy && !base) return res.status(500).json({ error: 'Namecheap credentials not configured' });
-  if (isGodaddy && (!process.env.GODADDY_API_KEY || !process.env.GODADDY_API_SECRET)) {
-    return res.status(500).json({ error: 'GODADDY_API_KEY and GODADDY_API_SECRET not configured' });
+
+  const gdAcc = GD_ACCOUNTS[godaddyAccount] ?? GD_ACCOUNTS.adam;
+  const gdKey = gdAcc.key(); const gdSecret = gdAcc.secret();
+  if (isGodaddy && (!gdKey || !gdSecret)) {
+    return res.status(500).json({ error: `GoDaddy credentials not configured for account "${godaddyAccount}"` });
   }
 
   const clientIp = isGodaddy ? null : await getOutboundIp();
@@ -403,7 +426,7 @@ router.post('/vercel-provision', async (req, res) => {
     // 2. DNS — GoDaddy branch
     if (isGodaddy) {
       if (mode === 'nameservers') {
-        const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: VERCEL_NS });
+        const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: VERCEL_NS }, gdKey, gdSecret);
         const ok = data._ok === true;
         steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? VERCEL_NS.join(', ') : (data.message ?? JSON.stringify(data)) });
       } else {
@@ -413,7 +436,7 @@ router.post('/vercel-provision', async (req, res) => {
           const aRecord = cfg.verification?.find(v => v.type === 'A');
           if (aRecord?.value) aIp = aRecord.value;
         } catch {}
-        const data = await gdfetch(`/domains/${domain}/records/A/@`, 'PUT', [{ data: aIp, ttl: 600 }]);
+        const data = await gdfetch(`/domains/${domain}/records/A/@`, 'PUT', [{ data: aIp, ttl: 600 }], gdKey, gdSecret);
         const ok = data._ok === true;
         steps.push({ name: 'Set A record', status: ok ? 'ok' : 'error', detail: ok ? `@ → ${aIp}` : (data.message ?? JSON.stringify(data)) });
       }
