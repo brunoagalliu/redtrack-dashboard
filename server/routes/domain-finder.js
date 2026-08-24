@@ -287,6 +287,11 @@ router.post('/provision', async (req, res) => {
       const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: nameservers }, gdKey, gdSecret);
       const ok = data._ok === true;
       steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? nameservers.join(', ') : (data.message ?? JSON.stringify(data)) });
+      if (ok) {
+        const arData = await gdfetch(`/domains/${domain}`, 'PATCH', { renewAuto: false }, gdKey, gdSecret);
+        const arOk = arData._ok === true;
+        steps.push({ name: 'Disable auto-renew', status: arOk ? 'ok' : 'error', detail: arOk ? 'auto-renew disabled' : (arData.message ?? JSON.stringify(arData)) });
+      }
     } else if (base) {
       const parts = domain.split('.');
       const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setCustom', SLD: parts[0], TLD: parts.slice(1).join('.'), Nameservers: nameservers.join(',') });
@@ -429,6 +434,11 @@ router.post('/vercel-provision', async (req, res) => {
         const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: VERCEL_NS }, gdKey, gdSecret);
         const ok = data._ok === true;
         steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? VERCEL_NS.join(', ') : (data.message ?? JSON.stringify(data)) });
+        if (ok) {
+          const arData = await gdfetch(`/domains/${domain}`, 'PATCH', { renewAuto: false }, gdKey, gdSecret);
+          const arOk = arData._ok === true;
+          steps.push({ name: 'Disable auto-renew', status: arOk ? 'ok' : 'error', detail: arOk ? 'auto-renew disabled' : (arData.message ?? JSON.stringify(arData)) });
+        }
       } else {
         let aIp = VERCEL_A_FALLBACK;
         try {

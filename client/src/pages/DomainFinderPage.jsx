@@ -475,7 +475,7 @@ function StepBadge({ step }) {
 
 // ─── CLOUDFLARE PROVISION TAB ─────────────────────────────────────────────────
 
-const CF_STEP_NAMES = ['Add to Cloudflare', 'Add DNS records', 'Enable security', 'Set SSL/TLS', 'Set nameservers'];
+const CF_STEP_NAMES = ['Add to Cloudflare', 'Add DNS records', 'Enable security', 'Set SSL/TLS', 'Set nameservers', 'Disable auto-renew'];
 
 function CloudflareTab() {
   const [cfAccount, setCfAccount] = useState('adam');
