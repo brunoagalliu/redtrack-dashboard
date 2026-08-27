@@ -10,6 +10,7 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import { api } from '../lib/api';
+import { downloadCSV } from '../lib/csvDownload';
 
 const BUYERS = ['TK', 'MA', 'DS', 'KG'];
 
@@ -356,12 +357,30 @@ export default function OffersPage() {
             Which offers perform best by route, vertical, carrier, and buyer
           </p>
         </div>
-        {syncRunning && (
-          <span className="text-xs text-blue-500 font-medium flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
-            {syncPhase === 'offers' ? `Syncing offers ${mainSync?.offer_sync?.processed ?? 0}/${mainSync?.offer_sync?.total ?? '?'}…` : 'Syncing campaigns…'}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {syncRunning && (
+            <span className="text-xs text-blue-500 font-medium flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+              {syncPhase === 'offers' ? `Syncing offers ${mainSync?.offer_sync?.processed ?? 0}/${mainSync?.offer_sync?.total ?? '?'}…` : 'Syncing campaigns…'}
+            </span>
+          )}
+          <button
+            onClick={() => downloadCSV(rows.map(r => ({
+              Offer: r.offer_name, Buyer: r.buyer, Vertical: r.vertical, Route: r.route,
+              Carrier: r.carrier, 'Data Partner': r.data_partner, Campaigns: r.campaigns,
+              Clicks: r.clicks, Conversions: r.conversions,
+              'CVR %': r.clicks > 0 ? ((r.conversions / r.clicks) * 100).toFixed(2) : '',
+              Cost: r.cost, Revenue: r.revenue, Profit: r.profit,
+              'ROI %': r.cost > 0 ? ((r.profit / r.cost) * 100).toFixed(2) : '',
+              CPC: r.clicks > 0 ? (r.cost / r.clicks).toFixed(4) : '',
+              EPC: r.clicks > 0 ? (r.revenue / r.clicks).toFixed(4) : '',
+            })), `offers_${dateFrom}_${dateTo}.csv`)}
+            disabled={!rows.length}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            CSV
+          </button>
+        </div>
       </div>
 
       {/* Filters card */}

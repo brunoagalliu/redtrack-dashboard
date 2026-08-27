@@ -11,6 +11,7 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import { api } from '../lib/api';
+import { downloadCSV } from '../lib/csvDownload';
 
 function fmtMoney(n) {
   const v = Number(n || 0);
@@ -317,9 +318,24 @@ export default function ListsPage() {
   return (
     <div className="p-8 max-w-screen-2xl space-y-5">
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Lists & Campaigns</h1>
-        <p className="text-sm text-gray-500 mt-1">Click any list to expand all campaigns that used it, oldest to newest</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Lists & Campaigns</h1>
+          <p className="text-sm text-gray-500 mt-1">Click any list to expand all campaigns that used it, oldest to newest</p>
+        </div>
+        <button
+          onClick={() => downloadCSV(filtered.map(r => ({
+            List: r.list_key, Campaigns: r.campaign_count, Clicks: r.clicks, Conversions: r.conversions,
+            EPC: r.clicks > 0 ? (r.revenue / r.clicks).toFixed(4) : '',
+            Cost: r.cost, Profit: r.profit,
+            'ROI %': r.cost > 0 ? ((r.profit / r.cost) * 100).toFixed(2) : '',
+            'Days Idle': r.days_since_last_use, Status: r.status,
+          })), `lists_${dateFrom}_${dateTo}.csv`)}
+          disabled={!filtered.length}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          CSV
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

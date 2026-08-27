@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { downloadCSV } from '../lib/csvDownload';
 
 const BUYER_COLORS = {
   TK: { badge: 'bg-blue-100 text-blue-700',   ring: 'ring-blue-200',   bar: 'bg-blue-500',   line: '#3b82f6' },
@@ -104,6 +105,16 @@ export default function InsightsPage() {
               {d}d
             </button>
           ))}
+          <button
+            onClick={() => downloadCSV([
+              ...bp.map(b => ({ Section: 'Buyer', Name: b.buyer, Clicks: b.clicks, Cost: b.cost, Revenue: b.revenue, Profit: b.profit })),
+              ...vp.map(v => ({ Section: 'Vertical', Name: v.label, Clicks: v.clicks, Cost: v.cost, Revenue: v.revenue, Profit: v.profit })),
+            ], `insights_${days}d.csv`)}
+            disabled={!data}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            CSV
+          </button>
         </div>
       </div>
 

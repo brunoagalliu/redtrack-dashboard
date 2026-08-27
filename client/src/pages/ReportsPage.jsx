@@ -10,6 +10,7 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import { api } from '../lib/api';
+import { downloadCSV } from '../lib/csvDownload';
 
 // ── Column metadata ───────────────────────────────────────────────────────────
 const ALL_COLUMNS = [
@@ -719,6 +720,19 @@ export default function ReportsPage() {
                 : `Syncing campaigns ${syncStatus.processed} / ${syncStatus.total}…`}
             </span>
           )}
+          <button
+            onClick={() => downloadCSV(filteredData.map(c => ({
+              Campaign: c.title, Buyer: c.buyer, Clicks: c.clicks, Conversions: c.conversions,
+              Spend: c.cost, Revenue: c.revenue, Profit: c.profit,
+              'ROI %': c.cost > 0 ? ((c.profit / c.cost) * 100).toFixed(2) : '',
+              CPC: c.clicks > 0 ? (c.cost / c.clicks).toFixed(4) : '',
+              EPC: c.clicks > 0 ? (c.revenue / c.clicks).toFixed(4) : '',
+            })), `reports_${applied.date_from}_${applied.date_to}.csv`)}
+            disabled={!filteredData.length}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            CSV
+          </button>
           <SyncButton dateFrom={applied.date_from} dateTo={applied.date_to} onSynced={onSynced} />
         </div>
       </div>
