@@ -153,6 +153,7 @@ export default function VerticalsPage() {
       id: 'vertical',
       accessorKey: 'vertical',
       header: 'Vertical',
+      meta: { csvLabel: 'Vertical' },
       size: 120,
       enableSorting: true,
       cell: ({ getValue }) => (
@@ -165,6 +166,7 @@ export default function VerticalsPage() {
       id: 'buyer',
       accessorKey: 'buyer',
       header: 'Buyer',
+      meta: { csvLabel: 'Buyer' },
       size: 64,
       enableSorting: true,
       cell: ({ getValue }) => {
@@ -180,6 +182,7 @@ export default function VerticalsPage() {
       id: 'title',
       accessorKey: 'title',
       header: 'Campaign',
+      meta: { csvLabel: 'Campaign' },
       size: 260,
       enableSorting: true,
       cell: ({ getValue }) => (
@@ -192,7 +195,7 @@ export default function VerticalsPage() {
       header: 'Clicks',
       size: 88,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Clicks' },
       cell: ({ getValue }) => fmt(getValue()),
     },
     {
@@ -201,7 +204,7 @@ export default function VerticalsPage() {
       header: 'Conv.',
       size: 72,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Conv.' },
       cell: ({ getValue }) => fmt(getValue()),
     },
     {
@@ -210,7 +213,7 @@ export default function VerticalsPage() {
       header: 'Spend',
       size: 96,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Spend' },
       cell: ({ getValue }) => fmtMoney(getValue()),
     },
     {
@@ -219,7 +222,7 @@ export default function VerticalsPage() {
       header: 'Revenue',
       size: 96,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Revenue' },
       cell: ({ getValue }) => fmtMoney(getValue()),
     },
     {
@@ -228,7 +231,7 @@ export default function VerticalsPage() {
       header: 'Profit',
       size: 96,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Profit' },
       cell: ({ getValue }) => {
         const v = Number(getValue());
         return <span className={`font-medium ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(v)}</span>;
@@ -265,10 +268,15 @@ export default function VerticalsPage() {
           <p className="text-sm text-gray-500 mt-1">Vertical performance</p>
         </div>
         <button
-          onClick={() => downloadCSV(filtered.map(r => ({
-            Buyer: r.buyer, Campaign: r.title, Clicks: r.clicks, Conversions: r.conversions,
-            Spend: r.cost, Revenue: r.revenue, Profit: r.profit,
-          })), `verticals_${dateFrom}_${dateTo}.csv`)}
+          onClick={() => {
+            const exportCols = table.getVisibleLeafColumns().filter(c => c.columnDef.meta?.csvLabel);
+            downloadCSV(
+              table.getSortedRowModel().rows.map(row =>
+                Object.fromEntries(exportCols.map(col => [col.columnDef.meta.csvLabel, row.getValue(col.id)]))
+              ),
+              `verticals_${dateFrom}_${dateTo}.csv`
+            );
+          }}
           disabled={!filtered.length}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>

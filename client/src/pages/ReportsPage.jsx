@@ -483,6 +483,8 @@ export default function ReportsPage() {
     {
       id: 'buyer',
       header: '',
+      accessorKey: 'buyer',
+      meta: { csvLabel: 'Buyer' },
       size: 44, minSize: 44, maxSize: 44,
       enableResizing: false,
       enableSorting: false,
@@ -510,6 +512,7 @@ export default function ReportsPage() {
       id: 'title',
       accessorKey: 'title',
       header: 'Campaign',
+      meta: { csvLabel: 'Campaign' },
       size: 260, minSize: 100,
       enableResizing: true,
       enableSorting: true,
@@ -520,6 +523,7 @@ export default function ReportsPage() {
     {
       id: 'data_list',
       header: 'List',
+      meta: { csvLabel: 'List' },
       size: 180, minSize: 80,
       enableResizing: true,
       enableSorting: true,
@@ -535,6 +539,7 @@ export default function ReportsPage() {
     {
       id: 'data_partner',
       header: 'Partner',
+      meta: { csvLabel: 'Partner' },
       size: 100, minSize: 60,
       enableResizing: true,
       enableSorting: false,
@@ -551,6 +556,7 @@ export default function ReportsPage() {
       id: 'route',
       accessorKey: 'route',
       header: 'Route',
+      meta: { csvLabel: 'Route' },
       size: 90, minSize: 60,
       enableResizing: true,
       enableSorting: false,
@@ -560,6 +566,7 @@ export default function ReportsPage() {
       id: 'carrier',
       accessorKey: 'carrier',
       header: 'Carrier',
+      meta: { csvLabel: 'Carrier' },
       size: 90, minSize: 60,
       enableResizing: true,
       enableSorting: false,
@@ -569,6 +576,7 @@ export default function ReportsPage() {
       id: 'vertical',
       accessorKey: 'vertical',
       header: 'Vertical',
+      meta: { csvLabel: 'Vertical' },
       size: 90, minSize: 60,
       enableResizing: true,
       enableSorting: false,
@@ -578,6 +586,7 @@ export default function ReportsPage() {
       id: 'clicks',
       accessorKey: 'clicks',
       header: 'Clicks',
+      meta: { csvLabel: 'Clicks' },
       size: 90, minSize: 60,
       enableResizing: true,
       enableSorting: true,
@@ -587,6 +596,7 @@ export default function ReportsPage() {
       id: 'conversions',
       accessorKey: 'conversions',
       header: 'Conv.',
+      meta: { csvLabel: 'Conv.' },
       size: 80, minSize: 55,
       enableResizing: true,
       enableSorting: true,
@@ -596,6 +606,7 @@ export default function ReportsPage() {
       id: 'cost',
       accessorKey: 'cost',
       header: 'Spend',
+      meta: { csvLabel: 'Spend' },
       size: 100, minSize: 70,
       enableResizing: true,
       enableSorting: true,
@@ -605,6 +616,7 @@ export default function ReportsPage() {
       id: 'revenue',
       accessorKey: 'revenue',
       header: 'Revenue',
+      meta: { csvLabel: 'Revenue' },
       size: 100, minSize: 70,
       enableResizing: true,
       enableSorting: true,
@@ -614,6 +626,7 @@ export default function ReportsPage() {
       id: 'profit',
       accessorKey: 'profit',
       header: 'Profit',
+      meta: { csvLabel: 'Profit' },
       size: 100, minSize: 70,
       enableResizing: true,
       enableSorting: true,
@@ -641,7 +654,7 @@ export default function ReportsPage() {
       size: 96, minSize: 70,
       enableResizing: true,
       enableSorting: true,
-      meta: { hasFilterHeader: true },
+      meta: { hasFilterHeader: true, csvLabel: 'ROI %' },
       cell: ({ getValue }) => {
         const v = Number(getValue());
         return (
@@ -655,6 +668,7 @@ export default function ReportsPage() {
       id: 'cpc',
       accessorFn: (row) => perClick(row.cost, row.clicks),
       header: 'CPC',
+      meta: { csvLabel: 'CPC' },
       size: 90, minSize: 60,
       enableResizing: true,
       enableSorting: false,
@@ -664,6 +678,7 @@ export default function ReportsPage() {
       id: 'epc',
       accessorFn: (row) => perClick(row.revenue, row.clicks),
       header: 'EPC',
+      meta: { csvLabel: 'EPC' },
       size: 90, minSize: 60,
       enableResizing: true,
       enableSorting: false,
@@ -721,16 +736,15 @@ export default function ReportsPage() {
             </span>
           )}
           <button
-            onClick={() => downloadCSV(filteredData.map(c => ({
-              Campaign: c.title, Buyer: c.buyer,
-              List: listOverrides[c.id] !== undefined ? listOverrides[c.id] : (c.data_list ?? ''),
-              Partner: partnerOverrides[c.id] !== undefined ? partnerOverrides[c.id] : (c.data_partner ?? ''),
-              Clicks: c.clicks, Conversions: c.conversions,
-              Spend: c.cost, Revenue: c.revenue, Profit: c.profit,
-              'ROI %': c.cost > 0 ? ((c.profit / c.cost) * 100).toFixed(2) : '',
-              CPC: c.clicks > 0 ? (c.cost / c.clicks).toFixed(4) : '',
-              EPC: c.clicks > 0 ? (c.revenue / c.clicks).toFixed(4) : '',
-            })), `reports_${applied.date_from}_${applied.date_to}.csv`)}
+            onClick={() => {
+              const exportCols = table.getVisibleLeafColumns().filter(c => c.columnDef.meta?.csvLabel);
+              downloadCSV(
+                table.getSortedRowModel().rows.map(row =>
+                  Object.fromEntries(exportCols.map(col => [col.columnDef.meta.csvLabel, row.getValue(col.id)]))
+                ),
+                `reports_${applied.date_from}_${applied.date_to}.csv`
+              );
+            }}
             disabled={!filteredData.length}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>

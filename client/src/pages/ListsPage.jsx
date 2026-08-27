@@ -194,6 +194,7 @@ export default function ListsPage() {
       id: 'list_key',
       accessorKey: 'list_key',
       header: 'List',
+      meta: { csvLabel: 'List' },
       size: 280,
       enableSorting: false,
     },
@@ -203,7 +204,7 @@ export default function ListsPage() {
       header: 'Camps',
       size: 64,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Camps' },
     },
     {
       id: 'clicks',
@@ -211,7 +212,7 @@ export default function ListsPage() {
       header: 'Clicks',
       size: 80,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Clicks' },
       cell: ({ getValue }) => fmt(getValue()),
     },
     {
@@ -220,7 +221,7 @@ export default function ListsPage() {
       header: 'Conv',
       size: 64,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Conv' },
       cell: ({ getValue }) => fmt(getValue()),
     },
     {
@@ -229,7 +230,7 @@ export default function ListsPage() {
       header: 'EPC',
       size: 80,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'EPC' },
       cell: ({ getValue }) => fmtRate(getValue()),
     },
     {
@@ -238,7 +239,7 @@ export default function ListsPage() {
       header: 'Cost',
       size: 88,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Cost' },
       cell: ({ getValue }) => fmtMoney(getValue()),
     },
     {
@@ -247,7 +248,7 @@ export default function ListsPage() {
       header: 'Profit',
       size: 96,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Profit' },
       cell: ({ getValue }) => {
         const v = Number(getValue());
         return <span className={v >= 0 ? 'text-green-700 font-medium' : 'text-red-600 font-medium'}>{fmtMoney(v)}</span>;
@@ -270,7 +271,7 @@ export default function ListsPage() {
       ),
       size: 88,
       enableSorting: true,
-      meta: { right: true, hasFilterHeader: true },
+      meta: { right: true, hasFilterHeader: true, csvLabel: 'ROI %' },
       cell: ({ getValue }) => {
         const v = Number(getValue());
         return <span className={v >= 0 ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>{getValue()}%</span>;
@@ -282,7 +283,7 @@ export default function ListsPage() {
       header: 'Idle',
       size: 64,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Idle' },
       cell: ({ getValue }) => {
         const v = getValue();
         return <span className="text-gray-400">{v != null ? `${v}d` : '—'}</span>;
@@ -291,6 +292,14 @@ export default function ListsPage() {
     {
       id: 'status',
       header: 'Status',
+      meta: { csvLabel: 'Status' },
+      accessorFn: (row) => {
+        const d = Number(row.days_since_last_use);
+        if (row.days_since_last_use == null) return '';
+        if (d < 14) return 'Active';
+        if (d < 28) return `Cooling ${d}d`;
+        return `Idle ${d}d`;
+      },
       size: 80,
       enableSorting: false,
       enableResizing: false,
@@ -324,13 +333,15 @@ export default function ListsPage() {
           <p className="text-sm text-gray-500 mt-1">Click any list to expand all campaigns that used it, oldest to newest</p>
         </div>
         <button
-          onClick={() => downloadCSV(filtered.map(r => ({
-            List: r.list_key, Campaigns: r.campaign_count, Clicks: r.clicks, Conversions: r.conversions,
-            EPC: r.clicks > 0 ? (r.revenue / r.clicks).toFixed(4) : '',
-            Cost: r.cost, Profit: r.profit,
-            'ROI %': r.cost > 0 ? ((r.profit / r.cost) * 100).toFixed(2) : '',
-            'Days Idle': r.days_since_last_use, Status: r.status,
-          })), `lists_${dateFrom}_${dateTo}.csv`)}
+          onClick={() => {
+            const exportCols = table.getVisibleLeafColumns().filter(c => c.columnDef.meta?.csvLabel);
+            downloadCSV(
+              table.getSortedRowModel().rows.map(row =>
+                Object.fromEntries(exportCols.map(col => [col.columnDef.meta.csvLabel, row.getValue(col.id)]))
+              ),
+              `lists_${dateFrom}_${dateTo}.csv`
+            );
+          }}
           disabled={!filtered.length}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>

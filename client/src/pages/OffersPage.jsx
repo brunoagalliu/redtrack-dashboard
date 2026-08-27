@@ -147,6 +147,7 @@ export default function OffersPage() {
       id: 'offer_name',
       accessorKey: 'offer_name',
       header: 'Offer',
+      meta: { csvLabel: 'Offer' },
       size: 240,
       enableSorting: false,
       cell: ({ getValue }) => (
@@ -159,6 +160,7 @@ export default function OffersPage() {
       id: 'buyer',
       accessorKey: 'buyer',
       header: 'Buyer',
+      meta: { csvLabel: 'Buyer' },
       size: 64,
       enableSorting: false,
       cell: ({ getValue }) => {
@@ -172,6 +174,7 @@ export default function OffersPage() {
       id: 'vertical',
       accessorKey: 'vertical',
       header: 'Vertical',
+      meta: { csvLabel: 'Vertical' },
       size: 80,
       enableSorting: false,
       cell: ({ getValue }) => {
@@ -185,6 +188,7 @@ export default function OffersPage() {
       id: 'route',
       accessorKey: 'route',
       header: 'Route',
+      meta: { csvLabel: 'Route' },
       size: 80,
       enableSorting: false,
       cell: ({ getValue }) => <span className="text-xs text-gray-600">{getValue() || '—'}</span>,
@@ -193,6 +197,7 @@ export default function OffersPage() {
       id: 'carrier',
       accessorKey: 'carrier',
       header: 'Carrier',
+      meta: { csvLabel: 'Carrier' },
       size: 72,
       enableSorting: false,
       cell: ({ getValue }) => <span className="text-xs text-gray-600">{getValue() || 'All'}</span>,
@@ -201,6 +206,7 @@ export default function OffersPage() {
       id: 'data_partner',
       accessorKey: 'data_partner',
       header: 'Data Partner',
+      meta: { csvLabel: 'Data Partner' },
       size: 96,
       enableSorting: false,
       cell: ({ getValue }) => {
@@ -216,7 +222,7 @@ export default function OffersPage() {
       header: 'Campaigns',
       size: 80,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Campaigns' },
       cell: ({ getValue }) => <span className="text-xs text-gray-700">{getValue()}</span>,
     },
     {
@@ -225,7 +231,7 @@ export default function OffersPage() {
       header: 'Clicks',
       size: 80,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Clicks' },
       cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmt(getValue())}</span>,
     },
     {
@@ -234,7 +240,7 @@ export default function OffersPage() {
       header: 'Conv',
       size: 64,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Conv' },
       cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmt(getValue())}</span>,
     },
     {
@@ -243,7 +249,7 @@ export default function OffersPage() {
       header: 'CVR',
       size: 64,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'CVR %' },
       cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmtPct(getValue())}</span>,
     },
     {
@@ -252,7 +258,7 @@ export default function OffersPage() {
       header: 'Cost',
       size: 88,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Cost' },
       cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmtMoney(getValue())}</span>,
     },
     {
@@ -261,7 +267,7 @@ export default function OffersPage() {
       header: 'Revenue',
       size: 88,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Revenue' },
       cell: ({ getValue }) => <span className="text-xs text-gray-700">{fmtMoney(getValue())}</span>,
     },
     {
@@ -270,7 +276,7 @@ export default function OffersPage() {
       header: 'Profit',
       size: 88,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'Profit' },
       cell: ({ getValue }) => {
         const v = Number(getValue());
         return <span className={`text-xs font-semibold ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtMoney(v)}</span>;
@@ -293,7 +299,7 @@ export default function OffersPage() {
       ),
       size: 88,
       enableSorting: true,
-      meta: { right: true, hasFilterHeader: true },
+      meta: { right: true, hasFilterHeader: true, csvLabel: 'ROI %' },
       cell: ({ getValue }) => {
         const v = Number(getValue());
         return <span className={`text-xs font-semibold ${v >= 0 ? 'text-green-600' : 'text-red-500'}`}>{getValue()}%</span>;
@@ -305,7 +311,7 @@ export default function OffersPage() {
       header: 'CPC',
       size: 72,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'CPC' },
       cell: ({ getValue }) => (
         <span className="text-xs text-gray-400" title="Estimated — cost is prorated by click share">
           {fmtRate(getValue())}
@@ -318,7 +324,7 @@ export default function OffersPage() {
       header: 'EPC',
       size: 72,
       enableSorting: true,
-      meta: { right: true },
+      meta: { right: true, csvLabel: 'EPC' },
       cell: ({ getValue }) => (
         <span className="text-xs font-medium text-gray-700" title="Revenue per click — directly reported, not prorated">
           {fmtRate(getValue())}
@@ -365,16 +371,15 @@ export default function OffersPage() {
             </span>
           )}
           <button
-            onClick={() => downloadCSV(rows.map(r => ({
-              Offer: r.offer_name, Buyer: r.buyer, Vertical: r.vertical, Route: r.route,
-              Carrier: r.carrier, 'Data Partner': r.data_partner, Campaigns: r.campaigns,
-              Clicks: r.clicks, Conversions: r.conversions,
-              'CVR %': r.clicks > 0 ? ((r.conversions / r.clicks) * 100).toFixed(2) : '',
-              Cost: r.cost, Revenue: r.revenue, Profit: r.profit,
-              'ROI %': r.cost > 0 ? ((r.profit / r.cost) * 100).toFixed(2) : '',
-              CPC: r.clicks > 0 ? (r.cost / r.clicks).toFixed(4) : '',
-              EPC: r.clicks > 0 ? (r.revenue / r.clicks).toFixed(4) : '',
-            })), `offers_${dateFrom}_${dateTo}.csv`)}
+            onClick={() => {
+              const exportCols = table.getVisibleLeafColumns().filter(c => c.columnDef.meta?.csvLabel);
+              downloadCSV(
+                table.getSortedRowModel().rows.map(row =>
+                  Object.fromEntries(exportCols.map(col => [col.columnDef.meta.csvLabel, row.getValue(col.id)]))
+                ),
+                `offers_${dateFrom}_${dateTo}.csv`
+              );
+            }}
             disabled={!rows.length}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
