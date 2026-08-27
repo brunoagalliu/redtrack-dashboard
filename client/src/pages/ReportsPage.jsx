@@ -722,7 +722,10 @@ export default function ReportsPage() {
           )}
           <button
             onClick={() => downloadCSV(filteredData.map(c => ({
-              Campaign: c.title, Buyer: c.buyer, Clicks: c.clicks, Conversions: c.conversions,
+              Campaign: c.title, Buyer: c.buyer,
+              List: listOverrides[c.id] !== undefined ? listOverrides[c.id] : (c.data_list ?? ''),
+              Partner: partnerOverrides[c.id] !== undefined ? partnerOverrides[c.id] : (c.data_partner ?? ''),
+              Clicks: c.clicks, Conversions: c.conversions,
               Spend: c.cost, Revenue: c.revenue, Profit: c.profit,
               'ROI %': c.cost > 0 ? ((c.profit / c.cost) * 100).toFixed(2) : '',
               CPC: c.clicks > 0 ? (c.cost / c.clicks).toFixed(4) : '',
