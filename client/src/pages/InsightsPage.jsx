@@ -7,7 +7,10 @@ const BUYER_COLORS = {
   TK: { badge: 'bg-blue-100 text-blue-700',   ring: 'ring-blue-200',   bar: 'bg-blue-500',   line: '#3b82f6' },
   MA: { badge: 'bg-purple-100 text-purple-700', ring: 'ring-purple-200', bar: 'bg-purple-500', line: '#a855f7' },
   DS: { badge: 'bg-orange-100 text-orange-700', ring: 'ring-orange-200', bar: 'bg-orange-500', line: '#f97316' },
+  KG: { badge: 'bg-green-100 text-green-700',  ring: 'ring-green-200',  bar: 'bg-green-500',  line: '#22c55e' },
 };
+const DEFAULT_BUYER_COLOR = { badge: 'bg-gray-100 text-gray-600', ring: 'ring-gray-200', bar: 'bg-gray-400', line: '#9ca3af' };
+function buyerColor(buyer) { return BUYER_COLORS[buyer] ?? DEFAULT_BUYER_COLOR; }
 const BUYERS = ['TK', 'MA', 'DS', 'KG'];
 
 function fmt(n)      { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
@@ -138,7 +141,7 @@ export default function InsightsPage() {
             <div className="grid grid-cols-3 gap-4">
               {BUYERS.map((buyer) => {
                 const s = nc[buyer] || {};
-                const col = BUYER_COLORS[buyer];
+                const col = buyerColor(buyer);
                 return (
                   <div key={buyer} className="card p-5">
                     <div className="flex items-center justify-between mb-3">
@@ -172,7 +175,7 @@ export default function InsightsPage() {
               <div className="grid grid-cols-3 gap-4">
                 {BUYERS.map((buyer) => {
                   const b = bp.find((r) => r.buyer === buyer);
-                  const col = BUYER_COLORS[buyer];
+                  const col = buyerColor(buyer);
                   if (!b) return (
                     <div key={buyer} className="card p-5 opacity-40">
                       <div className="flex items-center gap-3 mb-3">
@@ -302,7 +305,7 @@ export default function InsightsPage() {
                             <td key={buyer} className="px-4 py-2.5 text-center">
                               {count > 0 ? (
                                 <div className="inline-flex flex-col items-center">
-                                  <span className={`text-sm font-semibold ${BUYER_COLORS[buyer].badge} px-2 py-0.5 rounded`}>{count}</span>
+                                  <span className={`text-sm font-semibold ${buyerColor(buyer).badge} px-2 py-0.5 rounded`}>{count}</span>
                                   <span className="text-xs text-gray-400 mt-0.5">{Math.round(pct * 100)}%</span>
                                 </div>
                               ) : (
@@ -327,7 +330,7 @@ export default function InsightsPage() {
               <p className="text-xs text-gray-400 mb-3">High profit-per-campaign verticals where a buyer has low coverage</p>
               <div className="grid grid-cols-1 gap-3">
                 {ops.slice(0, 10).map((op, i) => {
-                  const col = BUYER_COLORS[op.buyer];
+                  const col = buyerColor(op.buyer);
                   return (
                     <div key={i} className="card p-4 flex items-center gap-4">
                       <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold shrink-0 ${col.badge}`}>
