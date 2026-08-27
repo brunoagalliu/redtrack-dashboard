@@ -362,6 +362,26 @@ router.get('/godaddy-domains', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Wayback Machine history check ───────────────────────────────────────────
+router.post('/wayback-check', async (req, res) => {
+  const { domains } = req.body;
+  if (!Array.isArray(domains) || !domains.length) return res.status(400).json({ error: 'domains array required' });
+  const results = await Promise.all(domains.map(async (domain) => {
+    try {
+      const r = await fetch(
+        `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(domain)}&output=json&limit=1&fl=timestamp`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      const data = await r.json();
+      const hasHistory = Array.isArray(data) && data.length > 1;
+      return { domain, hasHistory };
+    } catch {
+      return { domain, hasHistory: false };
+    }
+  }));
+  res.json({ results });
+});
+
 // ─── Vercel helpers ───────────────────────────────────────────────────────────
 
 async function vfetch(path, method = 'GET', body) {

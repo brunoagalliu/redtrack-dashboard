@@ -132,6 +132,7 @@ export const api = {
   getNamecheapDomains: () => request('/domain-finder/domains'),
   getGodaddyAccounts: () => request('/domain-finder/godaddy-accounts'),
   getGodaddyDomains: (account = 'adam') => request(`/domain-finder/godaddy-domains?account=${account}`),
+  checkWayback: (domains) => request('/domain-finder/wayback-check', { method: 'POST', body: JSON.stringify({ domains }) }),
   provisionDomain: (body) => request('/domain-finder/provision', { method: 'POST', body: JSON.stringify(body) }),
   vercelProvision: (body) => request('/domain-finder/vercel-provision', { method: 'POST', body: JSON.stringify(body) }),
 

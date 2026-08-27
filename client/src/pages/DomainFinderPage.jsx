@@ -369,15 +369,18 @@ function parseDate(d) {
   return new Date(+y, +m - 1, +day).getTime() || 0;
 }
 
-function DomainSelector({ domains, setDomains, loading, onFetch, error }) {
+function DomainSelector({ domains, setDomains, loading, onFetch, error, checkingHistory }) {
   const [pasteMode, setPasteMode] = useState(false);
   const [pasteValue, setPasteValue] = useState('');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState('created');
   const [sortDir, setSortDir] = useState('desc');
+  const [hideUsed, setHideUsed] = useState(true);
 
   const allSelected = domains.length > 0 && domains.every(d => d.selected);
   const selected = domains.filter(d => d.selected);
+  const usedCount = domains.filter(d => d.history === 'used').length;
+  const cleanCount = domains.filter(d => d.history === 'clean').length;
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -385,7 +388,8 @@ function DomainSelector({ domains, setDomains, loading, onFetch, error }) {
   }
 
   const filtered = useMemo(() => {
-    const list = domains.filter(d => d.name.includes(search.toLowerCase()));
+    let list = domains.filter(d => d.name.includes(search.toLowerCase()));
+    if (hideUsed) list = list.filter(d => d.history !== 'used');
     return [...list].sort((a, b) => {
       let cmp = 0;
       if (sortKey === 'name') cmp = a.name.localeCompare(b.name);
@@ -393,11 +397,11 @@ function DomainSelector({ domains, setDomains, loading, onFetch, error }) {
       else if (sortKey === 'expires') cmp = parseDate(a.expires) - parseDate(b.expires);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [domains, search, sortKey, sortDir]);
+  }, [domains, search, sortKey, sortDir, hideUsed]);
 
   function loadFromPaste() {
     const entries = pasteValue.split('\n').map(l => l.trim().toLowerCase()).filter(Boolean)
-      .map(name => ({ name, isOurDNS: true, created: '', expires: '', selected: true }));
+      .map(name => ({ name, isOurDNS: true, created: '', expires: '', selected: true, history: null }));
     setDomains(entries);
     setPasteMode(false);
     setPasteValue('');
@@ -405,20 +409,42 @@ function DomainSelector({ domains, setDomains, loading, onFetch, error }) {
 
   function toggleAll() { setDomains(domains.map(d => ({ ...d, selected: !allSelected }))); }
   function toggle(name) { setDomains(domains.map(d => d.name === name ? { ...d, selected: !d.selected } : d)); }
+  function selectClean() { setDomains(domains.map(d => ({ ...d, selected: d.history === 'clean' }))); }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button onClick={onFetch} disabled={loading}
           className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors">
-          {loading ? 'Loading…' : 'Fetch from Namecheap'}
+          {loading ? 'Loading…' : 'Fetch from GoDaddy'}
         </button>
         <button onClick={() => setPasteMode(v => !v)}
           className="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors">
           Paste domains
         </button>
+        {cleanCount > 0 && (
+          <button onClick={selectClean}
+            className="px-3 py-1.5 bg-white border border-green-200 text-green-700 text-sm rounded-lg hover:bg-green-50 transition-colors">
+            Select clean ({cleanCount})
+          </button>
+        )}
         {selected.length > 0 && <span className="text-xs text-gray-500 ml-auto">{selected.length} of {domains.length} selected</span>}
       </div>
+
+      {checkingHistory && (
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span className="inline-block w-3 h-3 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+          Checking domain history via Wayback Machine…
+        </div>
+      )}
+      {!checkingHistory && usedCount > 0 && (
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-orange-600 font-medium">{usedCount} previously owned</span>
+          <button onClick={() => setHideUsed(v => !v)} className="text-gray-400 hover:text-gray-600 underline">
+            {hideUsed ? 'show' : 'hide'}
+          </button>
+        </div>
+      )}
 
       {error && <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
 
@@ -452,10 +478,12 @@ function DomainSelector({ domains, setDomains, loading, onFetch, error }) {
           </div>
           <div className="max-h-64 overflow-y-auto divide-y divide-gray-100">
             {filtered.map(d => (
-              <label key={d.name} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <label key={d.name} className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer ${d.history === 'used' ? 'opacity-50' : ''}`}>
                 <input type="checkbox" checked={d.selected} onChange={() => toggle(d.name)}
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 flex-shrink-0" />
                 <span className="font-mono text-sm text-gray-900 flex-1">{d.name}</span>
+                {d.history === 'checking' && <span className="text-xs text-gray-400 animate-pulse">checking…</span>}
+                {d.history === 'used' && <span className="text-xs font-medium text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">prev. owned</span>}
                 {d.created && <span className="text-xs text-gray-400">{d.created}</span>}
                 {!d.isOurDNS && <span className="text-xs text-amber-500">custom NS</span>}
               </label>
@@ -485,6 +513,7 @@ function CloudflareTab() {
   const [domains, setDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [checkingHistory, setCheckingHistory] = useState(false);
   const [security, setSecurity] = useState({ botFightMode: false, aiLabyrinth: false, aiBotsProtection: false });
   const [network, setNetwork] = useState({ proxy: true, sslMode: 'flexible' });
   const [records, setRecords] = useState([
@@ -499,14 +528,26 @@ function CloudflareTab() {
   const selected = domains.filter(d => d.selected);
 
   async function fetchDomains() {
-    setLoadingDomains(true); setFetchError('');
+    setLoadingDomains(true); setFetchError(''); setCheckingHistory(false);
     try {
       const data = registrar === 'godaddy'
         ? await api.getGodaddyDomains(gdAccount)
         : await api.getNamecheapDomains();
-      setDomains(data.domains.map(d => ({ ...d, selected: false })));
-    } catch (e) { setFetchError(e.message || 'Failed to fetch'); }
-    finally { setLoadingDomains(false); }
+      const loaded = data.domains.map(d => ({ ...d, selected: false, history: 'checking' }));
+      setDomains(loaded);
+      setLoadingDomains(false);
+      setCheckingHistory(true);
+      const { results } = await api.checkWayback(loaded.map(d => d.name));
+      setDomains(prev => prev.map(d => {
+        const r = results.find(r => r.domain === d.name);
+        return { ...d, history: r?.hasHistory ? 'used' : 'clean' };
+      }));
+    } catch (e) {
+      setFetchError(e.message || 'Failed to fetch');
+      setLoadingDomains(false);
+    } finally {
+      setCheckingHistory(false);
+    }
   }
 
   function addRecord() { setRecords(r => [...r, { id: Math.random().toString(36).slice(2), type: 'A', name: '', content: '' }]); }
@@ -616,7 +657,7 @@ function CloudflareTab() {
       {/* Step 1 */}
       {step === 1 && (
         <>
-          <DomainSelector domains={domains} setDomains={setDomains} loading={loadingDomains} onFetch={fetchDomains} error={fetchError} />
+          <DomainSelector domains={domains} setDomains={setDomains} loading={loadingDomains} onFetch={fetchDomains} error={fetchError} checkingHistory={checkingHistory} />
           {canNext1 && (
             <button onClick={() => setStep(2)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
               Next: Configure →
@@ -786,6 +827,7 @@ function VercelTab() {
   const [domains, setDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [checkingHistory, setCheckingHistory] = useState(false);
   const [mode, setMode] = useState('nameservers');
   const [jobs, setJobs] = useState([]);
   const [provisioning, setProvisioning] = useState(false);
@@ -793,14 +835,26 @@ function VercelTab() {
   const selected = domains.filter(d => d.selected);
 
   async function fetchDomains() {
-    setLoadingDomains(true); setFetchError(''); setDomains([]);
+    setLoadingDomains(true); setFetchError(''); setDomains([]); setCheckingHistory(false);
     try {
       const data = provider === 'godaddy'
         ? await api.getGodaddyDomains(gdAccount)
         : await api.getNamecheapDomains();
-      setDomains(data.domains.map(d => ({ ...d, selected: false })));
-    } catch (e) { setFetchError(e.message || 'Failed to fetch'); }
-    finally { setLoadingDomains(false); }
+      const loaded = data.domains.map(d => ({ ...d, selected: false, history: 'checking' }));
+      setDomains(loaded);
+      setLoadingDomains(false);
+      setCheckingHistory(true);
+      const { results } = await api.checkWayback(loaded.map(d => d.name));
+      setDomains(prev => prev.map(d => {
+        const r = results.find(r => r.domain === d.name);
+        return { ...d, history: r?.hasHistory ? 'used' : 'clean' };
+      }));
+    } catch (e) {
+      setFetchError(e.message || 'Failed to fetch');
+      setLoadingDomains(false);
+    } finally {
+      setCheckingHistory(false);
+    }
   }
 
   async function runProvision(domainNames) {
@@ -863,7 +917,7 @@ function VercelTab() {
         )}
       </div>
 
-      <DomainSelector domains={domains} setDomains={setDomains} loading={loadingDomains} onFetch={fetchDomains} error={fetchError} />
+      <DomainSelector domains={domains} setDomains={setDomains} loading={loadingDomains} onFetch={fetchDomains} error={fetchError} checkingHistory={checkingHistory} />
 
       {selected.length > 0 && jobs.length === 0 && (
         <div className="flex items-center gap-3">
