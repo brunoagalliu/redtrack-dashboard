@@ -980,22 +980,22 @@ function VercelTab() {
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 
 export default function DomainFinderPage() {
-  const [tab, setTab] = useState('brainstorm');
+  const [tab, setTab] = useState('cloudflare');
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Domain Finder</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Brainstorm brandable domain ideas with Claude or scan for short available names</p>
+        <p className="text-sm text-gray-500 mt-0.5">Provision domains or brainstorm brandable ideas with Claude</p>
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200">
         {[
-          { key: 'brainstorm', label: 'AI Brainstorm' },
-          { key: 'generator',  label: 'Random Generator' },
           { key: 'cloudflare', label: 'Cloudflare Provision' },
           { key: 'vercel',     label: 'Vercel Provision' },
+          { key: 'generator',  label: 'Random Generator' },
+          { key: 'brainstorm', label: 'AI Brainstorm' },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
