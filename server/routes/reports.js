@@ -5,7 +5,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const router = express.Router();
 
-const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i, KG: /^KG[\s_\-]/i };
+const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i, KG: /^KG[\s_\-]/i, PS: /^PS[\s_\-]/i };
 const CALL_INTERVAL_MS = 3200; // 20 calls/min limit → ~3s between calls
 const MAX_HISTORY_DAYS = 180;
 
@@ -112,8 +112,8 @@ function parseListFromTitle(rawTitle, knownRoutes, knownVerticals) {
     if (!carrierOnly && tailCore.length > 0) body = tail;
   }
 
-  // Strip leading buyer code (TK/MA/DS/KG)
-  body = body.replace(/^\s*(TK|MA|DS|KG)\s*-\s*/i, '');
+  // Strip leading buyer code (TK/MA/DS/KG/PS)
+  body = body.replace(/^\s*(TK|MA|DS|KG|PS)\s*-\s*/i, '');
 
   // Strip leading known-route token then optional known-vertical token
   const toks = body.split(/[_\s]+/).filter(Boolean);
@@ -662,7 +662,7 @@ router.get('/insights', async (req, res) => {
     `, [statsFrom]);
 
     // Summarise into per-buyer today / yesterday / last 7 days / last 30 days
-    const BUYERS = ['TK', 'MA', 'DS', 'KG'];
+    const BUYERS = ['TK', 'MA', 'DS', 'KG', 'PS'];
     const newCampaigns = {};
     for (const buyer of BUYERS) {
       const rows = newCampaignRows.filter((r) => r.buyer === buyer);
@@ -1008,7 +1008,7 @@ async function generateAIReport(days) {
       ORDER BY c.buyer, SUM(s.profit) DESC
     `, [dateFrom, today]);
 
-    const BUYERS = ['TK', 'MA', 'DS', 'KG'];
+    const BUYERS = ['TK', 'MA', 'DS', 'KG', 'PS'];
 
     const dataJson = {
       period_days: days, date_from: dateFrom, date_to: today,
@@ -1076,7 +1076,7 @@ async function generateAIReport(days) {
 
     const prompt = `You are a performance marketing analyst for an SMS media buying team. Your ONLY goal is to maximize profit and ROI. Be brutally honest — if something is losing money, say so. If something is printing money, say scale it.
 
-The team has 4 media buyers: TK (Toby), MA (Martina), DS (Duran), KG (Ken). They control which OFFERS to run, which ROUTES (USMS, Ranhog, Internal, TechStar), CARRIERS (Verizon, AT&T, T-Mobile), DATA PARTNERS (LM, JC, AVANTO, UPSTART, KOINO), and OS TARGETING (iOS-only vs Android vs all). Budget follows performance. Always refer to buyers by their initials (TK, MA, DS, KG) — never expand to full names in tables or headings.
+The team has 5 media buyers: TK (Toby), MA (Martina), DS (Duran), KG (Ken), PS (Prabhat). They control which OFFERS to run, which ROUTES (USMS, Ranhog, Internal, TechStar), CARRIERS (Verizon, AT&T, T-Mobile), DATA PARTNERS (LM, JC, AVANTO, UPSTART, KOINO), and OS TARGETING (iOS-only vs Android vs all). Budget follows performance. Always refer to buyers by their initials (TK, MA, DS, KG, PS) — never expand to full names in tables or headings.
 
 Data for the last ${days} days (${dateFrom} to ${today}):
 
@@ -1094,7 +1094,7 @@ FORMAT RULES:
 - Output every section as a markdown table. No bullet points, no paragraphs.
 - Each field must have its own dedicated column — never combine multiple values in one cell.
 - COLUMN ORDER IS STRICT — fill every column in the exact order shown in the header, even if you write "N/A" or "—".
-- Buyer column = ALWAYS one of: TK, MA, DS, KG (or "TK+MA" if shared). Never put a carrier or route name in the Buyer column.
+- Buyer column = ALWAYS one of: TK, MA, DS, KG, PS (or "TK+MA" if shared). Never put a carrier or route name in the Buyer column.
 - No annotations or extra context in parentheses inside cells (e.g. "(LM)", "(DS)", "(TK)"). Put that info in the Note/Action column.
 - Be thorough — never truncate. If 12 rows are warranted, write 12 rows.
 - CONFIDENCE RULE: Only write "Scale immediately" for combos with 30+ conversions. Below 30 conv write "Test" in the Action column.
@@ -1102,17 +1102,17 @@ ${diff ? '- If CHANGES SINCE LAST REPORT shows a call was ignored, note it in th
 
 ## 💰 Best Combinations to Scale
 Every combo worth scaling (30+ conversions). One row per combo. ${hasOsData ? 'Note iOS-only opportunity in the Action column where iOS EPC significantly beats Android.' : ''}
-STRICT column order — Buyer must be TK/MA/DS/KG, never a carrier name.
+STRICT column order — Buyer must be TK/MA/DS/KG/PS, never a carrier name.
 | ${hasOfferData ? 'Offer' : 'Vertical'} | Buyer | Route | Carrier | EPC | ROI | Conv | Action |
 |---|---|---|---|---|---|---|---|
 
 ## 🔴 Cut Immediately
-Every losing combo. One row per combo — no omissions. Buyer = TK/MA/DS/KG only.
+Every losing combo. One row per combo — no omissions. Buyer = TK/MA/DS/KG/PS only.
 | Vertical/Offer | Buyer | Route | Carrier | Loss ($) | Action |
 |---|---|---|---|---|---|
 
 ## 🔁 Budget Reallocation
-One row per move. Buyer = TK/MA/DS/KG only. No annotations in parentheses.
+One row per move. Buyer = TK/MA/DS/KG/PS only. No annotations in parentheses.
 | From Vertical/Offer | From Route | From Carrier | To Vertical/Offer | To Route | To Carrier | Buyer | Why |
 |---|---|---|---|---|---|---|---|
 
@@ -1122,12 +1122,12 @@ One row per route or carrier. Type = "Route" or "Carrier".
 |---|---|---|---|---|---|
 
 ## 🤝 Partner & Offer Analysis
-One row per offer. Buyer = TK/MA/DS/KG only.
+One row per offer. Buyer = TK/MA/DS/KG/PS only.
 | Offer | Partner | Buyer | EPC | ROI | Verdict |
 |---|---|---|---|---|---|
 
 ## 🧪 Highest-Upside Tests
-One row per test. Buyer = TK/MA/DS/KG only.
+One row per test. Buyer = TK/MA/DS/KG/PS only.
 | Offer/Vertical | Buyer | Route | Carrier | Target EPC | Rationale |
 |---|---|---|---|---|---|
 
@@ -1258,6 +1258,36 @@ KG's offers ranked by EPC and profitability.
 
 ## 👤 KG — 🧪 Highest-Upside Tests
 New setups KG should launch or test.
+| Vertical/Offer | Route | Carrier | Target EPC | Rationale |
+|---|---|---|---|---|
+
+## 👤 PS — 💰 Best Combinations to Scale
+PS campaigns ONLY. One row per profitable combo.
+| Vertical/Offer | Route | Carrier | EPC | ROI | Conv | Action |
+|---|---|---|---|---|---|---|
+
+## 👤 PS — 🔴 Cut Immediately
+PS losing combos ONLY. Every loser — no omissions.
+| Vertical/Offer | Route | Carrier | Loss ($) | Action |
+|---|---|---|---|---|
+
+## 👤 PS — 🔁 Budget Reallocation
+Budget moves PS specifically should make.
+| From Vertical/Offer | From Route | From Carrier | To Vertical/Offer | To Route | To Carrier | Why |
+|---|---|---|---|---|---|---|
+
+## 👤 PS — 📡 Route & Carrier Intelligence
+Which routes and carriers perform best/worst for PS's campaigns specifically.
+| Type | Name | Avg EPC | Best Vertical | Trend | Note |
+|---|---|---|---|---|---|
+
+## 👤 PS — 🤝 Partner & Offer Analysis
+PS's offers ranked by EPC and profitability.
+| Offer | Partner | EPC | ROI | Verdict |
+|---|---|---|---|---|
+
+## 👤 PS — 🧪 Highest-Upside Tests
+New setups PS should launch or test.
 | Vertical/Offer | Route | Carrier | Target EPC | Rationale |
 |---|---|---|---|---|`;
 
@@ -1418,7 +1448,7 @@ async function generateListReport() {
     return `${i+1}. "${r.list_key}" | Buyers:${(r.buyers||[]).join('+')} | Campaigns:${r.campaign_count} | AllTimeEPC:$${r.epc}${trend}${epcDelta} | Profit:$${r.profit} | ROI:${r.roi}% | IdleDays:${r.days_since_last_use}`;
   }).join('\n');
 
-  const prompt = `You are a data list performance analyst for an SMS media buying team. Your job is to tell the media buyers (TK, MA, DS, KG) exactly which data lists to use next, which to rest, and which to retire — with specific reasoning backed by numbers.
+  const prompt = `You are a data list performance analyst for an SMS media buying team. Your job is to tell the media buyers (TK, MA, DS, KG, PS) exactly which data lists to use next, which to rest, and which to retire — with specific reasoning backed by numbers.
 
 CONTEXT: Media buyers create new SMS campaigns using specific data lists (named audience batches). A list's performance can change over time due to audience fatigue or seasonal patterns. Best practice: if a list's recent EPC has dropped significantly vs its all-time EPC, rest it 3-4 weeks before retesting. If a list has been idle 28+ days and had good historical ROI, it's a candidate for retest.
 
