@@ -46,12 +46,14 @@ async function sendDailyReport() {
     const date = new Date(yesterday + 'T12:00:00Z');
     const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-    const lines = BUYER_ORDER.map(code => {
-      const name   = BUYER_NAMES[code];
-      const profit = byBuyer[code] ?? null;
-      if (profit === null) return `⬜ *${name}:* —`;
-      const emoji  = profit >= 0 ? '🟢' : '🔴';
-      return `${emoji} *${name}:* ${fmtMoney(profit)}`;
+    const ranked = BUYER_ORDER
+      .map(code => ({ code, name: BUYER_NAMES[code], profit: byBuyer[code] ?? null }))
+      .sort((a, b) => (b.profit ?? -Infinity) - (a.profit ?? -Infinity));
+
+    const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+    const lines = ranked.map(({ name, profit }, i) => {
+      if (profit === null) return `${medals[i]} *${name}:* —`;
+      return `${medals[i]} *${name}:* ${fmtMoney(profit)}`;
     });
 
     const total     = Object.values(byBuyer).reduce((a, b) => a + b, 0);
