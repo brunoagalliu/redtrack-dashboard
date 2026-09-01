@@ -50,6 +50,18 @@ function CampaignDebugPanel() {
   const [result, setResult]     = useState(null);
   const [error, setError]       = useState(null);
 
+  const [batchTesting, setBatchTesting] = useState(false);
+  const [batchResult, setBatchResult]   = useState(null);
+
+  async function handleBatchTest() {
+    setBatchTesting(true); setBatchResult(null); setError(null);
+    try {
+      const data = await api.debugBatchTest(dateFrom, dateTo);
+      setBatchResult(data);
+    } catch (err) { setError(err.message); }
+    finally { setBatchTesting(false); }
+  }
+
   async function handleCheck() {
     if (!campaignId.trim()) return;
     setChecking(true); setResult(null); setError(null);
@@ -109,6 +121,13 @@ function CampaignDebugPanel() {
           >
             {syncing ? 'Syncing…' : 'Force Sync'}
           </button>
+          <button
+            onClick={handleBatchTest}
+            disabled={batchTesting}
+            className="px-3 py-1.5 text-sm font-medium rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+          >
+            {batchTesting ? 'Testing…' : 'Test Batch API'}
+          </button>
         </div>
 
         {error && (
@@ -137,6 +156,23 @@ function CampaignDebugPanel() {
                 {result.data.db_stats_recent.map(s => `${s.stat_date} clicks=${s.clicks} conv=${s.conversions} rev=${s.revenue}`).join(' | ')}
               </div>
             )}
+          </div>
+        )}
+
+        {batchResult && (
+          <div className="text-xs space-y-1.5">
+            <div className="flex gap-3 flex-wrap">
+              <span className={`px-2 py-0.5 rounded-full font-medium ${batchResult.has_campaign_id && batchResult.has_date ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                Batch works: {batchResult.has_campaign_id && batchResult.has_date ? 'YES — campaign_id + date both present' : 'NO — missing fields'}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                {batchResult.campaigns_tested} campaigns × {batchResult.date_range} → {batchResult.row_count} rows
+              </span>
+            </div>
+            <div className="font-mono bg-white border border-gray-200 rounded p-2 overflow-x-auto text-gray-600 text-xs">
+              <div className="text-gray-400 mb-1">Fields: {batchResult.fields?.join(', ')}</div>
+              {batchResult.sample?.slice(0, 5).map((r, i) => <div key={i}>{JSON.stringify(r)}</div>)}
+            </div>
           </div>
         )}
 
