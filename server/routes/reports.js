@@ -285,9 +285,12 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
       for (const c of buyerCampaigns) {
         const latest = latestMap.get(c.id);
         if (latest && latest >= historicalTo) continue; // fully up to date — skip
-        const syncFrom = latest
+        const gapFrom = latest
           ? new Date(new Date(latest + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
           : dateFrom;
+        // Never fetch before the campaign existed — no data can exist before created_at
+        const syncFrom = c.created_at && c.created_at > gapFrom ? c.created_at : gapFrom;
+        if (syncFrom > historicalTo) continue; // created after the range ends, nothing to fetch
         toSyncHistorical.push({ c, from: syncFrom });
       }
     }
