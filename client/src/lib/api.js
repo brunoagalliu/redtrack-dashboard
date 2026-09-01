@@ -86,6 +86,7 @@ export const api = {
 
   getSyncStatus: () => request('/reports/sync/status'),
   triggerSync: (params = {}) => request('/reports/sync', { method: 'POST', body: JSON.stringify(params) }),
+  stopSync: () => request('/reports/sync/stop', { method: 'POST' }),
   getOfferSyncStatus: () => request('/reports/sync/offers/status'),
   triggerOfferSync: (params = {}) => request('/reports/sync/offers', { method: 'POST', body: JSON.stringify(params) }),
   getSyncLogs: (limit = 50) => request(`/reports/sync/logs?limit=${limit}`),

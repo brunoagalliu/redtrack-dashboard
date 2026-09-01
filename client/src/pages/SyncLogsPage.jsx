@@ -21,6 +21,7 @@ function StatusBadge({ status }) {
     running:     'bg-blue-100 text-blue-800 animate-pulse',
     error:       'bg-red-100 text-red-800',
     interrupted: 'bg-amber-100 text-amber-800',
+    stopped:     'bg-gray-100 text-gray-600',
   };
   return (
     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || 'bg-gray-100 text-gray-600'}`}>
@@ -42,6 +43,7 @@ export default function SyncLogsPage() {
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState(null);
   const [triggerMsg, setTriggerMsg] = useState(null);
+  const [stopping, setStopping] = useState(false);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [aiGenStartedAt, setAiGenStartedAt] = useState(null);
   const queryClient = useQueryClient();
@@ -231,6 +233,24 @@ export default function SyncLogsPage() {
                 ({syncStatus.processed} / {syncStatus.total} campaigns)
               </span>
             )}
+            <button
+              onClick={async () => {
+                setStopping(true);
+                try { await api.stopSync(); } catch {}
+                finally { setStopping(false); }
+              }}
+              disabled={stopping}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors"
+            >
+              {stopping ? (
+                <span className="inline-block w-3 h-3 border-2 border-red-300 border-t-red-700 rounded-full animate-spin" />
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              )}
+              Stop
+            </button>
           </div>
           <div className="mt-2 h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
             <div

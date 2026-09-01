@@ -12,7 +12,7 @@ const MAX_HISTORY_DAYS = 180;
 // ── Sync state (in-memory; reset on server restart) ─────────────────────────
 const sync = {
   running: false,
-  status: 'idle',       // idle | running | complete | error
+  status: 'idle',       // idle | running | complete | error | stopped
   phase: 'idle',        // idle | campaigns | offers
   processed: 0,
   total: 0,
@@ -20,6 +20,7 @@ const sync = {
   completedAt: null,
   lastSyncedAt: null,
   error: null,
+  stopRequested: false,
 };
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -181,14 +182,15 @@ let currentLogId = null;
 
 async function runSync(dateFrom, dateTo, buyerFilter = null) {
   if (sync.running) return;
-  sync.running  = true;
-  sync.status   = 'running';
-  sync.phase    = 'campaigns';
-  sync.processed = 0;
-  sync.total    = 0;
-  sync.startedAt = new Date();
-  sync.completedAt = null;
-  sync.error    = null;
+  sync.running       = true;
+  sync.status        = 'running';
+  sync.phase         = 'campaigns';
+  sync.processed     = 0;
+  sync.total         = 0;
+  sync.startedAt     = new Date();
+  sync.completedAt   = null;
+  sync.error         = null;
+  sync.stopRequested = false;
   await persistSyncStatus();
 
   // Insert a log entry for this sync run
@@ -303,6 +305,7 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
 
     // Historical sync
     for (let i = 0; i < toSyncHistorical.length; i++) {
+      if (sync.stopRequested) break;
       await fetchAndStore(toSyncHistorical[i], dateFrom, historicalTo);
       sync.processed = i + 1;
       if (sync.processed % 50 === 0) await persistSyncStatus();
@@ -310,9 +313,24 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
 
     // Today sync
     for (let i = 0; i < toSyncToday.length; i++) {
+      if (sync.stopRequested) break;
       await fetchAndStore(toSyncToday[i], today, today);
       sync.processed = toSyncHistorical.length + i + 1;
       if (sync.processed % 50 === 0) await persistSyncStatus();
+    }
+
+    if (sync.stopRequested) {
+      sync.status      = 'stopped';
+      sync.phase       = 'idle';
+      sync.completedAt = new Date();
+      await persistSyncStatus();
+      if (currentLogId) {
+        await pool.query(
+          `UPDATE rt_sync_logs SET status='stopped', completed_at=$1, campaigns_processed=$2 WHERE id=$3`,
+          [sync.completedAt, sync.processed, currentLogId]
+        ).catch(() => {});
+      }
+      return;
     }
 
     // Chain offer sync automatically
@@ -407,6 +425,13 @@ router.get('/sync/status', async (_req, res) => {
     if (rows.length) return res.json(normalize(rows[0]));
   } catch { /* ignore */ }
   res.json(normalize(sync));
+});
+
+// Stop a running sync
+router.post('/sync/stop', (_req, res) => {
+  if (!sync.running) return res.json({ ok: false, message: 'No sync running' });
+  sync.stopRequested = true;
+  res.json({ ok: true, message: 'Stop requested — will halt after current campaign' });
 });
 
 // Sync log history

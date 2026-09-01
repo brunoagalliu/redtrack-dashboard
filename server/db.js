@@ -261,7 +261,7 @@ async function init() {
   // Mark any open log entries as interrupted on restart
   await pool.query(`
     UPDATE rt_sync_logs SET status = 'interrupted', error = 'Server restarted during sync', completed_at = NOW()
-    WHERE status = 'running'
+    WHERE status IN ('running')
   `);
 }
 
