@@ -192,11 +192,14 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
   await persistSyncStatus();
 
   // Insert a log entry for this sync run
+  const buyerFilterStr = buyerFilter
+    ? (Array.isArray(buyerFilter) ? buyerFilter.join(',') : buyerFilter)
+    : null;
   try {
     const { rows } = await pool.query(
-      `INSERT INTO rt_sync_logs (date_from, date_to, started_at, status)
-       VALUES ($1, $2, $3, 'running') RETURNING id`,
-      [dateFrom, dateTo, sync.startedAt]
+      `INSERT INTO rt_sync_logs (date_from, date_to, started_at, status, buyer_filter)
+       VALUES ($1, $2, $3, 'running', $4) RETURNING id`,
+      [dateFrom, dateTo, sync.startedAt, buyerFilterStr]
     );
     currentLogId = rows[0]?.id || null;
   } catch { /* non-critical */ }
@@ -411,7 +414,7 @@ router.get('/sync/logs', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const { rows } = await pool.query(
-      `SELECT id, date_from, date_to, started_at, completed_at, campaigns_processed, status, error
+      `SELECT id, date_from, date_to, started_at, completed_at, campaigns_processed, status, error, buyer_filter
        FROM rt_sync_logs
        ORDER BY started_at DESC
        LIMIT $1`,

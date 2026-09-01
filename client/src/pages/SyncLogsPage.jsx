@@ -112,12 +112,14 @@ export default function SyncLogsPage() {
     ...aiListHistory.map(r => ({ ...r, type: 'Lists', period_days: null })),
   ].sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
 
-  async function triggerWithDates(dateFrom, dateTo, label, { logId } = {}) {
+  async function triggerWithDates(dateFrom, dateTo, label, { logId, buyer } = {}) {
     if (logId) setResumingId(logId); else setTriggering(true);
     setTriggerError(null);
     setTriggerMsg(null);
     try {
-      const result = await api.triggerSync({ date_from: dateFrom, date_to: dateTo });
+      const body = { date_from: dateFrom, date_to: dateTo };
+      if (buyer) body.buyer = buyer;
+      const result = await api.triggerSync(body);
       if (result?.status === 'already_running') {
         setTriggerError('A sync is already running — wait for it to finish, then try again.');
       } else {
@@ -305,7 +307,14 @@ export default function SyncLogsPage() {
                 return (
                   <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-3 py-2.5 text-xs text-gray-400 font-mono">{log.id}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-700 font-mono">{log.date_from} → {log.date_to}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-700 font-mono">
+                      {log.date_from} → {log.date_to}
+                      {log.buyer_filter && (
+                        <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded text-xs font-semibold bg-teal-100 text-teal-700">
+                          {log.buyer_filter}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.started_at)}</td>
                     <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.completed_at)}</td>
                     <td className="px-3 py-2.5 text-xs text-gray-600 text-right font-mono">{fmtDuration(log.started_at, log.completed_at)}</td>
@@ -314,7 +323,7 @@ export default function SyncLogsPage() {
                     <td className="px-3 py-2.5">
                       {canResume && (
                         <button
-                          onClick={() => triggerWithDates(log.date_from, log.date_to, 'Resume', { logId: log.id })}
+                          onClick={() => triggerWithDates(log.date_from, log.date_to, 'Resume', { logId: log.id, buyer: log.buyer_filter ? log.buyer_filter.split(',') : null })}
                           disabled={isRunning || isResuming}
                           className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >

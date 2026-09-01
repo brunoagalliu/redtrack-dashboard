@@ -153,15 +153,8 @@ function scheduleAutoSync() {
   }, delay);
 }
 
-const { pool } = require('./db');
-
 initDb()
   .then(() => {
-    // Mark any sync that was still 'running' when the server last died as interrupted
-    pool.query(
-      `UPDATE rt_sync_logs SET status='interrupted', completed_at=NOW(), error='Server restarted during sync' WHERE status='running'`
-    ).catch(() => {});
-
     scheduleDailyCleanup();
     scheduleAutoSync();
     scheduleTelegramReport();

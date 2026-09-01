@@ -244,8 +244,10 @@ async function init() {
       completed_at        TIMESTAMP,
       campaigns_processed INT,
       status              TEXT,
-      error               TEXT
+      error               TEXT,
+      buyer_filter        TEXT
     );
+    ALTER TABLE rt_sync_logs ADD COLUMN IF NOT EXISTS buyer_filter TEXT;
     CREATE INDEX IF NOT EXISTS rt_sync_logs_started ON rt_sync_logs(started_at DESC);
   `);
 
