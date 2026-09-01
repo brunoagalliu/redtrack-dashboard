@@ -262,18 +262,34 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
 
     const ids = buyerCampaigns.map((c) => c.id);
 
-    // 4. Historical pass (dateFrom → yesterday): skip campaigns already in DB — past data never changes.
-    // We check only the LAST day of the range: if a campaign has data for historicalTo it's up to date.
-    // Checking any date in the range would incorrectly skip campaigns with date-level gaps.
+    // 4. Historical pass (dateFrom → yesterday).
+    // For each campaign, find its latest synced date in the range.
+    // - Never synced  → sync full range (dateFrom…historicalTo)
+    // - Gap at end    → sync from (latest+1)…historicalTo, skipping already-stored rows
+    // - Up to date    → skip entirely
+    // This fills forward gaps left by interrupted syncs without re-fetching existing data.
     const historicalTo = dateTo < today ? dateTo : yesterday;
-    let toSyncHistorical = [];
+    // Each item: { c: campaignObj, from: dateString }
+    const toSyncHistorical = [];
     if (dateFrom <= historicalTo) {
-      const { rows: alreadySynced } = await pool.query(
-        `SELECT DISTINCT campaign_id FROM rt_campaign_stats WHERE stat_date = $1`,
-        [historicalTo]
+      const { rows: latestRows } = await pool.query(
+        `SELECT campaign_id, MAX(stat_date) AS latest
+         FROM rt_campaign_stats
+         WHERE stat_date BETWEEN $1 AND $2
+         GROUP BY campaign_id`,
+        [dateFrom, historicalTo]
       );
-      const syncedIds = new Set(alreadySynced.map((r) => r.campaign_id));
-      toSyncHistorical = buyerCampaigns.filter((c) => !syncedIds.has(c.id));
+      const latestMap = new Map(
+        latestRows.map((r) => [r.campaign_id, r.latest.toISOString().slice(0, 10)])
+      );
+      for (const c of buyerCampaigns) {
+        const latest = latestMap.get(c.id);
+        if (latest && latest >= historicalTo) continue; // fully up to date — skip
+        const syncFrom = latest
+          ? new Date(new Date(latest + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
+          : dateFrom;
+        toSyncHistorical.push({ c, from: syncFrom });
+      }
     }
 
     // 5. Today's pass: always refresh all campaigns (live data)
@@ -306,7 +322,8 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
     // Historical sync
     for (let i = 0; i < toSyncHistorical.length; i++) {
       if (sync.stopRequested) break;
-      await fetchAndStore(toSyncHistorical[i], dateFrom, historicalTo);
+      const { c, from } = toSyncHistorical[i];
+      await fetchAndStore(c, from, historicalTo);
       sync.processed = i + 1;
       if (sync.processed % 50 === 0) await persistSyncStatus();
     }
