@@ -234,7 +234,7 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
     for (const c of campaigns) {
       const title = c.title.trim();
       const createdAt = (c.created_at || '').slice(0, 10);
-      if (createdAt < cutoff) continue;
+      if (createdAt && createdAt < cutoff) continue;
       for (const [buyer, pattern] of Object.entries(BUYER_PATTERNS)) {
         if (pattern.test(title)) {
           const parsed = parseCampaignTitle(title, knownVerticals, knownRoutes, knownPartners);
@@ -432,10 +432,21 @@ router.get('/debug/raw', async (req, res) => {
   const { campaign_id, date_from, date_to } = req.query;
   if (!campaign_id) return res.status(400).json({ error: 'campaign_id required' });
   try {
+    // Check if campaign exists in RedTrack and what created_at looks like
+    const { data: campData } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
+    const allCampaigns = campData.items || [];
+    const camp = allCampaigns.find(c => c.id === campaign_id);
+
     const params = { campaign_id, date_from: date_from || laDate(-7), date_to: date_to || laDate(), per: 1000 };
     const { data } = await redtrack.get('/report', { params });
     const rows = Array.isArray(data) ? data : (data?.items || []);
-    res.json({ params, row_count: rows.length, rows: rows.slice(0, 10), fields: rows[0] ? Object.keys(rows[0]) : [] });
+    res.json({
+      campaign_in_redtrack: camp ? { id: camp.id, title: camp.title, created_at: camp.created_at, status: camp.status } : 'NOT FOUND in /campaigns/v2',
+      params,
+      row_count: rows.length,
+      rows: rows.slice(0, 10),
+      fields: rows[0] ? Object.keys(rows[0]) : [],
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
