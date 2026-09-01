@@ -306,7 +306,7 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
         });
         const rows = Array.isArray(report) ? report : (report?.items || []);
         for (const row of rows) {
-          if (!row.date || (!row.clicks && !row.conversions && !row.revenue)) continue;
+          if (!row.date || (!row.clicks && !row.conversions && !row.revenue && !row.cost)) continue;
           await pool.query(
             `INSERT INTO rt_campaign_stats
                (campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
