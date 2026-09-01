@@ -1972,6 +1972,43 @@ router.get('/sync/offers/test', async (req, res) => {
   }
 });
 
+// Batch /report test — verifies that group=campaign,date with comma-separated IDs works
+// GET /api/reports/debug/batch-test?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+router.get('/debug/batch-test', async (req, res) => {
+  try {
+    const from = req.query.date_from || laDate(-7);
+    const to   = req.query.date_to   || laDate(-1);
+    // Pick 5 DS campaigns from DB to test with
+    const { rows: camps } = await pool.query(
+      `SELECT id, title FROM rt_campaigns WHERE buyer IS NOT NULL LIMIT 5`
+    );
+    if (!camps.length) return res.status(400).json({ error: 'no campaigns in DB' });
+    const ids = camps.map(c => c.id).join(',');
+    await throttleRedtrack();
+    const { data } = await redtrack.get('/report', {
+      params: {
+        date_from: from, date_to: to,
+        campaign_id: ids,
+        group: 'campaign,date',
+        fields: 'campaign_id,date,clicks,conversions,cost,revenue,profit',
+        per: 1000,
+      },
+    });
+    const rows = Array.isArray(data) ? data : (data?.items || []);
+    res.json({
+      campaigns_tested: camps.length,
+      date_range: `${from} → ${to}`,
+      row_count: rows.length,
+      fields: rows[0] ? Object.keys(rows[0]) : [],
+      sample: rows.slice(0, 10),
+      has_campaign_id: rows.some(r => r.campaign_id),
+      has_date: rows.some(r => r.date),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, status: err.response?.status });
+  }
+});
+
 // OS data diagnostic
 router.get('/sync/offers/debug', async (_req, res) => {
   try {
