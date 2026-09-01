@@ -7,7 +7,7 @@ const { laDate } = require('../utils');
 const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i, KG: /^KG[\s_\-]/i, PS: /^PS[\s_\-]/i };
-const CALL_INTERVAL_MS = 3200; // 20 calls/min limit → ~3s between calls
+const CALL_INTERVAL_MS = 1500; // target ~40 calls/min; 429 retry backs off automatically
 const MAX_HISTORY_DAYS = 180;
 
 // ── Sync state (in-memory; reset on server restart) ─────────────────────────
@@ -298,25 +298,39 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
 
     sync.total = toSyncHistorical.length + toSyncToday.length;
 
-    async function fetchAndStore(c, from, to) {
+    async function fetchAndStore(c, from, to, _retry = false) {
       await throttleRedtrack();
       try {
         const { data: report } = await redtrack.get('/report', {
           params: { date_from: from, date_to: to, campaign_id: c.id, per: 1000 },
         });
-        const rows = Array.isArray(report) ? report : (report?.items || []);
-        for (const row of rows) {
-          if (!row.date || (!row.clicks && !row.conversions && !row.revenue && !row.cost)) continue;
-          await pool.query(
-            `INSERT INTO rt_campaign_stats
-               (campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)
-             ON CONFLICT (campaign_id, stat_date) DO UPDATE SET
-               clicks=$3, conversions=$4, cost=$5, revenue=$6, profit=$7`,
-            [c.id, row.date, row.clicks||0, row.conversions||0, row.cost||0, row.revenue||0, row.profit||0]
-          );
+        const rows = (Array.isArray(report) ? report : (report?.items || []))
+          .filter(r => r.date && (r.clicks || r.conversions || r.revenue || r.cost));
+        if (rows.length === 0) return;
+
+        // Batch all rows for this campaign into a single INSERT
+        const vals = [];
+        const placeholders = rows.map((r, i) => {
+          const b = i * 7;
+          vals.push(c.id, r.date, r.clicks||0, r.conversions||0, r.cost||0, r.revenue||0, r.profit||0);
+          return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7})`;
+        });
+        await pool.query(
+          `INSERT INTO rt_campaign_stats (campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
+           VALUES ${placeholders.join(',')}
+           ON CONFLICT (campaign_id, stat_date) DO UPDATE SET
+             clicks=EXCLUDED.clicks, conversions=EXCLUDED.conversions,
+             cost=EXCLUDED.cost, revenue=EXCLUDED.revenue, profit=EXCLUDED.profit`,
+          vals
+        );
+      } catch (err) {
+        if (!_retry && err.response?.status === 429) {
+          console.warn(`[sync] 429 on ${c.id} — backing off 30s`);
+          await sleep(30000);
+          return fetchAndStore(c, from, to, true);
         }
-      } catch (err) { console.warn(`[sync] campaign ${c.id} skipped: ${err.message}`); }
+        console.warn(`[sync] campaign ${c.id} skipped: ${err.message}`);
+      }
     }
 
     // Historical sync
