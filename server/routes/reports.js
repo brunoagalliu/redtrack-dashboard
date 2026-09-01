@@ -251,7 +251,10 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
       );
     }
 
-    if (buyerFilter) buyerCampaigns.splice(0, buyerCampaigns.length, ...buyerCampaigns.filter(c => c.buyer === buyerFilter));
+    if (buyerFilter) {
+      const buyers = Array.isArray(buyerFilter) ? buyerFilter : [buyerFilter];
+      buyerCampaigns.splice(0, buyerCampaigns.length, ...buyerCampaigns.filter(c => buyers.includes(c.buyer)));
+    }
 
     const ids = buyerCampaigns.map((c) => c.id);
 
