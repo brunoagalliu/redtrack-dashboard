@@ -426,6 +426,21 @@ router.get('/sync/status', async (_req, res) => {
   res.json(normalize(sync));
 });
 
+// Debug: raw RedTrack /report response for a campaign
+// GET /api/reports/debug/raw?campaign_id=XXX&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+router.get('/debug/raw', async (req, res) => {
+  const { campaign_id, date_from, date_to } = req.query;
+  if (!campaign_id) return res.status(400).json({ error: 'campaign_id required' });
+  try {
+    const params = { campaign_id, date_from: date_from || laDate(-7), date_to: date_to || laDate(), per: 1000 };
+    const { data } = await redtrack.get('/report', { params });
+    const rows = Array.isArray(data) ? data : (data?.items || []);
+    res.json({ params, row_count: rows.length, rows: rows.slice(0, 10), fields: rows[0] ? Object.keys(rows[0]) : [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Stop a running sync
 router.post('/sync/stop', (_req, res) => {
   if (!sync.running) return res.json({ ok: false, message: 'No sync running' });
