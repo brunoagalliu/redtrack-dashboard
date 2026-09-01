@@ -94,7 +94,7 @@ function SortIcon({ sorted }) {
 }
 
 // ── Sync button ───────────────────────────────────────────────────────────────
-function SyncButton({ dateFrom, dateTo, onSynced }) {
+function SyncButton({ dateFrom, dateTo, onSynced, buyer = null, label = 'Sync' }) {
   const [state, setState] = useState(null);
   const pollRef = useRef(null);
 
@@ -106,10 +106,12 @@ function SyncButton({ dateFrom, dateTo, onSynced }) {
 
   async function startSync() {
     try {
+      const body = { date_from: dateFrom, date_to: dateTo };
+      if (buyer) body.buyer = buyer;
       const res = await fetch('/api/reports/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('auth_token')}` },
-        body: JSON.stringify({ date_from: dateFrom, date_to: dateTo }),
+        body: JSON.stringify(body),
       });
       setState(await res.json());
       pollRef.current = setInterval(async () => {
@@ -145,7 +147,7 @@ function SyncButton({ dateFrom, dateTo, onSynced }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          Sync
+          {label}
         </>
       )}
     </button>
@@ -753,6 +755,13 @@ export default function ReportsPage() {
             CSV
           </button>
           <SyncButton dateFrom={applied.date_from} dateTo={applied.date_to} onSynced={onSynced} />
+          <SyncButton
+            dateFrom={new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)}
+            dateTo={new Date(Date.now() - 86400000).toISOString().slice(0, 10)}
+            buyer="PS"
+            label="Backfill PS"
+            onSynced={onSynced}
+          />
         </div>
       </div>
 

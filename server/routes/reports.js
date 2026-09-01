@@ -179,7 +179,7 @@ async function persistSyncStatus() {
 
 let currentLogId = null;
 
-async function runSync(dateFrom, dateTo) {
+async function runSync(dateFrom, dateTo, buyerFilter = null) {
   if (sync.running) return;
   sync.running  = true;
   sync.status   = 'running';
@@ -250,6 +250,8 @@ async function runSync(dateFrom, dateTo) {
         [c.id, c.title, c.buyer, c.vertical || null, c.platform || null, c.route || null, c.carrier || null, c.dataPartner || null, c.dataList || null, c.listLastUsed || null, c.created_at || null]
       );
     }
+
+    if (buyerFilter) buyerCampaigns.splice(0, buyerCampaigns.length, ...buyerCampaigns.filter(c => c.buyer === buyerFilter));
 
     const ids = buyerCampaigns.map((c) => c.id);
 
@@ -364,13 +366,14 @@ router.post('/sync', (req, res) => {
   const defaults = defaultDateRange();
   const dateFrom = req.body?.date_from || defaults.date_from;
   const dateTo   = req.body?.date_to   || defaults.date_to;
+  const buyer    = req.body?.buyer     || null;
 
   if (sync.running) return res.json({ status: 'already_running', ...sync });
 
   // Fire-and-forget
-  runSync(dateFrom, dateTo).catch((err) => console.error('Sync error:', err.message));
+  runSync(dateFrom, dateTo, buyer).catch((err) => console.error('Sync error:', err.message));
 
-  res.status(202).json({ status: 'started', dateFrom, dateTo });
+  res.status(202).json({ status: 'started', dateFrom, dateTo, buyer });
 });
 
 // Sync status — always returns snake_case regardless of source
