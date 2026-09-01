@@ -7,7 +7,7 @@ const { laDate } = require('../utils');
 const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i, KG: /^KG[\s_\-]/i, PS: /^PS[\s_\-]/i };
-const CALL_INTERVAL_MS = 1500; // target ~40 calls/min; 429 retry backs off automatically
+const CALL_INTERVAL_MS = 2000; // ~30 calls/min; 429 retry backs off automatically
 const MAX_HISTORY_DAYS = 180;
 
 // ── Sync state (in-memory; reset on server restart) ─────────────────────────
@@ -301,7 +301,7 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
 
     sync.total = toSyncHistorical.length + toSyncToday.length;
 
-    async function fetchAndStore(c, from, to, _retry = false) {
+    async function fetchAndStore(c, from, to, attempt = 1) {
       await throttleRedtrack();
       try {
         const { data: report } = await redtrack.get('/report', {
@@ -327,10 +327,10 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
           vals
         );
       } catch (err) {
-        if (!_retry && err.response?.status === 429) {
-          console.warn(`[sync] 429 on ${c.id} — backing off 30s`);
+        if (err.response?.status === 429 && attempt <= 3) {
+          console.warn(`[sync] 429 on ${c.id} — retry ${attempt}/3 in 30s`);
           await sleep(30000);
-          return fetchAndStore(c, from, to, true);
+          return fetchAndStore(c, from, to, attempt + 1);
         }
         console.warn(`[sync] campaign ${c.id} skipped: ${err.message}`);
       }
