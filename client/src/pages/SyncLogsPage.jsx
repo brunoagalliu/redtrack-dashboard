@@ -39,6 +39,139 @@ function SectionHeader({ title, subtitle }) {
   );
 }
 
+function CampaignDebugPanel() {
+  const today = new Date().toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const [campaignId, setCampaignId] = useState('');
+  const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
+  const [dateTo, setDateTo]     = useState(today);
+  const [checking, setChecking] = useState(false);
+  const [syncing, setSyncing]   = useState(false);
+  const [result, setResult]     = useState(null);
+  const [error, setError]       = useState(null);
+
+  async function handleCheck() {
+    if (!campaignId.trim()) return;
+    setChecking(true); setResult(null); setError(null);
+    try {
+      const data = await api.debugCampaign(campaignId.trim(), dateFrom, dateTo);
+      setResult({ type: 'debug', data });
+    } catch (err) { setError(err.message); }
+    finally { setChecking(false); }
+  }
+
+  async function handleForceSync() {
+    if (!campaignId.trim()) return;
+    setSyncing(true); setResult(null); setError(null);
+    try {
+      const data = await api.forceSyncCampaign(campaignId.trim(), dateFrom, dateTo);
+      setResult({ type: 'sync', data });
+    } catch (err) { setError(err.message); }
+    finally { setSyncing(false); }
+  }
+
+  return (
+    <div>
+      <SectionHeader title="Campaign Debug" subtitle="Check and force-sync a specific campaign by ID" />
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-[240px]">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Campaign ID</label>
+            <input
+              type="text"
+              value={campaignId}
+              onChange={e => setCampaignId(e.target.value)}
+              placeholder="e.g. 6a85f3cd706cfa38ad3bda4f"
+              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <button
+            onClick={handleCheck}
+            disabled={checking || syncing || !campaignId.trim()}
+            className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 transition-colors"
+          >
+            {checking ? 'Checking…' : 'Check'}
+          </button>
+          <button
+            onClick={handleForceSync}
+            disabled={checking || syncing || !campaignId.trim()}
+            className="px-3 py-1.5 text-sm font-medium rounded-md bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50 transition-colors"
+          >
+            {syncing ? 'Syncing…' : 'Force Sync'}
+          </button>
+        </div>
+
+        {error && (
+          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</div>
+        )}
+
+        {result?.type === 'debug' && (
+          <div className="text-xs space-y-1.5">
+            <div className="flex gap-3 flex-wrap">
+              <span className={`px-2 py-0.5 rounded-full font-medium ${result.data.campaign_in_redtrack === 'NOT FOUND in /campaigns/v2' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                RedTrack: {typeof result.data.campaign_in_redtrack === 'string' ? result.data.campaign_in_redtrack : `Found — "${result.data.campaign_in_redtrack.title}"`}
+              </span>
+              <span className={`px-2 py-0.5 rounded-full font-medium ${result.data.campaign_in_db === 'NOT IN DB' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                Our DB: {result.data.campaign_in_db === 'NOT IN DB' ? 'NOT IN DB' : `Found (buyer: ${result.data.campaign_in_db.buyer})`}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">
+                Stats rows: {result.data.db_stats_total}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                API rows for range: {result.data.api_row_count} (fields: {result.data.api_fields.join(', ')})
+              </span>
+            </div>
+            {result.data.db_stats_recent.length > 0 && (
+              <div className="font-mono bg-white border border-gray-200 rounded p-2 overflow-x-auto">
+                <span className="text-gray-400">Recent stats in DB: </span>
+                {result.data.db_stats_recent.map(s => `${s.stat_date} clicks=${s.clicks} conv=${s.conversions} rev=${s.revenue}`).join(' | ')}
+              </div>
+            )}
+          </div>
+        )}
+
+        {result?.type === 'sync' && (
+          <div className="text-xs space-y-1">
+            <div className="flex gap-3 flex-wrap">
+              <span className={`px-2 py-0.5 rounded-full font-medium ${result.data.stored > 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                Stored: {result.data.stored} rows
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                API total: {result.data.total_rows}
+              </span>
+              {result.data.skipped_no_date > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                  Skipped (no date field): {result.data.skipped_no_date}
+                </span>
+              )}
+              {result.data.skipped_zero > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                  Skipped (zero metrics): {result.data.skipped_zero}
+                </span>
+              )}
+            </div>
+            {result.data.sample.length > 0 && (
+              <div className="font-mono bg-white border border-gray-200 rounded p-2 overflow-x-auto text-gray-600">
+                {result.data.sample.map((r, i) => <div key={i}>{JSON.stringify(r)}</div>)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SyncLogsPage() {
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState(null);
@@ -398,6 +531,9 @@ export default function SyncLogsPage() {
           </table>
         </div>
       </div>
+
+      {/* ── Campaign Debug & Force Sync ── */}
+      <CampaignDebugPanel />
 
       {/* ── AI Generations ── */}
       <div>

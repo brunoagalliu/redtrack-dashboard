@@ -426,26 +426,113 @@ router.get('/sync/status', async (_req, res) => {
   res.json(normalize(sync));
 });
 
-// Debug: raw RedTrack /report response for a campaign
+// Debug: raw RedTrack /report response for a campaign + DB presence check
 // GET /api/reports/debug/raw?campaign_id=XXX&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
 router.get('/debug/raw', async (req, res) => {
   const { campaign_id, date_from, date_to } = req.query;
   if (!campaign_id) return res.status(400).json({ error: 'campaign_id required' });
   try {
-    // Check if campaign exists in RedTrack and what created_at looks like
     const { data: campData } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
     const allCampaigns = campData.items || [];
     const camp = allCampaigns.find(c => c.id === campaign_id);
+
+    // Check our DB for this campaign
+    const { rows: dbCampaign } = await pool.query(
+      `SELECT id, title, buyer, created_at FROM rt_campaigns WHERE id = $1`, [campaign_id]
+    );
+    const { rows: dbCount } = await pool.query(
+      `SELECT COUNT(*) AS total FROM rt_campaign_stats WHERE campaign_id = $1`, [campaign_id]
+    );
+    const { rows: dbStats } = await pool.query(
+      `SELECT stat_date, clicks, conversions, revenue FROM rt_campaign_stats
+       WHERE campaign_id = $1 ORDER BY stat_date DESC LIMIT 10`, [campaign_id]
+    );
 
     const params = { campaign_id, date_from: date_from || laDate(-7), date_to: date_to || laDate(), per: 1000 };
     const { data } = await redtrack.get('/report', { params });
     const rows = Array.isArray(data) ? data : (data?.items || []);
     res.json({
       campaign_in_redtrack: camp ? { id: camp.id, title: camp.title, created_at: camp.created_at, status: camp.status } : 'NOT FOUND in /campaigns/v2',
-      params,
-      row_count: rows.length,
-      rows: rows.slice(0, 10),
-      fields: rows[0] ? Object.keys(rows[0]) : [],
+      campaign_in_db: dbCampaign[0] || 'NOT IN DB',
+      db_stats_total: Number(dbCount[0]?.total || 0),
+      db_stats_recent: dbStats,
+      api_params: params,
+      api_row_count: rows.length,
+      api_rows: rows.slice(0, 10),
+      api_fields: rows[0] ? Object.keys(rows[0]) : [],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Force-sync a single campaign by ID — bypasses the alreadySynced optimisation
+// Ensures the campaign row exists in rt_campaigns first (FK constraint).
+// POST /api/reports/debug/sync-campaign  { campaign_id, date_from, date_to }
+router.post('/debug/sync-campaign', async (req, res) => {
+  const { campaign_id, date_from, date_to } = req.body;
+  if (!campaign_id) return res.status(400).json({ error: 'campaign_id required' });
+  const from = date_from || laDate(-30);
+  const to   = date_to   || laDate(-1);
+  try {
+    // 1. Fetch campaign metadata so we can satisfy the FK constraint
+    const { data: campData } = await redtrack.get('/campaigns/v2', { params: { per: 10000 } });
+    const allCampaigns = campData.items || [];
+    const camp = allCampaigns.find(c => c.id === campaign_id);
+    if (!camp) return res.status(404).json({ error: 'Campaign not found in RedTrack /campaigns/v2' });
+
+    // Parse title to derive buyer/metadata
+    const { rows: vRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'vertical'`);
+    const knownVerticals = new Set(vRows.map(r => r.value.toUpperCase()));
+    const { rows: rRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'route'`);
+    const knownRoutes = new Map(rRows.map(r => [r.value.toUpperCase(), r.value]));
+    const { rows: pRows } = await pool.query(`SELECT alias FROM partners`);
+    const knownPartners = new Map(pRows.map(r => [r.alias.toUpperCase(), r.alias]));
+
+    const title = camp.title.trim();
+    const parsed = parseCampaignTitle(title, knownVerticals, knownRoutes, knownPartners);
+    const { listKey, listLastUsed } = parseListFromTitle(title, knownRoutes, knownVerticals);
+    const createdAt = (camp.created_at || '').slice(0, 10) || null;
+
+    // Determine buyer from BUYER_PATTERNS
+    let buyer = null;
+    for (const [b, pattern] of Object.entries(BUYER_PATTERNS)) {
+      if (pattern.test(title)) { buyer = b; break; }
+    }
+
+    // 2. Upsert campaign metadata (satisfies FK constraint)
+    await pool.query(
+      `INSERT INTO rt_campaigns (id, title, buyer, vertical, platform, route, carrier, data_partner, data_list, list_last_used, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (id) DO UPDATE SET title=$2, buyer=$3, vertical=$4, platform=$5, route=$6, carrier=$7, data_partner=$8, data_list=$9, list_last_used=$10, synced_at=NOW()`,
+      [camp.id, title, buyer, parsed.vertical || null, parsed.platform || null, parsed.route || null, parsed.carrier || null, parsed.dataPartner || null, listKey || null, listLastUsed || null, createdAt]
+    );
+
+    // 3. Fetch stats and store
+    await throttleRedtrack();
+    const { data: report } = await redtrack.get('/report', {
+      params: { date_from: from, date_to: to, campaign_id, per: 1000 },
+    });
+    const rows = Array.isArray(report) ? report : (report?.items || []);
+    let stored = 0, skippedNoDate = 0, skippedZero = 0;
+    for (const row of rows) {
+      if (!row.date)                                       { skippedNoDate++; continue; }
+      if (!row.clicks && !row.conversions && !row.revenue) { skippedZero++;   continue; }
+      await pool.query(
+        `INSERT INTO rt_campaign_stats (campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (campaign_id, stat_date) DO UPDATE SET
+           clicks=$3, conversions=$4, cost=$5, revenue=$6, profit=$7`,
+        [campaign_id, row.date, row.clicks||0, row.conversions||0, row.cost||0, row.revenue||0, row.profit||0]
+      );
+      stored++;
+    }
+    res.json({
+      ok: true,
+      campaign: { id: camp.id, title, buyer, created_at: camp.created_at },
+      date_from: from, date_to: to,
+      total_rows: rows.length, stored, skipped_no_date: skippedNoDate, skipped_zero: skippedZero,
+      sample: rows.slice(0, 5),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

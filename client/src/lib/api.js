@@ -87,6 +87,8 @@ export const api = {
   getSyncStatus: () => request('/reports/sync/status'),
   triggerSync: (params = {}) => request('/reports/sync', { method: 'POST', body: JSON.stringify(params) }),
   stopSync: () => request('/reports/sync/stop', { method: 'POST' }),
+  debugCampaign: (campaign_id, date_from, date_to) => request(`/reports/debug/raw?campaign_id=${campaign_id}&date_from=${date_from}&date_to=${date_to}`),
+  forceSyncCampaign: (campaign_id, date_from, date_to) => request('/reports/debug/sync-campaign', { method: 'POST', body: JSON.stringify({ campaign_id, date_from, date_to }) }),
   getOfferSyncStatus: () => request('/reports/sync/offers/status'),
   triggerOfferSync: (params = {}) => request('/reports/sync/offers', { method: 'POST', body: JSON.stringify(params) }),
   getSyncLogs: (limit = 50) => request(`/reports/sync/logs?limit=${limit}`),
