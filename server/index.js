@@ -5,6 +5,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 
 const { init: initDb } = require('./db');
+const { scheduleTelegramReport, sendDailyReport } = require('./telegram-bot');
 const authRouter = require('./routes/auth');
 const listsRouter = require('./routes/lists');
 const campaignsRouter = require('./routes/campaigns');
@@ -63,6 +64,12 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/cost-updater', costUpdaterRouter);
 app.use('/api/clicks-export',  clicksExportRouter);
 app.use('/api/domain-finder', domainFinderRouter);
+
+// Manual trigger — lets you test the bot from the dashboard without waiting for 3pm
+app.post('/api/telegram/send-report', async (_req, res) => {
+  try { await sendDailyReport(); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {
@@ -150,6 +157,7 @@ initDb()
   .then(() => {
     scheduleDailyCleanup();
     scheduleAutoSync();
+    scheduleTelegramReport();
     app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
   })
   .catch((err) => {
