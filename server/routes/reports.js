@@ -262,14 +262,15 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
 
     const ids = buyerCampaigns.map((c) => c.id);
 
-    // 4. Historical pass (dateFrom → yesterday): skip campaigns already in DB — past data never changes
+    // 4. Historical pass (dateFrom → yesterday): skip campaigns already in DB — past data never changes.
+    // We check only the LAST day of the range: if a campaign has data for historicalTo it's up to date.
+    // Checking any date in the range would incorrectly skip campaigns with date-level gaps.
     const historicalTo = dateTo < today ? dateTo : yesterday;
     let toSyncHistorical = [];
     if (dateFrom <= historicalTo) {
       const { rows: alreadySynced } = await pool.query(
-        `SELECT DISTINCT campaign_id FROM rt_campaign_stats
-         WHERE stat_date BETWEEN $1 AND $2`,
-        [dateFrom, historicalTo]
+        `SELECT DISTINCT campaign_id FROM rt_campaign_stats WHERE stat_date = $1`,
+        [historicalTo]
       );
       const syncedIds = new Set(alreadySynced.map((r) => r.campaign_id));
       toSyncHistorical = buyerCampaigns.filter((c) => !syncedIds.has(c.id));
