@@ -1,4 +1,5 @@
 const { pool } = require('./db');
+const { laDate } = require('./utils');
 
 const BUYER_NAMES = {
   TK: 'Toby',
@@ -18,7 +19,7 @@ function fmtMoney(n) {
 }
 
 async function fetchYesterdayProfits() {
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const yesterday = laDate(-1);
   const { rows } = await pool.query(
     `SELECT c.buyer, COALESCE(SUM(s.profit), 0) AS profit
      FROM rt_campaigns c

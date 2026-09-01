@@ -2,6 +2,7 @@ const express = require('express');
 const redtrack = require('../redtrack');
 const { pool } = require('../db');
 const Anthropic = require('@anthropic-ai/sdk');
+const { laDate } = require('../utils');
 
 const router = express.Router();
 
@@ -148,9 +149,7 @@ function parseListFromTitle(rawTitle, knownRoutes, knownVerticals) {
 }
 
 function defaultDateRange() {
-  const to = new Date();
-  const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  return { date_from: from.toISOString().slice(0, 10), date_to: to.toISOString().slice(0, 10) };
+  return { date_from: laDate(-7), date_to: laDate() };
 }
 
 // ── Background sync ──────────────────────────────────────────────────────────
@@ -207,8 +206,8 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
   } catch { /* non-critical */ }
 
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const today = laDate();
+    const yesterday = laDate(-1);
 
     // Clamp dateFrom to 90-day window
     const earliest = new Date(Date.now() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
@@ -544,8 +543,8 @@ router.get('/media-buyers', async (req, res) => {
 router.get('/campaigns/:id/offers', async (req, res) => {
   try {
     const { id } = req.params;
-    const today    = new Date().toISOString().slice(0, 10);
-    const dateFrom = req.query.date_from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const today    = laDate();
+    const dateFrom = req.query.date_from || laDate(-7);
     const dateTo   = req.query.date_to   || today;
 
     const { rows } = await pool.query(`
@@ -586,8 +585,8 @@ router.get('/campaigns/:id/offers', async (req, res) => {
 router.get('/campaigns/:id/offers/:offerId/os', async (req, res) => {
   try {
     const { id, offerId } = req.params;
-    const today    = new Date().toISOString().slice(0, 10);
-    const dateFrom = req.query.date_from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const today    = laDate();
+    const dateFrom = req.query.date_from || laDate(-7);
     const dateTo   = req.query.date_to   || today;
 
     // OS data is aggregated (no per-day breakdown from RedTrack API) — no date filter
@@ -677,10 +676,10 @@ router.get('/verticals', async (req, res) => {
 router.get('/insights', async (req, res) => {
   try {
     const statsDays = parseInt(req.query.days) || 30;
-    const today     = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    const weekAgo   = new Date(Date.now() - 7  * 86400000).toISOString().slice(0, 10);
-    const statsFrom = new Date(Date.now() - statsDays * 86400000).toISOString().slice(0, 10);
+    const today     = laDate();
+    const yesterday = laDate(-1);
+    const weekAgo   = laDate(-7);
+    const statsFrom = laDate(-statsDays);
 
     // 1. New campaigns per buyer — daily counts for last 30 days
     const { rows: newCampaignRows } = await pool.query(`
@@ -910,8 +909,8 @@ const aiStatus = {
 };
 
 async function generateAIReport(days) {
-    const today    = new Date().toISOString().slice(0, 10);
-    const dateFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const today    = laDate();
+    const dateFrom = laDate(-days);
 
     // Snapshot the current "latest" row before it gets overwritten — this is the diff baseline.
     const { rows: previousRows } = await pool.query(`SELECT generated_at, data_json FROM rt_ai_report WHERE id = 1`);
@@ -1649,8 +1648,8 @@ async function runOfferSync(dateFrom, dateTo) {
   offerSync.error      = null;
 
   try {
-    const today     = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const today     = laDate();
+    const yesterday = laDate(-1);
     const earliest  = new Date(Date.now() - MAX_HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
     if (dateFrom < earliest) dateFrom = earliest;
 
@@ -1798,8 +1797,8 @@ router.get('/sync/offers/test', async (req, res) => {
         );
     if (!campaigns.length) return res.json({ error: 'no campaigns found' });
     const c = campaigns[0];
-    const today   = new Date().toISOString().slice(0, 10);
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const today   = laDate();
+    const weekAgo = laDate(-7);
     const base    = { campaign_id: c.id, date_from: weekAgo, date_to: today, per: 3 };
 
     const attempts = [
@@ -1882,8 +1881,8 @@ router.get('/lists/campaigns', async (req, res) => {
     const listKey = req.query.list_key;
     if (!listKey) return res.status(400).json({ error: 'list_key required' });
 
-    const today = new Date().toISOString().slice(0, 10);
-    const dateFrom = req.query.date_from || new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+    const today = laDate();
+    const dateFrom = req.query.date_from || laDate(-180);
     const dateTo   = req.query.date_to   || today;
 
     const { rows } = await pool.query(`
@@ -1954,7 +1953,7 @@ router.get('/lists/daily', async (req, res) => {
 router.get('/lists', async (req, res) => {
   try {
     const defaults = defaultDateRange();
-    const dateFrom = req.query.date_from || new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+    const dateFrom = req.query.date_from || laDate(-180);
     const dateTo   = req.query.date_to   || defaults.date_to;
     const buyer    = req.query.buyer   || null;
     const route    = req.query.route   || null;

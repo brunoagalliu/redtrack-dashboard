@@ -5,6 +5,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 
 const { init: initDb } = require('./db');
+const { laDate } = require('./utils');
 const { scheduleTelegramReport, sendDailyReport } = require('./telegram-bot');
 const authRouter = require('./routes/auth');
 const listsRouter = require('./routes/lists');
@@ -129,7 +130,7 @@ async function runAutoAIGeneration() {
 
 function scheduleAutoSync() {
   function triggerSync() {
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const yesterday = laDate(-1);
     const isMonday  = new Date().getDay() === 1;
     console.log('[auto-sync] Starting scheduled sync…');
     runSync(yesterday, yesterday)
