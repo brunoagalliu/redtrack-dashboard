@@ -12,7 +12,7 @@ import {
 import { api } from '../lib/api';
 import { downloadCSV } from '../lib/csvDownload';
 
-const BUYERS = ['TK', 'MA', 'DS', 'KG'];
+const BUYERS = ['TK', 'MA', 'DS', 'KG', 'PS'];
 
 const OFFERS_ALL_COLUMNS = [
   { id: 'buyer',        label: 'Buyer',        defaultVisible: true },

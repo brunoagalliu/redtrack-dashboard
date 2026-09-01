@@ -49,6 +49,8 @@ const BUYER_COLORS = {
   TK: 'bg-blue-100 text-blue-700',
   MA: 'bg-purple-100 text-purple-700',
   DS: 'bg-orange-100 text-orange-700',
+  KG: 'bg-green-100 text-green-700',
+  PS: 'bg-teal-100 text-teal-700',
 };
 
 function fmt(n) {
@@ -307,7 +309,7 @@ export default function VerticalsPage() {
           <label className="label">Buyer</label>
           <select value={buyerFilter} onChange={(e) => { setBuyerFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }} className="input">
             <option value="ALL">All buyers</option>
-            {['TK', 'MA', 'DS', 'KG'].map((b) => <option key={b} value={b}>{b}</option>)}
+            {['TK', 'MA', 'DS', 'KG', 'PS'].map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
         </div>
         <div>

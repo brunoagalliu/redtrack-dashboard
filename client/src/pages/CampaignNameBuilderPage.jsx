@@ -4,7 +4,7 @@ import CopyButton from '../components/CopyButton';
 
 // ── Default lists ────────────────────────────────────────────────────────────
 
-const BUYERS = ['TK', 'MA', 'DS', 'KG'];
+const BUYERS = ['TK', 'MA', 'DS', 'KG', 'PS'];
 const DEFAULT_PROVIDERS = ['Pineapple', 'CM', 'InfoBip', 'Mr.Messaging', 'Campaigner', 'SMS Gateway', 'Tells', 'IT Decision', 'BSG'];
 const DEFAULT_ROUTES    = ['USMS', 'ltsauto', 'cloudstorage4u', 'iphonetechzone', 'maxtechie', 'triallooks', 'dominantwire'];
 const DEFAULT_VERTICALS = ['CLOUD', 'AUTO', 'AV', 'DEBT', 'CLINICAL'];

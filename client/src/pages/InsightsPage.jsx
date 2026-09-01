@@ -8,10 +8,11 @@ const BUYER_COLORS = {
   MA: { badge: 'bg-purple-100 text-purple-700', ring: 'ring-purple-200', bar: 'bg-purple-500', line: '#a855f7' },
   DS: { badge: 'bg-orange-100 text-orange-700', ring: 'ring-orange-200', bar: 'bg-orange-500', line: '#f97316' },
   KG: { badge: 'bg-green-100 text-green-700',  ring: 'ring-green-200',  bar: 'bg-green-500',  line: '#22c55e' },
+  PS: { badge: 'bg-teal-100 text-teal-700',   ring: 'ring-teal-200',   bar: 'bg-teal-500',   line: '#14b8a6' },
 };
 const DEFAULT_BUYER_COLOR = { badge: 'bg-gray-100 text-gray-600', ring: 'ring-gray-200', bar: 'bg-gray-400', line: '#9ca3af' };
 function buyerColor(buyer) { return BUYER_COLORS[buyer] ?? DEFAULT_BUYER_COLOR; }
-const BUYERS = ['TK', 'MA', 'DS', 'KG'];
+const BUYERS = ['TK', 'MA', 'DS', 'KG', 'PS'];
 
 function fmt(n)      { return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
 function fmtMoney(n) { return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }

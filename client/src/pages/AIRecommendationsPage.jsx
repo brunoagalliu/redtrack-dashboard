@@ -15,6 +15,8 @@ const BUYER_STYLES = {
   TK: { badge: 'bg-blue-100 text-blue-700',    border: 'border-blue-200',   header: 'bg-blue-50' },
   MA: { badge: 'bg-purple-100 text-purple-700', border: 'border-purple-200', header: 'bg-purple-50' },
   DS: { badge: 'bg-orange-100 text-orange-700', border: 'border-orange-200', header: 'bg-orange-50' },
+  KG: { badge: 'bg-green-100 text-green-700',   border: 'border-green-200',  header: 'bg-green-50' },
+  PS: { badge: 'bg-teal-100 text-teal-700',     border: 'border-teal-200',   header: 'bg-teal-50' },
 };
 
 function fmtMoney(n) {
@@ -143,15 +145,15 @@ function sectionStyle(title) {
 function parseContent(content) {
   if (!content) return { buyers: {}, sections: [] };
 
-  const splitRe = /(?=^#{1,3} ?(?:👤 ?)?(?:TK|MA|DS|KG)\b)/m;
-  const matchRe = /^#{1,3} ?(?:👤 ?)?(TK|MA|DS|KG)\b/;
+  const splitRe = /(?=^#{1,3} ?(?:👤 ?)?(?:TK|MA|DS|KG|PS)\b)/m;
+  const matchRe = /^#{1,3} ?(?:👤 ?)?(TK|MA|DS|KG|PS)\b/;
   let parts = content.split(splitRe);
-  if (parts.length === 1) parts = content.split(/(?=^\*\*(?:TK|MA|DS|KG)\*\*)/m);
+  if (parts.length === 1) parts = content.split(/(?=^\*\*(?:TK|MA|DS|KG|PS)\*\*)/m);
 
   const overall = parts[0].trim();
   const buyers = {};
   for (const part of parts.slice(1)) {
-    const m = part.match(matchRe) || part.match(/^\*\*(TK|MA|DS|KG)\*\*/);
+    const m = part.match(matchRe) || part.match(/^\*\*(TK|MA|DS|KG|PS)\*\*/);
     if (m) buyers[m[1]] = part.replace(/^.*\n/, '').trim();
   }
 
@@ -433,7 +435,8 @@ const OS_COLS = [
             b === 'TK' ? 'bg-blue-100 text-blue-700' :
             b === 'MA' ? 'bg-purple-100 text-purple-700' :
             b === 'DS' ? 'bg-orange-100 text-orange-700' :
-            'bg-green-100 text-green-700'
+            b === 'KG' ? 'bg-green-100 text-green-700' :
+            'bg-teal-100 text-teal-700'
           }`}>{b}</span>
         </div>
       );
@@ -641,7 +644,7 @@ export default function AIRecommendationsPage() {
     getRowId: (row) => row.offer,
   });
 
-  const chartData = ['TK', 'MA', 'DS', 'KG'].map((b) => {
+  const chartData = ['TK', 'MA', 'DS', 'KG', 'PS'].map((b) => {
     const row = buyerRows.find((r) => r.buyer === b) || {};
     return {
       buyer: b,
@@ -787,7 +790,7 @@ export default function AIRecommendationsPage() {
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Buyer Performance</h2>
               <div className="grid grid-cols-3 gap-4">
-                {['TK', 'MA', 'DS', 'KG'].map((buyer) => {
+                {['TK', 'MA', 'DS', 'KG', 'PS'].map((buyer) => {
                   const row = buyerRows.find((r) => r.buyer === buyer);
                   if (!row) return null;
                   const style  = BUYER_STYLES[buyer];
@@ -953,7 +956,7 @@ export default function AIRecommendationsPage() {
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Actions Per Buyer</h2>
               <div className="grid grid-cols-3 gap-4">
-                {['TK', 'MA', 'DS', 'KG'].map((buyer) => {
+                {['TK', 'MA', 'DS', 'KG', 'PS'].map((buyer) => {
                   const aiText = buyers[buyer];
                   const style  = BUYER_STYLES[buyer];
                   const buyerOffers = offerCombos.filter((r) => r.buyer === buyer);
