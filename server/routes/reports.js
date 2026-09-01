@@ -7,7 +7,7 @@ const { laDate } = require('../utils');
 const router = express.Router();
 
 const BUYER_PATTERNS = { TK: /^TK[\s_\-]/i, MA: /^MA[\s_\-]/i, DS: /^DS[\s_\-]/i, KG: /^KG[\s_\-]/i, PS: /^PS[\s_\-]/i };
-const CALL_INTERVAL_MS = 2000; // ~30 calls/min; 429 retry backs off automatically
+const CALL_INTERVAL_MS = 3200; // 20 calls/min
 const MAX_HISTORY_DAYS = 180;
 
 // ── Sync state (in-memory; reset on server restart) ─────────────────────────
