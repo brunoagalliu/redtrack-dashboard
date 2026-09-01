@@ -46,6 +46,8 @@ export default function SyncLogsPage() {
   const [aiGenStartedAt, setAiGenStartedAt] = useState(null);
   const queryClient = useQueryClient();
 
+  const [resumingId, setResumingId] = useState(null);
+
   const { data: logs = [], isLoading: logsLoading, refetch: refetchLogs } = useQuery({
     queryKey: ['sync', 'logs'],
     queryFn: () => api.getSyncLogs(50),
@@ -110,8 +112,8 @@ export default function SyncLogsPage() {
     ...aiListHistory.map(r => ({ ...r, type: 'Lists', period_days: null })),
   ].sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
 
-  async function triggerWithDates(dateFrom, dateTo, label) {
-    setTriggering(true);
+  async function triggerWithDates(dateFrom, dateTo, label, { logId } = {}) {
+    if (logId) setResumingId(logId); else setTriggering(true);
     setTriggerError(null);
     setTriggerMsg(null);
     try {
@@ -126,7 +128,7 @@ export default function SyncLogsPage() {
     } catch (err) {
       setTriggerError(err.message || 'Failed to start sync.');
     } finally {
-      setTriggering(false);
+      if (logId) setResumingId(null); else setTriggering(false);
     }
   }
 
@@ -269,6 +271,7 @@ export default function SyncLogsPage() {
               <col style={{ width: '75px' }} />
               <col style={{ width: '90px' }} />
               <col style={{ width: '95px' }} />
+              <col style={{ width: '110px' }} />
               <col />
             </colgroup>
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -280,33 +283,56 @@ export default function SyncLogsPage() {
                 <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Duration</th>
                 <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Campaigns</th>
                 <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Error</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {logsLoading && (
-                <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-400">Loading…</td></tr>
+                <tr><td colSpan={9} className="px-3 py-8 text-center text-sm text-gray-400">Loading…</td></tr>
               )}
               {!logsLoading && logs.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center">
+                  <td colSpan={9} className="px-3 py-8 text-center">
                     <p className="text-sm font-medium text-gray-600">No sync history yet</p>
                     <p className="text-xs text-gray-400 mt-1">Run a sync to start building the log.</p>
                   </td>
                 </tr>
               )}
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-3 py-2.5 text-xs text-gray-400 font-mono">{log.id}</td>
-                  <td className="px-3 py-2.5 text-xs text-gray-700 font-mono">{log.date_from} → {log.date_to}</td>
-                  <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.started_at)}</td>
-                  <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.completed_at)}</td>
-                  <td className="px-3 py-2.5 text-xs text-gray-600 text-right font-mono">{fmtDuration(log.started_at, log.completed_at)}</td>
-                  <td className="px-3 py-2.5 text-xs text-gray-700 text-right font-mono">{log.campaigns_processed ?? '—'}</td>
-                  <td className="px-3 py-2.5"><StatusBadge status={log.status} /></td>
-                  <td className="px-3 py-2.5 text-xs text-red-600 line-clamp-2">{log.error || ''}</td>
-                </tr>
-              ))}
+              {logs.map((log) => {
+                const canResume = log.status === 'interrupted' || log.status === 'error';
+                const isResuming = resumingId === log.id;
+                return (
+                  <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-3 py-2.5 text-xs text-gray-400 font-mono">{log.id}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-700 font-mono">{log.date_from} → {log.date_to}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.started_at)}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-600">{fmtDate(log.completed_at)}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-600 text-right font-mono">{fmtDuration(log.started_at, log.completed_at)}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-700 text-right font-mono">{log.campaigns_processed ?? '—'}</td>
+                    <td className="px-3 py-2.5"><StatusBadge status={log.status} /></td>
+                    <td className="px-3 py-2.5">
+                      {canResume && (
+                        <button
+                          onClick={() => triggerWithDates(log.date_from, log.date_to, 'Resume', { logId: log.id })}
+                          disabled={isRunning || isResuming}
+                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {isResuming ? (
+                            <span className="inline-block w-3 h-3 border-2 border-amber-300 border-t-amber-700 rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          )}
+                          Resume
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-red-600 line-clamp-2">{log.error || ''}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
