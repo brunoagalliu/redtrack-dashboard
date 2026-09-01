@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
@@ -136,8 +136,21 @@ export default function SyncLogsPage() {
     }
   }
 
-  function handleBackfill() {
-    const dateFrom = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+  const [backfillOpen, setBackfillOpen] = useState(false);
+  const backfillRef = useRef(null);
+
+  useEffect(() => {
+    if (!backfillOpen) return;
+    function onClickOutside(e) {
+      if (backfillRef.current && !backfillRef.current.contains(e.target)) setBackfillOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [backfillOpen]);
+
+  function handleBackfill(days) {
+    setBackfillOpen(false);
+    const dateFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
     const dateTo   = new Date().toISOString().slice(0, 10);
     return triggerWithDates(dateFrom, dateTo, 'Backfill');
   }
@@ -193,19 +206,38 @@ export default function SyncLogsPage() {
             </svg>
             Sync Today
           </button>
-          <button
-            onClick={handleBackfill}
-            disabled={triggering || isRunning}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60 transition-colors"
-          >
-            {triggering ? (
-              <><span className="inline-block w-3.5 h-3.5 border-2 border-gray-400/30 border-t-gray-600 rounded-full animate-spin" />Starting…</>
-            ) : (
-              <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="relative" ref={backfillRef}>
+            <button
+              onClick={() => setBackfillOpen(o => !o)}
+              disabled={triggering || isRunning}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>Backfill 6 Months</>
+              </svg>
+              Backfill
+              <svg className="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {backfillOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-40">
+                {[
+                  { label: '30 days',  days: 30  },
+                  { label: '3 months', days: 90  },
+                  { label: '6 months', days: 180 },
+                ].map(({ label, days }) => (
+                  <button
+                    key={days}
+                    onClick={() => handleBackfill(days)}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             )}
-          </button>
+          </div>
           <button
             onClick={handleGenerateAI}
             disabled={generatingAI || aiCampRunning || aiListRunning || isRunning}
