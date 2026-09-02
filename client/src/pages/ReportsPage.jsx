@@ -897,7 +897,7 @@ export default function ReportsPage() {
           />
           <select value={buyerFilter}
             onChange={(e) => { setBuyerFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-            className="input">
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
             <option value="ALL">All buyers</option>
             {BUYERS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
@@ -910,7 +910,7 @@ export default function ReportsPage() {
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
               placeholder="Search campaigns…"
-              className="input pl-7 w-48"
+              className="pl-7 pr-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-48"
             />
           </div>
         </div>
