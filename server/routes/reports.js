@@ -263,13 +263,8 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
     const ids = buyerCampaigns.map((c) => c.id);
 
     // 4. Historical pass (dateFrom → yesterday).
-    // For each campaign, find its latest synced date in the range.
-    // - Never synced  → sync full range (dateFrom…historicalTo)
-    // - Gap at end    → sync from (latest+1)…historicalTo, skipping already-stored rows
-    // - Up to date    → skip entirely
-    // This fills forward gaps left by interrupted syncs without re-fetching existing data.
+    // Skip campaigns fully up to date (latest stat = historicalTo); sync the rest in batches.
     const historicalTo = dateTo < today ? dateTo : yesterday;
-    // Each item: { c: campaignObj, from: dateString }
     const toSyncHistorical = [];
     if (dateFrom <= historicalTo) {
       const { rows: latestRows } = await pool.query(
@@ -285,13 +280,7 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
       for (const c of buyerCampaigns) {
         const latest = latestMap.get(c.id);
         if (latest && latest >= historicalTo) continue; // fully up to date — skip
-        const gapFrom = latest
-          ? new Date(new Date(latest + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
-          : dateFrom;
-        // Never fetch before the campaign existed — no data can exist before created_at
-        const syncFrom = c.created_at && c.created_at > gapFrom ? c.created_at : gapFrom;
-        if (syncFrom > historicalTo) continue; // created after the range ends, nothing to fetch
-        toSyncHistorical.push({ c, from: syncFrom });
+        toSyncHistorical.push(c);
       }
     }
 
@@ -301,56 +290,83 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
 
     sync.total = toSyncHistorical.length + toSyncToday.length;
 
-    async function fetchAndStore(c, from, to, attempt = 1) {
-      await throttleRedtrack();
-      try {
-        const { data: report } = await redtrack.get('/report', {
-          params: { date_from: from, date_to: to, campaign_id: c.id, per: 1000 },
-        });
-        const rows = (Array.isArray(report) ? report : (report?.items || []))
-          .filter(r => r.date && (r.clicks || r.conversions || r.revenue || r.cost));
-        if (rows.length === 0) return;
+    const BATCH_SIZE = 50;
 
-        // Batch all rows for this campaign into a single INSERT
-        const vals = [];
-        const placeholders = rows.map((r, i) => {
-          const b = i * 7;
-          vals.push(c.id, r.date, r.clicks||0, r.conversions||0, r.cost||0, r.revenue||0, r.profit||0);
-          return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7})`;
-        });
-        await pool.query(
-          `INSERT INTO rt_campaign_stats (campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
-           VALUES ${placeholders.join(',')}
-           ON CONFLICT (campaign_id, stat_date) DO UPDATE SET
-             clicks=EXCLUDED.clicks, conversions=EXCLUDED.conversions,
-             cost=EXCLUDED.cost, revenue=EXCLUDED.revenue, profit=EXCLUDED.profit`,
-          vals
-        );
-      } catch (err) {
-        if (err.response?.status === 429 && attempt <= 3) {
-          console.warn(`[sync] 429 on ${c.id} — retry ${attempt}/3 in 30s`);
-          await sleep(30000);
-          return fetchAndStore(c, from, to, attempt + 1);
+    // Fetch stats for up to 50 campaigns in one API call using group=campaign,date.
+    // Paginates automatically if the date range × campaign count exceeds 1000 rows.
+    async function fetchAndStoreBatch(campaigns, from, to) {
+      const ids = campaigns.map(c => c.id).join(',');
+      let page = 1;
+      while (true) {
+        await throttleRedtrack();
+        try {
+          const { data } = await redtrack.get('/report', {
+            params: {
+              date_from: from, date_to: to,
+              campaign_id: ids,
+              group: 'campaign,date',
+              fields: 'campaign_id,date,clicks,conversions,cost,revenue,profit',
+              per: 1000, page,
+            },
+          });
+          const rows = (Array.isArray(data) ? data : (data?.items || []))
+            .filter(r => r.campaign_id && r.date && (r.clicks || r.conversions || r.revenue || r.cost));
+          if (rows.length === 0) break;
+
+          // Group by campaign_id, batch-insert per campaign
+          const byCampaign = new Map();
+          for (const r of rows) {
+            if (!byCampaign.has(r.campaign_id)) byCampaign.set(r.campaign_id, []);
+            byCampaign.get(r.campaign_id).push(r);
+          }
+          for (const [cid, crows] of byCampaign) {
+            const vals = [];
+            const ph = crows.map((r, i) => {
+              const b = i * 7;
+              vals.push(cid, r.date, r.clicks||0, r.conversions||0, r.cost||0, r.revenue||0, r.profit||0);
+              return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7})`;
+            });
+            await pool.query(
+              `INSERT INTO rt_campaign_stats (campaign_id, stat_date, clicks, conversions, cost, revenue, profit)
+               VALUES ${ph.join(',')}
+               ON CONFLICT (campaign_id, stat_date) DO UPDATE SET
+                 clicks=EXCLUDED.clicks, conversions=EXCLUDED.conversions,
+                 cost=EXCLUDED.cost, revenue=EXCLUDED.revenue, profit=EXCLUDED.profit`,
+              vals
+            );
+          }
+
+          if (rows.length < 1000) break; // last page
+          page++;
+        } catch (err) {
+          console.warn(`[sync] batch ${from}–${to} page ${page} failed: ${err.message}`);
+          break;
         }
-        console.warn(`[sync] campaign ${c.id} skipped: ${err.message}`);
       }
     }
 
-    // Historical sync
-    for (let i = 0; i < toSyncHistorical.length; i++) {
-      if (sync.stopRequested) break;
-      const { c, from } = toSyncHistorical[i];
-      await fetchAndStore(c, from, historicalTo);
-      sync.processed = i + 1;
-      if (sync.processed % 50 === 0) await persistSyncStatus();
+    function makeBatches(campaigns) {
+      const batches = [];
+      for (let i = 0; i < campaigns.length; i += BATCH_SIZE) batches.push(campaigns.slice(i, i + BATCH_SIZE));
+      return batches;
     }
 
-    // Today sync
-    for (let i = 0; i < toSyncToday.length; i++) {
+    // Historical sync — batched
+    const historicalBatches = makeBatches(toSyncHistorical);
+    for (let i = 0; i < historicalBatches.length; i++) {
       if (sync.stopRequested) break;
-      await fetchAndStore(toSyncToday[i], today, today);
-      sync.processed = toSyncHistorical.length + i + 1;
-      if (sync.processed % 50 === 0) await persistSyncStatus();
+      await fetchAndStoreBatch(historicalBatches[i], dateFrom, historicalTo);
+      sync.processed = Math.min((i + 1) * BATCH_SIZE, toSyncHistorical.length);
+      await persistSyncStatus();
+    }
+
+    // Today sync — batched
+    const todayBatches = makeBatches(toSyncToday);
+    for (let i = 0; i < todayBatches.length; i++) {
+      if (sync.stopRequested) break;
+      await fetchAndStoreBatch(todayBatches[i], today, today);
+      sync.processed = toSyncHistorical.length + Math.min((i + 1) * BATCH_SIZE, toSyncToday.length);
+      await persistSyncStatus();
     }
 
     if (sync.stopRequested) {
