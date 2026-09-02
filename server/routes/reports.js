@@ -82,26 +82,50 @@ function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes, knownPartners
 }
 
 // Parse list key and last-used date from a campaign title.
-// Confirmed convention: {buyer} - {route}_{vertical?}_{list_name_ending_in_size}_{DD.MM?}
+// Convention: {buyer} - {route}_{vertical?}_{list_name}_{size?}_{DD.MM?} - Group N
 // e.g. "TK - USMS_Cloud_kn_billing_sweeps_att_mar2026_34k_23.03"
 //   →  listKey = "kn_billing_sweeps_att_mar2026_34k", listLastUsed = "23.03"
+// Fallback (no size token): use trailing DD.MM date as anchor.
 const _LIST_NOISE = new Set(['own', 'upm']);
 function parseListFromTitle(rawTitle, knownRoutes, knownVerticals) {
   let s = rawTitle.trim().replace(/[_\s]*-?\s*COPY\s*$/i, '');
 
-  // List name ends at the last size token (e.g. "34k", "114k", "5,7k", "123k_drfds_124K").
-  // Anything after it — an optional _DD.MM date and any free-form suffix — is noise.
+  // Strip trailing group numbers and noise labels before parsing.
+  // Handles: " - Group 7", " - group 1 - Test", " - Group 3 - NEWEST DATA"
+  s = s.replace(/(\s*-\s*(?:group|grp)\s*\d+)+(\s*-\s*[\w][^-]*)?$/i, '').trim();
+  s = s.replace(/\s*-\s*(?:newest\s+data|retarget|clone|test)\s*$/i, '').trim();
+
+  // List name ends at the last size token (e.g. "34k", "114k", "5,7k").
   const sizeRe = /\d+(?:[.,]\d+)?\s*[kK](?![a-zA-Z])/g;
   const sizeMatches = [...s.matchAll(sizeRe)];
-  if (!sizeMatches.length) return { listKey: null, listLastUsed: null };
-  const lastSize = sizeMatches[sizeMatches.length - 1];
-  let body = s.slice(0, lastSize.index + lastSize[0].length);
 
-  // Extract date from immediately after the last size token (_DD.MM or _DD.MM-)
+  let body;
   let listLastUsed = null;
-  const afterSize = s.slice(lastSize.index + lastSize[0].length);
-  const dateM = afterSize.match(/^[_\-\s]*(\d{1,2})\.(\d{1,2})/);
-  if (dateM) listLastUsed = `${dateM[1]}.${dateM[2]}`;
+
+  if (sizeMatches.length) {
+    // Size-anchored: body ends at last size token, date follows immediately after.
+    const lastSize = sizeMatches[sizeMatches.length - 1];
+    body = s.slice(0, lastSize.index + lastSize[0].length);
+    const afterSize = s.slice(lastSize.index + lastSize[0].length);
+    const dateM = afterSize.match(/^[_\-\s]*(\d{1,2})\.(\d{1,2})/);
+    if (dateM) listLastUsed = `${dateM[1]}.${dateM[2]}`;
+  } else {
+    // No size token: use trailing DD.MM date as the right boundary instead.
+    const dateM = s.match(/[_\-\s](\d{1,2})\.(\d{2})$/);
+    if (dateM) {
+      listLastUsed = `${dateM[1]}.${dateM[2]}`;
+      body = s.slice(0, s.length - dateM[0].length).trim();
+    } else {
+      body = s;
+    }
+  }
+
+  // Remove a trailing " - <vertical>" segment (e.g. " - Financial") so the dash
+  // split below doesn't mistake the vertical name for the list name.
+  const trailingVertM = body.match(/\s*-\s*([A-Za-z]+)\s*$/);
+  if (trailingVertM && knownVerticals.has(trailingVertM[1].toUpperCase())) {
+    body = body.slice(0, body.length - trailingVertM[0].length).trim();
+  }
 
   // When a " - " dash splits the string and the tail is only carrier+size (no other text),
   // the dash is a list/carrier separator — keep the full body.
