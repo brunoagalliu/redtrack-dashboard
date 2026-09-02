@@ -283,13 +283,14 @@ export default function SyncLogsPage() {
     ...aiListHistory.map(r => ({ ...r, type: 'Lists', period_days: null })),
   ].sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
 
-  async function triggerWithDates(dateFrom, dateTo, label, { logId, buyer } = {}) {
+  async function triggerWithDates(dateFrom, dateTo, label, { logId, buyer, force } = {}) {
     if (logId) setResumingId(logId); else setTriggering(true);
     setTriggerError(null);
     setTriggerMsg(null);
     try {
       const body = { date_from: dateFrom, date_to: dateTo };
       if (buyer) body.buyer = buyer;
+      if (force) body.force = true;
       const result = await api.triggerSync(body);
       if (result?.status === 'already_running') {
         setTriggerError('A sync is already running — wait for it to finish, then try again.');
@@ -331,7 +332,7 @@ export default function SyncLogsPage() {
 
   function handleSyncYesterday() {
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    return triggerWithDates(yesterday, yesterday, 'Sync');
+    return triggerWithDates(yesterday, yesterday, 'Sync', { force: true });
   }
 
   async function handleGenerateAI() {

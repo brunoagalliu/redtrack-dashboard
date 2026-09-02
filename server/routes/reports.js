@@ -179,7 +179,7 @@ async function persistSyncStatus() {
 
 let currentLogId = null;
 
-async function runSync(dateFrom, dateTo, buyerFilter = null) {
+async function runSync(dateFrom, dateTo, buyerFilter = null, force = false) {
   if (sync.running) return;
   sync.running       = true;
   sync.status        = 'running';
@@ -264,23 +264,28 @@ async function runSync(dateFrom, dateTo, buyerFilter = null) {
 
     // 4. Historical pass (dateFrom → yesterday).
     // Skip campaigns fully up to date (latest stat = historicalTo); sync the rest in batches.
+    // force=true bypasses the skip — used when refreshing existing data (e.g. late postbacks).
     const historicalTo = dateTo < today ? dateTo : yesterday;
     const toSyncHistorical = [];
     if (dateFrom <= historicalTo) {
-      const { rows: latestRows } = await pool.query(
-        `SELECT campaign_id, MAX(stat_date) AS latest
-         FROM rt_campaign_stats
-         WHERE stat_date BETWEEN $1 AND $2
-         GROUP BY campaign_id`,
-        [dateFrom, historicalTo]
-      );
-      const latestMap = new Map(
-        latestRows.map((r) => [r.campaign_id, r.latest.toISOString().slice(0, 10)])
-      );
-      for (const c of buyerCampaigns) {
-        const latest = latestMap.get(c.id);
-        if (latest && latest >= historicalTo) continue; // fully up to date — skip
-        toSyncHistorical.push(c);
+      if (force) {
+        toSyncHistorical.push(...buyerCampaigns);
+      } else {
+        const { rows: latestRows } = await pool.query(
+          `SELECT campaign_id, MAX(stat_date) AS latest
+           FROM rt_campaign_stats
+           WHERE stat_date BETWEEN $1 AND $2
+           GROUP BY campaign_id`,
+          [dateFrom, historicalTo]
+        );
+        const latestMap = new Map(
+          latestRows.map((r) => [r.campaign_id, r.latest.toISOString().slice(0, 10)])
+        );
+        for (const c of buyerCampaigns) {
+          const latest = latestMap.get(c.id);
+          if (latest && latest >= historicalTo) continue; // fully up to date — skip
+          toSyncHistorical.push(c);
+        }
       }
     }
 
@@ -441,13 +446,14 @@ router.post('/sync', (req, res) => {
   const dateFrom = req.body?.date_from || defaults.date_from;
   const dateTo   = req.body?.date_to   || defaults.date_to;
   const buyer    = req.body?.buyer     || null;
+  const force    = Boolean(req.body?.force);
 
   if (sync.running) return res.json({ status: 'already_running', ...sync });
 
   // Fire-and-forget
-  runSync(dateFrom, dateTo, buyer).catch((err) => console.error('Sync error:', err.message));
+  runSync(dateFrom, dateTo, buyer, force).catch((err) => console.error('Sync error:', err.message));
 
-  res.status(202).json({ status: 'started', dateFrom, dateTo, buyer });
+  res.status(202).json({ status: 'started', dateFrom, dateTo, buyer, force });
 });
 
 // Sync status — always returns snake_case regardless of source
