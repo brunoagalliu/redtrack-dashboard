@@ -322,7 +322,7 @@ export default function SyncLogsPage() {
     setBackfillOpen(false);
     const dateFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
     const dateTo   = new Date().toISOString().slice(0, 10);
-    return triggerWithDates(dateFrom, dateTo, 'Backfill');
+    return triggerWithDates(dateFrom, dateTo, 'Backfill', { force: true });
   }
 
   function handleSyncToday() {
