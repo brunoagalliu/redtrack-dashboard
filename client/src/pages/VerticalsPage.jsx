@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import DateRangePicker from '../components/DateRangePicker';
 import { useQuery } from '@tanstack/react-query';
 import ColumnPicker from '../components/ColumnPicker';
 import {
@@ -78,8 +79,6 @@ export default function VerticalsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [dateFrom, setDateFrom] = useState(sixMonthsAgo);
-  const [dateTo, setDateTo] = useState(today);
   const [applied, setApplied] = useState({ date_from: sixMonthsAgo, date_to: today });
   const [verticalFilter, setVerticalFilter] = useState('ALL');
   const [buyerFilter, setBuyerFilter] = useState('ALL');
@@ -112,10 +111,7 @@ export default function VerticalsPage() {
     retry: false,
   });
 
-  function applyRange() {
-    setApplied({ date_from: dateFrom, date_to: dateTo });
-    setPagination((p) => ({ ...p, pageIndex: 0 }));
-  }
+
 
   const allCampaigns = useMemo(() => {
     if (!data?.verticals) return [];
@@ -287,17 +283,11 @@ export default function VerticalsPage() {
       </div>
 
       {/* Controls */}
-      <div className="card p-4 mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label className="label">From</label>
-          <input type="date" value={dateFrom} max={dateTo}
-            onChange={(e) => setDateFrom(e.target.value)} className="input" />
-        </div>
-        <div>
-          <label className="label">To</label>
-          <input type="date" value={dateTo} min={dateFrom} max={today}
-            onChange={(e) => setDateTo(e.target.value)} className="input" />
-        </div>
+      <div className="card p-4 mb-4 flex flex-wrap items-center gap-3">
+        <DateRangePicker
+          from={applied.date_from} to={applied.date_to}
+          onChange={({ from, to }) => { setApplied({ date_from: from, date_to: to }); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+        />
         <div>
           <label className="label">Vertical</label>
           <select value={verticalFilter} onChange={(e) => { setVerticalFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }} className="input">
@@ -319,9 +309,6 @@ export default function VerticalsPage() {
             {allPartners.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
-        <button type="button" onClick={applyRange} disabled={isFetching} className="btn-primary">
-          {isFetching ? 'Loading…' : 'Apply'}
-        </button>
         <div className="ml-auto flex items-center gap-3">
           {syncStatus?.status === 'complete' && (
             <span className="text-xs text-gray-400">

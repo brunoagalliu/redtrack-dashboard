@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { downloadCSV } from '../lib/csvDownload';
+import DateRangePicker from '../components/DateRangePicker';
 
 const BUYER_COLORS = {
   TK: { badge: 'bg-blue-100 text-blue-700',   ring: 'ring-blue-200',   bar: 'bg-blue-500',   line: '#3b82f6' },
@@ -73,11 +74,14 @@ function SparkLine({ daily, period, color, id }) {
 }
 
 export default function InsightsPage() {
-  const [days, setDays] = useState(30);
+  const today        = new Date().toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
+  const [dateTo,   setDateTo]   = useState(today);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['reports', 'insights', days],
-    queryFn: () => api.getInsights(days),
+    queryKey: ['reports', 'insights', dateFrom, dateTo],
+    queryFn: () => api.getInsights(dateFrom, dateTo),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
@@ -87,6 +91,8 @@ export default function InsightsPage() {
   const vp   = data?.vertical_performance || [];
   const ops  = data?.opportunities || [];
   const mat  = data?.buyer_vertical_matrix || {};
+
+  const periodDays = Math.round((new Date(dateTo + 'T12:00:00') - new Date(dateFrom + 'T12:00:00')) / 86400000) + 1;
 
   // Max profit for bar scaling
   const maxProfit = Math.max(1, ...vp.map((v) => v.profit));
@@ -100,20 +106,15 @@ export default function InsightsPage() {
           <p className="text-sm text-gray-500 mt-1">Performance analysis and growth opportunities</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">Period:</span>
-          {[7, 14, 30, 60, 90, 180].map((d) => (
-            <button key={d} onClick={() => setDays(d)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
-                days === d ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}>
-              {d}d
-            </button>
-          ))}
+          <DateRangePicker
+            from={dateFrom} to={dateTo}
+            onChange={({ from, to }) => { setDateFrom(from); setDateTo(to); }}
+          />
           <button
             onClick={() => downloadCSV([
               ...bp.map(b => ({ Section: 'Buyer', Name: b.buyer, Clicks: b.clicks, Cost: b.cost, Revenue: b.revenue, Profit: b.profit })),
               ...vp.map(v => ({ Section: 'Vertical', Name: v.label, Clicks: v.clicks, Cost: v.cost, Revenue: v.revenue, Profit: v.profit })),
-            ], `insights_${days}d.csv`)}
+            ], `insights_${dateFrom}_${dateTo}.csv`)}
             disabled={!data}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
@@ -152,17 +153,17 @@ export default function InsightsPage() {
                       <span className="text-2xl font-bold text-gray-900">{s.last_30 ?? '—'}</span>
                     </div>
                     <div className="space-y-1 text-xs text-gray-500">
-                      {days <= 14 && <>
+                      {periodDays <= 14 && <>
                         <div className="flex justify-between"><span>Today</span><span className="font-semibold text-gray-700">{s.today ?? 0}</span></div>
                         <div className="flex justify-between"><span>Yesterday</span><span className="font-semibold text-gray-700">{s.yesterday ?? 0}</span></div>
                       </>}
-                      <div className="flex justify-between"><span>Last 7 days</span><span className="font-semibold text-gray-700">{s.last_7 ?? 0}</span></div>
-                      {days > 7 && (
-                        <div className="flex justify-between"><span>Last {days} days</span><span className="font-semibold text-gray-700">{s.last_30 ?? 0}</span></div>
+                      <div className="flex justify-between"><span>Last 7 periodDays</span><span className="font-semibold text-gray-700">{s.last_7 ?? 0}</span></div>
+                      {periodDays > 7 && (
+                        <div className="flex justify-between"><span>Last {periodDays} periodDays</span><span className="font-semibold text-gray-700">{s.last_30 ?? 0}</span></div>
                       )}
                     </div>
-                    <SparkLine daily={s.daily || []} period={days} color={col.line} id={buyer} />
-                    <p className="text-xs text-gray-400 mt-1">Last {days} days</p>
+                    <SparkLine daily={s.daily || []} period={periodDays} color={col.line} id={buyer} />
+                    <p className="text-xs text-gray-400 mt-1">Last {periodDays} periodDays</p>
                   </div>
                 );
               })}

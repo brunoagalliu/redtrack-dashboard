@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from 'react';
 import RoiFilterPopover from '../components/RoiFilterPopover';
+import DateRangePicker from '../components/DateRangePicker';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   useReactTable,
@@ -524,11 +525,9 @@ function ColumnPicker({ table, onClose }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10);
-  const sixMonthsAgo = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
 
-  const [dateFrom, setDateFrom] = useState(sixMonthsAgo);
-  const [dateTo,   setDateTo]   = useState(today);
-  const [applied,  setApplied]  = useState({ date_from: sixMonthsAgo, date_to: today });
+  const [applied, setApplied] = useState({ date_from: thirtyDaysAgo, date_to: today });
   const [buyerFilter,    setBuyerFilter]    = useState('ALL');
   const [search,         setSearch]         = useState('');
   const [roiMin,         setRoiMin]         = useState('');
@@ -570,11 +569,6 @@ export default function ReportsPage() {
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
-
-  function applyRange() {
-    setApplied({ date_from: dateFrom, date_to: dateTo });
-    setPagination((p) => ({ ...p, pageIndex: 0 }));
-  }
 
   function onSynced() {
     queryClient.invalidateQueries({ queryKey: ['reports', 'media-buyers'] });
@@ -896,57 +890,29 @@ export default function ReportsPage() {
 
       {/* Controls */}
       <div className="card p-4 mb-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-1">
-            {[7, 30, 90, 180].map((d) => {
-              const from = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
-              const active = applied.date_from === from && applied.date_to === today;
-              return (
-                <button key={d} type="button"
-                  onClick={() => { setDateFrom(from); setDateTo(today); setApplied({ date_from: from, date_to: today }); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-                  className={`px-2.5 py-1.5 text-xs font-medium rounded border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  {d}d
-                </button>
-              );
-            })}
-          </div>
-          <div>
-            <label className="label">From</label>
-            <input type="date" value={dateFrom} max={dateTo}
-              onChange={(e) => setDateFrom(e.target.value)} className="input" />
-          </div>
-          <div>
-            <label className="label">To</label>
-            <input type="date" value={dateTo} min={dateFrom} max={today}
-              onChange={(e) => setDateTo(e.target.value)} className="input" />
-          </div>
-          <div>
-            <label className="label">Buyer</label>
-            <select value={buyerFilter}
-              onChange={(e) => { setBuyerFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              className="input">
-              <option value="ALL">All buyers</option>
-              {BUYERS.map((b) => <option key={b} value={b}>{b}</option>)}
-            </select>
-          </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <DateRangePicker
+            from={applied.date_from} to={applied.date_to}
+            onChange={({ from, to }) => { setApplied({ date_from: from, date_to: to }); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+          />
+          <select value={buyerFilter}
+            onChange={(e) => { setBuyerFilter(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+            className="input">
+            <option value="ALL">All buyers</option>
+            {BUYERS.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
           <div className="relative">
-            <label className="label">Search</label>
-            <div className="relative">
-              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-              </svg>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-                placeholder="Search campaigns…"
-                className="input pl-7 w-48"
-              />
-            </div>
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+              placeholder="Search campaigns…"
+              className="input pl-7 w-48"
+            />
           </div>
-          <button type="button" onClick={applyRange} disabled={isFetching} className="btn-primary">
-            {isFetching ? 'Loading…' : 'Apply'}
-          </button>
         </div>
       </div>
 

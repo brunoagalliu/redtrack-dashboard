@@ -107,7 +107,7 @@ export const api = {
     const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
     return request(`/reports/campaigns/${campaignId}/offers/${offerId}/os${qs ? `?${qs}` : ''}`);
   },
-  getInsights: (days = 30) => request(`/reports/insights?days=${days}`),
+  getInsights: (dateFrom, dateTo) => request(`/reports/insights?date_from=${dateFrom}&date_to=${dateTo}`),
   getListDailyStats: (listKey) => request(`/reports/lists/daily?list_key=${encodeURIComponent(listKey)}`),
   getListCampaigns: (listKey, dateFrom, dateTo) => request(`/reports/lists/campaigns?list_key=${encodeURIComponent(listKey)}&date_from=${dateFrom}&date_to=${dateTo}`),
   getListsReport: (params = {}) => {

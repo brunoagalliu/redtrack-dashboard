@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import DateRangePicker from '../components/DateRangePicker';
 import { useQuery } from '@tanstack/react-query';
 import RoiFilterPopover from '../components/RoiFilterPopover';
 import ColumnPicker from '../components/ColumnPicker';
@@ -391,7 +392,7 @@ export default function OffersPage() {
       {/* Filters card */}
       <div className="card p-4 space-y-3">
         {/* Row 1: Search + date range */}
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[180px] max-w-xs">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
@@ -404,29 +405,10 @@ export default function OffersPage() {
               className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          <div className="flex items-center gap-1">
-            {[7, 30, 90, 180].map((d) => {
-              const from = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
-              const active = dateFrom === from && dateTo === today;
-              return (
-                <button key={d} type="button"
-                  onClick={() => { setDateFrom(from); setDateTo(today); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-                  className={`px-2.5 py-1.5 text-xs font-medium rounded border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  {d}d
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">From</label>
-            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">To</label>
-            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
-              className="border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-700 bg-white" />
-          </div>
+          <DateRangePicker
+            from={dateFrom} to={dateTo}
+            onChange={({ from, to }) => { setDateFrom(from); setDateTo(to); setPagination((p) => ({ ...p, pageIndex: 0 })); }}
+          />
         </div>
 
         <div className="border-t border-gray-100" />

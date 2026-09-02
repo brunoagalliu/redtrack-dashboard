@@ -845,11 +845,11 @@ router.get('/verticals', async (req, res) => {
 // Insights — new campaigns, vertical performance, opportunity gaps
 router.get('/insights', async (req, res) => {
   try {
-    const statsDays = parseInt(req.query.days) || 30;
     const today     = laDate();
     const yesterday = laDate(-1);
     const weekAgo   = laDate(-7);
-    const statsFrom = laDate(-statsDays);
+    const statsFrom = req.query.date_from || laDate(-(parseInt(req.query.days) || 30));
+    const statsTo   = req.query.date_to   || today;
 
     // 1. New campaigns per buyer — daily counts for last 30 days
     const { rows: newCampaignRows } = await pool.query(`
@@ -900,7 +900,7 @@ router.get('/insights', async (req, res) => {
       WHERE c.buyer IS NOT NULL AND s.stat_date BETWEEN $1 AND $2
       GROUP BY c.buyer
       ORDER BY SUM(s.profit) DESC
-    `, [statsFrom, today]);
+    `, [statsFrom, statsTo]);
 
     // 3. Vertical performance — profit, ROI, CVR, profit per campaign
     const { rows: vertPerf } = await pool.query(`
@@ -927,7 +927,7 @@ router.get('/insights', async (req, res) => {
         AND s.stat_date BETWEEN $1 AND $2
       GROUP BY c.vertical
       ORDER BY profit DESC
-    `, [statsFrom, today]);
+    `, [statsFrom, statsTo]);
 
     // 3. Buyer × Vertical matrix — campaign counts
     const { rows: matrixRows } = await pool.query(`
@@ -972,7 +972,8 @@ router.get('/insights', async (req, res) => {
     opportunities.sort((a, b) => b.profit_per_campaign - a.profit_per_campaign);
 
     res.json({
-      period_days: statsDays,
+      date_from: statsFrom,
+      date_to:   statsTo,
       new_campaigns: newCampaigns,
       buyer_performance: buyerPerf.map((b) => ({
         buyer:       b.buyer,
