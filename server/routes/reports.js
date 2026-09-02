@@ -1827,6 +1827,7 @@ async function runOfferSync(dateFrom, dateTo) {
     offerSync.total = campaignRows.length;
 
     for (let i = 0; i < campaignRows.length; i++) {
+      if (sync.stopRequested) break;
       const c = campaignRows[i];
       try {
         // RedTrack /report with group=offer,os returns aggregated totals (no date field) — no time_interval support
