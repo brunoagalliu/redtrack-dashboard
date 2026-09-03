@@ -129,29 +129,36 @@ async function runAutoAIGeneration() {
 }
 
 function scheduleAutoSync() {
-  function triggerSync() {
-    const yesterday = laDate(-1);
-    const isMonday  = new Date().getDay() === 1;
-    console.log('[auto-sync] Starting scheduled sync…');
-    runSync(yesterday, yesterday)
-      .then(() => { if (isMonday) runAutoAIGeneration().catch((e) => console.error('[auto-ai] Error:', e.message)); })
-      .catch((err) => console.error('[auto-sync] Failed:', err.message));
-  }
-
-  function msUntilNext8am() {
+  // Compute ms until 8:00 AM Los Angeles time, matching the RedTrack tracker timezone.
+  function msUntilNext8amLA() {
     const now = new Date();
-    const next = new Date(now);
-    next.setHours(8, 0, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    return next - now;
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false,
+    }).formatToParts(now);
+    const h = parseInt(parts.find(p => p.type === 'hour').value);
+    const m = parseInt(parts.find(p => p.type === 'minute').value);
+    const s = parseInt(parts.find(p => p.type === 'second').value);
+    let ms = ((8 - h) * 3600 - m * 60 - s) * 1000;
+    if (ms <= 0) ms += 24 * 60 * 60 * 1000;
+    return ms;
   }
 
-  const delay = msUntilNext8am();
-  console.log(`[auto-sync] First sync scheduled in ${Math.round(delay / 60000)} min (8:00 AM)`);
-  setTimeout(() => {
-    triggerSync();
-    setInterval(triggerSync, 24 * 60 * 60 * 1000);
-  }, delay);
+  function schedule() {
+    const delay = msUntilNext8amLA();
+    console.log(`[auto-sync] Next sync in ${Math.round(delay / 60000)} min (8:00 AM LA)`);
+    setTimeout(() => {
+      const yesterday = laDate(-1);
+      const isMonday  = new Date().getDay() === 1;
+      console.log('[auto-sync] Starting scheduled sync…');
+      runSync(yesterday, yesterday)
+        .then(() => { if (isMonday) runAutoAIGeneration().catch((e) => console.error('[auto-ai] Error:', e.message)); })
+        .catch((err) => console.error('[auto-sync] Failed:', err.message))
+        .finally(() => schedule());
+    }, delay);
+  }
+
+  schedule();
 }
 
 initDb()
