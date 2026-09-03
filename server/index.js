@@ -151,7 +151,7 @@ function scheduleAutoSync() {
       const yesterday = laDate(-1);
       const isMonday  = new Date().getDay() === 1;
       console.log('[auto-sync] Starting scheduled sync…');
-      runSync(yesterday, yesterday)
+      runSync(yesterday, yesterday, null, true)
         .then(() => { if (isMonday) runAutoAIGeneration().catch((e) => console.error('[auto-ai] Error:', e.message)); })
         .catch((err) => console.error('[auto-sync] Failed:', err.message))
         .finally(() => schedule());
