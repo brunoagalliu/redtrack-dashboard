@@ -129,8 +129,8 @@ async function runAutoAIGeneration() {
 }
 
 function scheduleAutoSync() {
-  // Compute ms until 8:00 AM Los Angeles time, matching the RedTrack tracker timezone.
-  function msUntilNext8amLA() {
+  // Compute ms until 2:00 AM Los Angeles time, giving postbacks ~2 hours to settle.
+  function msUntilNext2amLA() {
     const now = new Date();
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Los_Angeles',
@@ -139,14 +139,14 @@ function scheduleAutoSync() {
     const h = parseInt(parts.find(p => p.type === 'hour').value);
     const m = parseInt(parts.find(p => p.type === 'minute').value);
     const s = parseInt(parts.find(p => p.type === 'second').value);
-    let ms = ((8 - h) * 3600 - m * 60 - s) * 1000;
+    let ms = ((2 - h) * 3600 - m * 60 - s) * 1000;
     if (ms <= 0) ms += 24 * 60 * 60 * 1000;
     return ms;
   }
 
   function schedule() {
-    const delay = msUntilNext8amLA();
-    console.log(`[auto-sync] Next sync in ${Math.round(delay / 60000)} min (8:00 AM LA)`);
+    const delay = msUntilNext2amLA();
+    console.log(`[auto-sync] Next sync in ${Math.round(delay / 60000)} min (2:00 AM LA)`);
     setTimeout(() => {
       const yesterday = laDate(-1);
       const isMonday  = new Date().getDay() === 1;
