@@ -483,27 +483,18 @@ router.post('/vercel-provision', async (req, res) => {
       // 2b. Add A record @ → 76.76.21.21 (proxied)
       // A record + Cloudflare proxy is the correct setup: CNAME doesn't work with orange-cloud
       // because Vercel sees Cloudflare's IPs and can't verify the CNAME target.
+      // Delete any existing root CNAME or A records first so we can upsert cleanly.
       const VERCEL_IP = '76.76.21.21';
+      const existingRoot = await cf(`/zones/${zoneId}/dns_records?name=${domain}`);
+      for (const rec of (existingRoot.result ?? [])) {
+        if (rec.type === 'CNAME' || rec.type === 'A') {
+          await cf(`/zones/${zoneId}/dns_records/${rec.id}`, 'DELETE');
+        }
+      }
       const aRes = await cf(`/zones/${zoneId}/dns_records`, 'POST', {
         type: 'A', name: domain, content: VERCEL_IP, ttl: 1, proxied: true,
       });
-      if (aRes.success) {
-        steps.push({ name: 'Add A → Vercel', status: 'ok', detail: `${VERCEL_IP} (proxied)` });
-      } else {
-        const dup = aRes.errors?.some(e => e.code === 81057 || e.message?.toLowerCase().includes('already'));
-        if (dup) {
-          const existing = await cf(`/zones/${zoneId}/dns_records?type=A&name=${domain}`);
-          const recId = existing.result?.[0]?.id;
-          if (recId) {
-            const patch = await cf(`/zones/${zoneId}/dns_records/${recId}`, 'PATCH', { content: VERCEL_IP, proxied: true, ttl: 1 });
-            steps.push({ name: 'Add A → Vercel', status: patch.success ? 'ok' : 'error', detail: patch.success ? 'Updated existing A record' : patch.errors?.[0]?.message });
-          } else {
-            steps.push({ name: 'Add A → Vercel', status: 'ok', detail: 'A record already set' });
-          }
-        } else {
-          steps.push({ name: 'Add A → Vercel', status: 'error', detail: aRes.errors?.[0]?.message });
-        }
-      }
+      steps.push({ name: 'Add A → Vercel', status: aRes.success ? 'ok' : 'error', detail: aRes.success ? `${VERCEL_IP} (proxied)` : aRes.errors?.[0]?.message });
 
       // 2c. Set SSL to Full (Vercel handles its own TLS)
       await cf(`/zones/${zoneId}/settings/ssl`, 'PATCH', { value: 'full' });
