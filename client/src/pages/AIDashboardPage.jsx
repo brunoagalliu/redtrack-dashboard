@@ -81,15 +81,42 @@ function cellClass(header, value) {
   return 'text-gray-700';
 }
 
+const BUYER_CODES = new Set(['TK', 'MA', 'DS', 'KG', 'PS']);
+
+// If the AI misplaces the Buyer column (puts a route/carrier there instead of a buyer code),
+// find which column actually contains buyer codes and swap headers + cells accordingly.
+function fixBuyerColumn(headers, rows) {
+  const buyerColIdx = headers.findIndex(h => h.toLowerCase() === 'buyer');
+  if (buyerColIdx === -1 || !rows.length) return { headers, rows };
+  const buyerColHasBuyers = rows.some(r => BUYER_CODES.has((r[buyerColIdx] ?? '').trim().toUpperCase()));
+  if (buyerColHasBuyers) return { headers, rows }; // already correct
+  // Find which column actually contains buyer codes
+  const actualBuyerIdx = headers.findIndex((_, ci) =>
+    ci !== buyerColIdx && rows.some(r => BUYER_CODES.has((r[ci] ?? '').trim().toUpperCase()))
+  );
+  if (actualBuyerIdx === -1) return { headers, rows }; // can't detect — leave as-is
+  // Swap the two columns
+  const newHeaders = [...headers];
+  [newHeaders[buyerColIdx], newHeaders[actualBuyerIdx]] = [newHeaders[actualBuyerIdx], newHeaders[buyerColIdx]];
+  const newRows = rows.map(r => {
+    const nr = [...r];
+    [nr[buyerColIdx], nr[actualBuyerIdx]] = [nr[actualBuyerIdx], nr[buyerColIdx]];
+    return nr;
+  });
+  return { headers: newHeaders, rows: newRows };
+}
+
 function SectionTable({ table }) {
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
 
   if (!table || !table.headers || !table.rows.length) return null;
 
+  const { headers, rows: fixedRows } = fixBuyerColumn(table.headers, table.rows);
+
   // Filter out 0% ROI rows (residual profit from inactive campaigns — no active spend)
-  const roiIdx = table.headers.findIndex(h => h.toLowerCase().includes('roi'));
-  const baseRows = roiIdx >= 0 ? table.rows.filter(r => (r[roiIdx] ?? '').trim() !== '0%') : table.rows;
+  const roiIdx = headers.findIndex(h => h.toLowerCase().includes('roi'));
+  const baseRows = roiIdx >= 0 ? fixedRows.filter(r => (r[roiIdx] ?? '').trim() !== '0%') : fixedRows;
 
   function toggleSort(i) {
     if (sortCol === i) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -109,7 +136,7 @@ function SectionTable({ table }) {
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-black/10 bg-black/5">
-            {table.headers.map((h, i) => (
+            {headers.map((h, i) => (
               <th key={i} onClick={() => toggleSort(i)}
                 className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:bg-black/10 transition-colors">
                 <span className="flex items-center gap-1">
@@ -123,7 +150,7 @@ function SectionTable({ table }) {
         <tbody className="divide-y divide-black/5">
           {displayRows.map((row, i) => (
             <tr key={i} className={i % 2 === 0 ? 'bg-white/40' : 'bg-white/20'}>
-              {table.headers.map((h, j) => (
+              {headers.map((h, j) => (
                 <td key={j} className={`px-3 py-2 ${cellClass(h, row[j])}`}
                   dangerouslySetInnerHTML={{ __html: renderMd(row[j] ?? '') }} />
               ))}

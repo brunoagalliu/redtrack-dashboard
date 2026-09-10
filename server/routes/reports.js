@@ -1341,8 +1341,8 @@ STRICT column order — Buyer must be TK/MA/DS/KG/PS, never a carrier name.
 |---|---|---|---|---|---|---|---|
 
 ## 🔴 Cut Immediately
-Every losing combo. One row per combo — no omissions. Buyer = TK/MA/DS/KG/PS only.
-| Vertical/Offer | Buyer | Route | Carrier | Loss ($) | Action |
+Every losing combo. One row per combo — no omissions. Buyer (TK/MA/DS/KG/PS) goes in column 4, after Route and Carrier.
+| Vertical/Offer | Route | Carrier | Buyer | Loss ($) | Action |
 |---|---|---|---|---|---|
 
 ## 🔁 Budget Reallocation
