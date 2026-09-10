@@ -83,27 +83,22 @@ function cellClass(header, value) {
 
 const BUYER_CODES = new Set(['TK', 'MA', 'DS', 'KG', 'PS']);
 
-// If the AI misplaces the Buyer column (puts a route/carrier there instead of a buyer code),
-// find which column actually contains buyer codes and swap headers + cells accordingly.
+// If the AI puts data in the wrong column order (e.g. Route|Carrier|Buyer instead of Buyer|Route|Carrier),
+// relocate only the "Buyer" header label to wherever buyer codes actually appear in the data.
+// The data rows are never touched — only the header label moves.
 function fixBuyerColumn(headers, rows) {
-  const buyerColIdx = headers.findIndex(h => h.toLowerCase() === 'buyer');
-  if (buyerColIdx === -1 || !rows.length) return { headers, rows };
-  const buyerColHasBuyers = rows.some(r => BUYER_CODES.has((r[buyerColIdx] ?? '').trim().toUpperCase()));
-  if (buyerColHasBuyers) return { headers, rows }; // already correct
-  // Find which column actually contains buyer codes
-  const actualBuyerIdx = headers.findIndex((_, ci) =>
-    ci !== buyerColIdx && rows.some(r => BUYER_CODES.has((r[ci] ?? '').trim().toUpperCase()))
-  );
-  if (actualBuyerIdx === -1) return { headers, rows }; // can't detect — leave as-is
-  // Swap the two columns
+  const buyerHeaderIdx = headers.findIndex(h => h.toLowerCase() === 'buyer');
+  if (buyerHeaderIdx === -1 || !rows.length) return { headers, rows };
+  const colHasBuyers = (ci) => rows.some(r => BUYER_CODES.has((r[ci] ?? '').trim().toUpperCase()));
+  if (colHasBuyers(buyerHeaderIdx)) return { headers, rows }; // already aligned
+  const actualBuyerDataIdx = headers.findIndex((_, ci) => colHasBuyers(ci));
+  if (actualBuyerDataIdx === -1) return { headers, rows };
+  // Move the "Buyer" label from its current position to where buyer codes actually are.
+  // Data rows stay untouched — only header labels shift.
   const newHeaders = [...headers];
-  [newHeaders[buyerColIdx], newHeaders[actualBuyerIdx]] = [newHeaders[actualBuyerIdx], newHeaders[buyerColIdx]];
-  const newRows = rows.map(r => {
-    const nr = [...r];
-    [nr[buyerColIdx], nr[actualBuyerIdx]] = [nr[actualBuyerIdx], nr[buyerColIdx]];
-    return nr;
-  });
-  return { headers: newHeaders, rows: newRows };
+  const [buyerLabel] = newHeaders.splice(buyerHeaderIdx, 1);
+  newHeaders.splice(actualBuyerDataIdx, 0, buyerLabel);
+  return { headers: newHeaders, rows };
 }
 
 function SectionTable({ table }) {
