@@ -78,6 +78,12 @@ function parseCampaignTitle(rawTitle, knownVerticals, knownRoutes, knownPartners
   const dashParts = title.split(/\s+-\s+/);
   const platform  = dashParts.length >= 3 ? dashParts[1].trim() : null;
 
+  // Fallback: derive route from platform segment when not found via token scan
+  if (!route && platform) {
+    if (/^TODD\b/i.test(platform)) route = 'Todd';
+    else if (/^XEEBI\b/i.test(platform)) route = 'Xeebi';
+  }
+
   return { buyer, platform, vertical, route, carrier, dataPartner };
 }
 
@@ -1134,7 +1140,7 @@ async function generateAIReport(days) {
       WHERE c.buyer IS NOT NULL
         AND s.stat_date BETWEEN $1 AND $2
       GROUP BY c.vertical, c.carrier, c.route
-      HAVING SUM(s.clicks) > 50
+      HAVING SUM(s.clicks) > 50 AND SUM(s.cost) > 0
       ORDER BY profit DESC
       LIMIT 60
     `, [dateFrom, today]);
@@ -1181,7 +1187,7 @@ async function generateAIReport(days) {
       WHERE os.stat_date BETWEEN $1 AND $2
         AND c.buyer IS NOT NULL
       GROUP BY o.name, c.vertical, c.carrier, c.route, c.data_partner, c.buyer
-      HAVING SUM(os.clicks) > 50
+      HAVING SUM(os.clicks) > 50 AND SUM(os.cost) > 0
       ORDER BY SUM(os.profit) DESC
       LIMIT 50
     `, [dateFrom, today]);
@@ -1232,7 +1238,7 @@ async function generateAIReport(days) {
       JOIN rt_campaign_stats s ON s.campaign_id = c.id
       WHERE c.buyer IS NOT NULL AND s.stat_date BETWEEN $1 AND $2
       GROUP BY c.buyer, c.vertical, c.carrier, c.route
-      HAVING SUM(s.clicks) > 30
+      HAVING SUM(s.clicks) > 30 AND SUM(s.cost) > 0
       ORDER BY c.buyer, SUM(s.profit) DESC
     `, [dateFrom, today]);
 
@@ -2080,6 +2086,25 @@ router.get('/sync/offers/debug', async (_req, res) => {
 // Offer performance report
 // GET /reports/lists — per-list performance aggregated across all campaigns
 // One-time backfill: parse data_list from existing campaign titles
+// One-time backfill: derive route from platform segment for campaigns with null route
+router.post('/campaigns/route-backfill', async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(`
+      UPDATE rt_campaigns
+      SET route = CASE
+        WHEN platform ILIKE 'TODD%'  THEN 'Todd'
+        WHEN platform ILIKE 'XEEBI%' THEN 'Xeebi'
+      END
+      WHERE route IS NULL
+        AND platform IS NOT NULL
+        AND (platform ILIKE 'TODD%' OR platform ILIKE 'XEEBI%')
+    `);
+    res.json({ updated: rowCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/lists/backfill', async (req, res) => {
   try {
     const { rows: vRows } = await pool.query(`SELECT value FROM list_items WHERE list = 'vertical'`);

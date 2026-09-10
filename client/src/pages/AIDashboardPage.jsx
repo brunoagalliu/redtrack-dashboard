@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
@@ -63,32 +63,65 @@ function cellClass(header, value) {
   const h = (header || '').toLowerCase();
   const v = (value || '').trim();
   if (h === 'action' || h === 'priority' || h === 'verdict' || h === 'signal') return 'font-medium';
+  // Negative if starts with "-" or "$-"
+  const isNeg = v.startsWith('-') || /^\$-/.test(v);
   if (h.includes('profit') || h.includes('loss') || h.includes('move amount')) {
-    if (v.startsWith('-') || v.startsWith('-$')) return 'text-red-600 font-medium tabular-nums';
+    if (isNeg) return 'text-red-600 font-medium tabular-nums';
     if (v.startsWith('$') || v.match(/^\d/)) return 'text-green-700 font-medium tabular-nums';
   }
   if (h.includes('roi') || h.includes('drop')) {
-    if (v.startsWith('-')) return 'text-red-600 font-medium tabular-nums';
+    if (isNeg) return 'text-red-600 font-medium tabular-nums';
+    if (v === '0%' || v === '0') return 'text-gray-400 tabular-nums';
     return 'text-green-700 font-medium tabular-nums';
   }
-  if (h.includes('epc')) return 'font-medium tabular-nums text-indigo-700';
+  if (h.includes('epc')) {
+    if (isNeg) return 'text-red-600 font-medium tabular-nums';
+    return 'font-medium tabular-nums text-indigo-700';
+  }
   return 'text-gray-700';
 }
 
 function SectionTable({ table }) {
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
+
   if (!table || !table.headers || !table.rows.length) return null;
+
+  // Filter out 0% ROI rows (residual profit from inactive campaigns — no active spend)
+  const roiIdx = table.headers.findIndex(h => h.toLowerCase().includes('roi'));
+  const baseRows = roiIdx >= 0 ? table.rows.filter(r => (r[roiIdx] ?? '').trim() !== '0%') : table.rows;
+
+  function toggleSort(i) {
+    if (sortCol === i) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(i); setSortDir('asc'); }
+  }
+
+  const displayRows = sortCol === null ? baseRows : [...baseRows].sort((a, b) => {
+    const av = a[sortCol] ?? '', bv = b[sortCol] ?? '';
+    const an = parseFloat(av.replace(/[^0-9.-]/g, ''));
+    const bn = parseFloat(bv.replace(/[^0-9.-]/g, ''));
+    const cmp = !isNaN(an) && !isNaN(bn) ? an - bn : av.localeCompare(bv);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
   return (
     <div className="overflow-x-auto rounded-md border border-white/60">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-black/10 bg-black/5">
             {table.headers.map((h, i) => (
-              <th key={i} className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              <th key={i} onClick={() => toggleSort(i)}
+                className="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:bg-black/10 transition-colors">
+                <span className="flex items-center gap-1">
+                  {h}
+                  <span className="opacity-40 text-[10px]">{sortCol === i ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span>
+                </span>
+              </th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-black/5">
-          {table.rows.map((row, i) => (
+          {displayRows.map((row, i) => (
             <tr key={i} className={i % 2 === 0 ? 'bg-white/40' : 'bg-white/20'}>
               {table.headers.map((h, j) => (
                 <td key={j} className={`px-3 py-2 ${cellClass(h, row[j])}`}
@@ -325,7 +358,7 @@ export default function AIDashboardPage() {
           <div className={`flex items-center gap-1.5 text-xs ml-auto ${freshness === 'syncing' ? 'text-blue-600' : freshness === 'stale' ? 'text-amber-600' : 'text-gray-400'}`}>
             <span className={`w-2 h-2 rounded-full inline-block ${freshness === 'syncing' ? 'bg-blue-500 animate-pulse' : freshness === 'stale' ? 'bg-amber-500' : 'bg-green-500'}`} />
             {freshness === 'syncing' && 'Sync running — wait before generating.'}
-            {freshness === 'stale'   && 'New sync data — regenerate for latest analysis.'}
+            {freshness === 'stale'   && `New sync data (imported ${fmtDate(lastSyncAt)}) — regenerate for latest analysis.`}
             {freshness === 'fresh'   && campaignAt && `Generated ${fmtDate(campaignAt)}`}
           </div>
         )}
