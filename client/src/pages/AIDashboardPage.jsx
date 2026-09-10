@@ -381,7 +381,7 @@ export default function AIDashboardPage() {
             <span className={`w-2 h-2 rounded-full inline-block ${freshness === 'syncing' ? 'bg-blue-500 animate-pulse' : freshness === 'stale' ? 'bg-amber-500' : 'bg-green-500'}`} />
             {freshness === 'syncing' && 'Sync running — wait before generating.'}
             {freshness === 'stale'   && `New sync data (imported ${fmtDate(lastSyncAt)}) — regenerate for latest analysis.`}
-            {freshness === 'fresh'   && campaignAt && `Generated ${fmtDate(campaignAt)}`}
+            {freshness === 'fresh'   && campaignAt && `Generated ${fmtDate(campaignAt)}${lastSyncAt ? ` · Imported ${fmtDate(lastSyncAt)}` : ''}`}
           </div>
         )}
       </div>
