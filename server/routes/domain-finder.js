@@ -409,7 +409,7 @@ function parseHostsFromXml(xml) {
 
 // POST /vercel-provision
 router.post('/vercel-provision', async (req, res) => {
-  const { domains, mode = 'nameservers', dnsProvider = 'namecheap', godaddyAccount = 'adam', cloudflareAccount = 'adam' } = req.body;
+  const { domains, mode = 'nameservers', dnsProvider = 'namecheap', godaddyAccount = 'adam', cloudflareAccount = 'adam', vercelIp = '216.150.1.1' } = req.body;
   const VERCEL_NS = ['ns1.vercel-dns.com', 'ns2.vercel-dns.com'];
   const VERCEL_A_FALLBACK = '216.150.1.1';
   const projectId = process.env.VERCEL_PROJECT_ID;
@@ -484,7 +484,7 @@ router.post('/vercel-provision', async (req, res) => {
       // A record + Cloudflare proxy is the correct setup: CNAME doesn't work with orange-cloud
       // because Vercel sees Cloudflare's IPs and can't verify the CNAME target.
       // Delete any existing root CNAME or A records first so we can upsert cleanly.
-      const VERCEL_IP = '216.150.1.1';
+      const VERCEL_IP = vercelIp || '216.150.1.1';
       const existingRoot = await cf(`/zones/${zoneId}/dns_records?name=${domain}`);
       for (const rec of (existingRoot.result ?? [])) {
         if (rec.type === 'CNAME' || rec.type === 'A') {

@@ -825,6 +825,7 @@ function VercelTab() {
   const [provider, setProvider] = useState('namecheap');
   const [gdAccount, setGdAccount] = useState('adam');
   const [cfAccount, setCfAccount] = useState('adam');
+  const [cfVercelIp, setCfVercelIp] = useState('216.150.1.1');
   const [domains, setDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [fetchError, setFetchError] = useState('');
@@ -863,7 +864,7 @@ function VercelTab() {
     for (const domain of domainNames) {
       setJobs(prev => prev.map(j => j.domain === domain ? { ...j, state: 'running', steps: [] } : j));
       try {
-        const data = await api.vercelProvision({ domains: [domain], mode, dnsProvider: provider, godaddyAccount: gdAccount, cloudflareAccount: cfAccount });
+        const data = await api.vercelProvision({ domains: [domain], mode, dnsProvider: provider, godaddyAccount: gdAccount, cloudflareAccount: cfAccount, vercelIp: cfVercelIp });
         const result = data.results?.[0];
         const allOk = result?.steps.every(s => s.status === 'ok');
         setJobs(prev => prev.map(j => j.domain === domain ? { ...j, state: allOk ? 'done' : 'error', steps: result?.steps ?? [] } : j));
@@ -931,17 +932,28 @@ function VercelTab() {
             ))}
           </div>
           {mode === 'cloudflare' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-gray-500">CF account</span>
-              <div className="flex p-0.5 bg-gray-100 rounded-lg">
-                {[['adam', 'Adam'], ['superior', 'Superior']].map(([id, label]) => (
-                  <button key={id} onClick={() => setCfAccount(id)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cfAccount === id ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                    {label}
-                  </button>
-                ))}
+            <>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-500">CF account</span>
+                <div className="flex p-0.5 bg-gray-100 rounded-lg">
+                  {[['adam', 'Adam'], ['superior', 'Superior']].map(([id, label]) => (
+                    <button key={id} onClick={() => setCfAccount(id)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cfAccount === id ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-500">Vercel IP</span>
+                <input
+                  type="text"
+                  value={cfVercelIp}
+                  onChange={e => setCfVercelIp(e.target.value)}
+                  className="font-mono text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </>
           )}
           <button onClick={handleProvision}
             className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
