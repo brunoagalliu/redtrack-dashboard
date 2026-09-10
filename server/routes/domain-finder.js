@@ -409,7 +409,7 @@ function parseHostsFromXml(xml) {
 
 // POST /vercel-provision
 router.post('/vercel-provision', async (req, res) => {
-  const { domains, mode = 'nameservers', dnsProvider = 'namecheap', godaddyAccount = 'adam' } = req.body;
+  const { domains, mode = 'nameservers', dnsProvider = 'namecheap', godaddyAccount = 'adam', cloudflareAccount = 'adam' } = req.body;
   const VERCEL_NS = ['ns1.vercel-dns.com', 'ns2.vercel-dns.com'];
   const VERCEL_A_FALLBACK = '216.150.1.1';
   const projectId = process.env.VERCEL_PROJECT_ID;
@@ -444,8 +444,84 @@ router.post('/vercel-provision', async (req, res) => {
       steps.push({ name: 'Add to Vercel', status: 'ok' });
     }
 
-    // 2. DNS — GoDaddy branch
-    if (isGodaddy) {
+    // 2. Via Cloudflare mode: Cloudflare zone + CNAME → Vercel + registrar NS update
+    if (mode === 'cloudflare') {
+      const cfAcc = CF_ACCOUNTS[cloudflareAccount] ?? CF_ACCOUNTS.adam;
+      const cfToken = cfAcc.token();
+      const cfAccountId = cfAcc.accountId();
+      if (!cfToken || !cfAccountId) {
+        steps.push({ name: 'Add to Cloudflare', status: 'error', detail: `Cloudflare account "${cloudflareAccount}" not configured` });
+        results.push({ domain, steps }); continue;
+      }
+      const cf = (path, method, body) => cfetch(path, method, body, cfToken);
+
+      // 2a. Create / fetch Cloudflare zone
+      let zoneId, cfNameservers;
+      const zoneRes = await cf('/zones', 'POST', { name: domain, type: 'full', account: { id: cfAccountId } });
+      if (zoneRes.success) {
+        zoneId = zoneRes.result.id;
+        cfNameservers = zoneRes.result.name_servers;
+        steps.push({ name: 'Add to Cloudflare', status: 'ok' });
+      } else {
+        const alreadyExists = zoneRes.errors?.some(e => e.code === 1049 || e.code === 1061 || e.code === 1097 || e.message?.toLowerCase().includes('already'));
+        if (alreadyExists) {
+          const existing = await cf(`/zones?name=${domain}`);
+          if (!existing.success || !existing.result?.[0]) {
+            steps.push({ name: 'Add to Cloudflare', status: 'error', detail: 'Zone exists but could not be fetched' });
+            results.push({ domain, steps }); continue;
+          }
+          zoneId = existing.result[0].id;
+          const zoneDetail = await cf(`/zones/${zoneId}`);
+          cfNameservers = zoneDetail.result?.name_servers ?? existing.result[0].name_servers ?? [];
+          steps.push({ name: 'Add to Cloudflare', status: 'ok', detail: 'Zone already existed' });
+        } else {
+          steps.push({ name: 'Add to Cloudflare', status: 'error', detail: zoneRes.errors?.[0]?.message });
+          results.push({ domain, steps }); continue;
+        }
+      }
+
+      // 2b. Add CNAME @ → cname.vercel-dns.com (proxied)
+      const cnameRes = await cf(`/zones/${zoneId}/dns_records`, 'POST', {
+        type: 'CNAME', name: domain, content: 'cname.vercel-dns.com', ttl: 1, proxied: true,
+      });
+      if (cnameRes.success) {
+        steps.push({ name: 'Add CNAME → Vercel', status: 'ok', detail: 'cname.vercel-dns.com (proxied)' });
+      } else {
+        const dup = cnameRes.errors?.some(e => e.code === 81057 || e.message?.toLowerCase().includes('already'));
+        if (dup) {
+          const existing = await cf(`/zones/${zoneId}/dns_records?type=CNAME&name=${domain}`);
+          const recId = existing.result?.[0]?.id;
+          if (recId) {
+            const patch = await cf(`/zones/${zoneId}/dns_records/${recId}`, 'PATCH', { content: 'cname.vercel-dns.com', proxied: true, ttl: 1 });
+            steps.push({ name: 'Add CNAME → Vercel', status: patch.success ? 'ok' : 'error', detail: patch.success ? 'Updated existing CNAME' : patch.errors?.[0]?.message });
+          } else {
+            steps.push({ name: 'Add CNAME → Vercel', status: 'ok', detail: 'CNAME already set' });
+          }
+        } else {
+          steps.push({ name: 'Add CNAME → Vercel', status: 'error', detail: cnameRes.errors?.[0]?.message });
+        }
+      }
+
+      // 2c. Set SSL to Full (Vercel handles its own TLS)
+      await cf(`/zones/${zoneId}/settings/ssl`, 'PATCH', { value: 'full' });
+
+      // 2d. Point registrar nameservers to Cloudflare
+      if (isGodaddy) {
+        const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: cfNameservers, renewAuto: false }, gdKey, gdSecret);
+        const ok = data._ok === true;
+        steps.push({ name: 'Set nameservers', status: ok ? 'ok' : 'error', detail: ok ? cfNameservers.join(', ') : (data.message ?? JSON.stringify(data)) });
+        if (ok) steps.push({ name: 'Disable auto-renew', status: 'ok', detail: 'auto-renew disabled' });
+      } else if (base) {
+        const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setCustom', SLD: sld, TLD: tld, Nameservers: cfNameservers.join(',') });
+        const nsRes = await fetch(`https://api.namecheap.com/xml.response?${params}`);
+        const nsXml = await nsRes.text();
+        const nsOk = nsXml.includes('Update="true"') || (nsXml.includes('Status="OK"') && !nsXml.includes('Status="ERROR"'));
+        const nsErr = nsXml.match(/<Error[^>]*>([^<]+)<\/Error>/)?.[1]?.trim() ?? nsXml.slice(0, 200);
+        steps.push({ name: 'Set nameservers', status: nsOk ? 'ok' : 'error', detail: nsOk ? cfNameservers.join(', ') : nsErr });
+      }
+
+    // 2. Direct Vercel — GoDaddy branch
+    } else if (isGodaddy) {
       if (mode === 'nameservers') {
         const data = await gdfetch(`/domains/${domain}`, 'PATCH', { nameServers: VERCEL_NS, renewAuto: false }, gdKey, gdSecret);
         const ok = data._ok === true;
@@ -463,7 +539,7 @@ router.post('/vercel-provision', async (req, res) => {
         steps.push({ name: 'Set A record', status: ok ? 'ok' : 'error', detail: ok ? `@ → ${aIp}` : (data.message ?? JSON.stringify(data)) });
       }
 
-    // 2. DNS — Namecheap branch
+    // 2. Direct Vercel — Namecheap branch
     } else if (mode === 'nameservers') {
       const params = new URLSearchParams({ ...base, ClientIp: clientIp, Command: 'namecheap.domains.dns.setCustom', SLD: sld, TLD: tld, Nameservers: VERCEL_NS.join(',') });
       const nsRes = await fetch(`https://api.namecheap.com/xml.response?${params}`);

@@ -824,6 +824,7 @@ function CloudflareTab() {
 function VercelTab() {
   const [provider, setProvider] = useState('namecheap');
   const [gdAccount, setGdAccount] = useState('adam');
+  const [cfAccount, setCfAccount] = useState('adam');
   const [domains, setDomains] = useState([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [fetchError, setFetchError] = useState('');
@@ -862,7 +863,7 @@ function VercelTab() {
     for (const domain of domainNames) {
       setJobs(prev => prev.map(j => j.domain === domain ? { ...j, state: 'running', steps: [] } : j));
       try {
-        const data = await api.vercelProvision({ domains: [domain], mode, dnsProvider: provider, godaddyAccount: gdAccount });
+        const data = await api.vercelProvision({ domains: [domain], mode, dnsProvider: provider, godaddyAccount: gdAccount, cloudflareAccount: cfAccount });
         const result = data.results?.[0];
         const allOk = result?.steps.every(s => s.status === 'ok');
         setJobs(prev => prev.map(j => j.domain === domain ? { ...j, state: allOk ? 'done' : 'error', steps: result?.steps ?? [] } : j));
@@ -920,15 +921,28 @@ function VercelTab() {
       <DomainSelector domains={domains} setDomains={setDomains} loading={loadingDomains} onFetch={fetchDomains} error={fetchError} checkingHistory={checkingHistory} />
 
       {selected.length > 0 && jobs.length === 0 && (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex p-0.5 bg-gray-100 rounded-lg">
-            {[['nameservers', 'Nameservers'], ['arecord', 'A Record']].map(([m, label]) => (
+            {[['nameservers', 'Nameservers'], ['arecord', 'A Record'], ['cloudflare', 'Via Cloudflare']].map(([m, label]) => (
               <button key={m} onClick={() => setMode(m)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === m ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                 {label}
               </button>
             ))}
           </div>
+          {mode === 'cloudflare' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-500">CF account</span>
+              <div className="flex p-0.5 bg-gray-100 rounded-lg">
+                {[['adam', 'Adam'], ['superior', 'Superior']].map(([id, label]) => (
+                  <button key={id} onClick={() => setCfAccount(id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${cfAccount === id ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <button onClick={handleProvision}
             className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
             Provision {selected.length} domain{selected.length !== 1 ? 's' : ''}
