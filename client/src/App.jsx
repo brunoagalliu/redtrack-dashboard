@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, useMatch } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useMatch, useLocation } from 'react-router-dom';
 import CampaignListPage from './pages/CampaignListPage';
 import CampaignCreatePage from './pages/CampaignCreatePage';
 import CampaignEditPage from './pages/CampaignEditPage';
@@ -17,6 +17,7 @@ import RevenueUpdaterPage from './pages/RevenueUpdaterPage';
 import SyncLogsPage from './pages/SyncLogsPage';
 import ClicksExportPage from './pages/ClicksExportPage';
 import DomainFinderPage from './pages/DomainFinderPage';
+import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import { getToken, clearToken } from './lib/api';
 
@@ -71,6 +72,14 @@ function Sidebar() {
 
       {/* Nav */}
       <nav className={`space-y-1 flex-1 pb-4 ${collapsed ? 'px-2' : 'px-4'}`}>
+        <NavLink to="/" end className={linkClass} title={collapsed ? 'Home' : undefined}>
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          {!collapsed && 'Home'}
+        </NavLink>
+
         <NavLink to="/campaigns" className={linkClass} title={collapsed ? 'Campaigns' : undefined}>
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -166,7 +175,7 @@ function AppLayout() {
       <Sidebar />
       <main className="flex-1 min-h-screen min-w-0 overflow-x-hidden">
         <Routes>
-          <Route path="/" element={<Navigate to="/campaigns" replace />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/campaigns" element={<CampaignListPage />} />
           <Route path="/campaigns/new" element={<CampaignCreatePage />} />
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
