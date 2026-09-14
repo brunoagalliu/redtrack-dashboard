@@ -87,13 +87,38 @@ function TrackerTable({ cfg }) {
   const [newDraft, setNewDraft] = useState({});
   // Paste status
   const [pasteMsg, setPasteMsg] = useState('');
+  // Selection: { anchor: {ri, fi}, focus: {ri, fi} } — row indices in current page
+  const [selAnchor, setSelAnchor] = useState(null);
+  const [selFocus, setSelFocus]   = useState(null);
+  const isDragging = useRef(false);
 
   const fields = cfg.fields;
 
   useEffect(() => {
     setPage(1); setSearch(''); setSort('');
     setActiveCell(null); setDraft({}); setNewDraft({});
+    setSelAnchor(null); setSelFocus(null);
   }, [cfg.key]);
+
+  // ── Selection helpers ─────────────────────────────────────────────────────
+
+  function selRange() {
+    if (!selAnchor || !selFocus) return null;
+    return {
+      r1: Math.min(selAnchor.ri, selFocus.ri), r2: Math.max(selAnchor.ri, selFocus.ri),
+      f1: Math.min(selAnchor.fi, selFocus.fi), f2: Math.max(selAnchor.fi, selFocus.fi),
+    };
+  }
+
+  function inSel(ri, fi) {
+    const r = selRange();
+    return r && ri >= r.r1 && ri <= r.r2 && fi >= r.f1 && fi <= r.f2;
+  }
+
+  function isMultiSel() {
+    const r = selRange();
+    return r && (r.r1 !== r.r2 || r.f1 !== r.f2);
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['tracker', cfg.key, page, search, sort, dir],
@@ -257,6 +282,42 @@ function TrackerTable({ cfg }) {
     return () => document.removeEventListener('paste', onPaste);
   }, [fields, batchMut]);
 
+  // ── Global mouseup to end drag ────────────────────────────────────────────
+
+  useEffect(() => {
+    function up() { isDragging.current = false; }
+    document.addEventListener('mouseup', up);
+    return () => document.removeEventListener('mouseup', up);
+  }, []);
+
+  // ── Copy selection ────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    function onCopy(e) {
+      if (!isMultiSel()) return; // let native handle single-cell or no selection
+      e.preventDefault();
+      const r = selRange();
+      const lines = [];
+      for (let ri = r.r1; ri <= r.r2; ri++) {
+        const row = rows[ri];
+        if (!row) continue;
+        const cells = [];
+        for (let fi = r.f1; fi <= r.f2; fi++) {
+          const field = fields[fi];
+          const val = row[field.key];
+          cells.push(val === null || val === undefined ? '' : String(val));
+        }
+        lines.push(cells.join('\t'));
+      }
+      const tsv = lines.join('\n');
+      e.clipboardData.setData('text/plain', tsv);
+      setPasteMsg(`Copied ${lines.length} row${lines.length > 1 ? 's' : ''} · ${r.f2 - r.f1 + 1} col${r.f2 - r.f1 + 1 > 1 ? 's' : ''}`);
+      setTimeout(() => setPasteMsg(''), 2000);
+    }
+    document.addEventListener('copy', onCopy);
+    return () => document.removeEventListener('copy', onCopy);
+  }, [rows, fields, selAnchor, selFocus]);
+
   // ── Sorting ───────────────────────────────────────────────────────────────
 
   function toggleSort(key) {
@@ -280,7 +341,7 @@ function TrackerTable({ cfg }) {
         />
         {pasteMsg && <span className="text-xs text-indigo-600">{pasteMsg}</span>}
         <span className="text-xs text-gray-400 ml-auto">{total.toLocaleString()} rows</span>
-        <span className="text-xs text-gray-300">· Paste Excel rows directly into the table</span>
+        <span className="text-xs text-gray-300">· Drag or Shift+click to select · ⌘C to copy · Paste Excel rows to import</span>
       </div>
 
       {/* Table */}
@@ -319,13 +380,31 @@ function TrackerTable({ cfg }) {
                 >
                   {fields.map((f, fi) => {
                     const cellActive = isActive(row.id, fi);
-                    const val = isRowActive ? (draft[f.key] ?? '') : (row[f.key] ?? '');
+                    const selected   = inSel(rowIdx, fi);
                     return (
                       <td
                         key={f.key}
-                        onClick={() => !cellActive && activate(row.id, fi, row)}
-                        className={`px-2 py-0.5 border-r border-gray-100 last:border-r-0 cursor-default ${
-                          cellActive ? 'bg-white ring-1 ring-inset ring-indigo-400' : ''
+                        onMouseDown={e => {
+                          if (e.shiftKey && selAnchor) {
+                            // extend selection
+                            e.preventDefault();
+                            setSelFocus({ ri: rowIdx, fi });
+                          } else {
+                            // start new selection + enter edit
+                            isDragging.current = true;
+                            setSelAnchor({ ri: rowIdx, fi });
+                            setSelFocus({ ri: rowIdx, fi });
+                            if (!cellActive) activate(row.id, fi, row);
+                          }
+                        }}
+                        onMouseEnter={() => {
+                          if (isDragging.current) setSelFocus({ ri: rowIdx, fi });
+                        }}
+                        onMouseUp={() => { isDragging.current = false; }}
+                        className={`px-2 py-0.5 border-r border-gray-100 last:border-r-0 select-none ${
+                          cellActive  ? 'bg-white ring-1 ring-inset ring-indigo-400 cursor-text' :
+                          selected    ? 'bg-blue-100' :
+                          'cursor-default'
                         } ${f.type === 'boolean' ? 'text-center w-12' : ''}`}
                       >
                         {cellActive
