@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { useTrackerSocket } from '../lib/useTrackerSocket';
 
 // ── Cell input ────────────────────────────────────────────────────────────────
 
@@ -136,6 +137,26 @@ function TrackerTable({ cfg }) {
   const updateMut = useMutation({ mutationFn: ({ id, d }) => api.updateTrackerRow(cfg.key, id, d), onSuccess: invalidate });
   const deleteMut = useMutation({ mutationFn: id => api.deleteTrackerRow(cfg.key, id), onSuccess: invalidate });
   const batchMut  = useMutation({ mutationFn: rows => api.createTrackerRows(cfg.key, rows), onSuccess: () => { invalidate(); setPasteMsg(''); } });
+
+  // ── Real-time sync via WebSocket ──────────────────────────────────────────
+  useTrackerSocket(cfg.key, msg => {
+    qc.setQueriesData({ queryKey: ['tracker', cfg.key] }, old => {
+      if (!old?.rows) return old;
+      if (msg.action === 'update') {
+        // If the row being edited by this client just came back from the server, skip
+        // (our own mutation already updated optimistically via invalidate)
+        return { ...old, rows: old.rows.map(r => String(r.id) === String(msg.row.id) ? msg.row : r) };
+      }
+      if (msg.action === 'delete') {
+        return { ...old, rows: old.rows.filter(r => String(r.id) !== String(msg.id)), total: Math.max(0, old.total - 1) };
+      }
+      if (msg.action === 'create') {
+        // New row: just invalidate so it shows up at the right page/sort position
+        invalidate();
+      }
+      return old;
+    });
+  });
 
   // ── Cell navigation helpers ───────────────────────────────────────────────
 

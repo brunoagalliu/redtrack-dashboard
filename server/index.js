@@ -1,8 +1,10 @@
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const { initWS } = require('./ws');
 
 const { init: initDb } = require('./db');
 const { laDate } = require('./utils');
@@ -169,7 +171,9 @@ initDb()
     scheduleDailyCleanup();
     scheduleAutoSync();
     scheduleTelegramReport();
-    app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+    const server = http.createServer(app);
+    initWS(server);
+    server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
   })
   .catch((err) => {
     console.error('DB init failed:', err.message);

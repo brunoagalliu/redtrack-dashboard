@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { pool } = require('../db');
 const { TABLES, TABLE_MAP } = require('../tracker-configs');
+const { broadcast } = require('../ws');
 
 // ── DB init ───────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ router.post('/:key', async (req, res) => {
       `INSERT INTO ${cfg.dbTable} (${cols}) VALUES (${params}) RETURNING *`,
       vals
     );
+    broadcast({ type: 'tracker', key: req.params.key, action: 'create', row: result.rows[0] });
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -153,6 +155,7 @@ router.put('/:key/:id', async (req, res) => {
       [...vals, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+    broadcast({ type: 'tracker', key: req.params.key, action: 'update', row: result.rows[0] });
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -178,6 +181,7 @@ router.delete('/:key/:id', async (req, res) => {
 
     const result = await pool.query(`DELETE FROM ${cfg.dbTable} WHERE id = $1 RETURNING id`, [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+    broadcast({ type: 'tracker', key: req.params.key, action: 'delete', id: req.params.id });
     res.sendStatus(204);
   } catch (err) {
     res.status(500).json({ error: err.message });
