@@ -129,11 +129,11 @@ export default function HomePage() {
   const lastSyncAt  = [syncStatus?.completed_at, offerSyncStatus?.completed_at]
     .filter(Boolean).map(d => new Date(d)).sort((a, b) => b - a)[0] ?? null;
 
-  const rows = report?.rows ?? [];
-  const totals = rows.reduce((acc, r) => ({
-    revenue:  acc.revenue  + (r.revenue  ?? 0),
-    cost:     acc.cost     + (r.cost     ?? 0),
-    convs:    acc.convs    + (r.convs    ?? 0),
+  const campaigns = Object.values(report?.buyers ?? {}).flatMap(b => b.campaigns ?? []);
+  const totals = campaigns.reduce((acc, c) => ({
+    revenue:  acc.revenue  + (c.revenue      ?? 0),
+    cost:     acc.cost     + (c.cost         ?? 0),
+    convs:    acc.convs    + (c.conversions  ?? 0),
   }), { revenue: 0, cost: 0, convs: 0 });
   const roi = totals.cost > 0 ? ((totals.revenue - totals.cost) / totals.cost) * 100 : null;
 
