@@ -259,7 +259,7 @@ function TrackerTable({ cfg }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-const GROUP_ORDER = ['UPM', 'Techstar', 'Todd', 'Lists', 'Phone Numbers'];
+const GROUP_ORDER = ['Lists', 'UPM', 'Techstar', 'Todd', 'Phone Numbers'];
 
 export default function DataTrackerPage({ tableKey }) {
   const navigate = useNavigate();
