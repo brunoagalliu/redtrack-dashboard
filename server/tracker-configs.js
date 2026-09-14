@@ -51,6 +51,17 @@ const TABLES = [
 
   // ── Lists ────────────────────────────────────────────────────────────────────
   {
+    key: 'master_lists', label: 'Master Lists', group: 'Lists', dbTable: 'dt_master_lists', primaryField: 'list_name',
+    fields: [
+      { key: 'category',  label: 'Category', type: 'text' },
+      { key: 'list_name', label: 'List Name', type: 'text', required: true },
+      { key: 'uploaded',  label: 'Uploaded',  type: 'boolean' },
+      { key: 'provider',  label: 'Provider',  type: 'text' },
+      { key: 'status',    label: 'Status',    type: 'select', options: LIST_STATUS_OPTIONS },
+      { key: 'notes',     label: 'Notes',     type: 'text' },
+    ],
+  },
+  {
     key: 'ranhog_lists', label: 'Ranhog Lists', group: 'Lists', dbTable: 'dt_ranhog_lists', primaryField: 'list_name',
     fields: [
       { key: 'list_name',                  label: 'List Name',           type: 'text',    required: true },
@@ -76,17 +87,6 @@ const TABLES = [
       { key: 'full_files_sent_requested',  label: 'Full Files Sent/Req', type: 'text' },
       { key: 'status',                     label: 'Status',              type: 'select', options: LIST_STATUS_OPTIONS },
       { key: 'notes',                      label: 'Notes',               type: 'text' },
-    ],
-  },
-  {
-    key: 'master_lists', label: 'Master Lists', group: 'Lists', dbTable: 'dt_master_lists', primaryField: 'list_name',
-    fields: [
-      { key: 'category',  label: 'Category', type: 'text' },
-      { key: 'list_name', label: 'List Name', type: 'text', required: true },
-      { key: 'uploaded',  label: 'Uploaded',  type: 'boolean' },
-      { key: 'provider',  label: 'Provider',  type: 'text' },
-      { key: 'status',    label: 'Status',    type: 'select', options: LIST_STATUS_OPTIONS },
-      { key: 'notes',     label: 'Notes',     type: 'text' },
     ],
   },
   {
