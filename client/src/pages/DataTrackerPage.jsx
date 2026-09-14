@@ -278,8 +278,8 @@ function TrackerTable({ cfg }) {
         batchMut.mutate(parsed);
       }
     }
-    document.addEventListener('paste', onPaste);
-    return () => document.removeEventListener('paste', onPaste);
+    document.addEventListener('paste', onPaste, true); // capture phase — fires before any input receives it
+    return () => document.removeEventListener('paste', onPaste, true);
   }, [fields, batchMut]);
 
   // ── Global mouseup to end drag ────────────────────────────────────────────
