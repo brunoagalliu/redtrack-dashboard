@@ -182,4 +182,14 @@ export const api = {
       throw error;
     }
   },
+
+  // ── Data Tracker ──────────────────────────────────────────────────────────────
+  getTrackerMeta: () => request('/tracker/meta'),
+  getTrackerRows: (key, params = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))).toString();
+    return request(`/tracker/${key}${qs ? '?' + qs : ''}`);
+  },
+  createTrackerRow: (key, data) => request(`/tracker/${key}`, { method: 'POST', body: JSON.stringify(data) }),
+  updateTrackerRow: (key, id, data) => request(`/tracker/${key}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTrackerRow: (key, id) => request(`/tracker/${key}/${id}`, { method: 'DELETE' }),
 };

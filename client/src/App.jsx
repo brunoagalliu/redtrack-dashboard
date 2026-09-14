@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, useMatch, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useMatch, useLocation, useParams } from 'react-router-dom';
 import CampaignListPage from './pages/CampaignListPage';
 import CampaignCreatePage from './pages/CampaignCreatePage';
 import CampaignEditPage from './pages/CampaignEditPage';
@@ -18,8 +18,14 @@ import SyncLogsPage from './pages/SyncLogsPage';
 import ClicksExportPage from './pages/ClicksExportPage';
 import DomainFinderPage from './pages/DomainFinderPage';
 import HomePage from './pages/HomePage';
+import DataTrackerPage from './pages/DataTrackerPage';
 import LoginPage from './pages/LoginPage';
 import { getToken, clearToken } from './lib/api';
+
+function DataTrackerPageRoute() {
+  const { tableKey } = useParams();
+  return <DataTrackerPage tableKey={tableKey} />;
+}
 
 function RequireAuth({ children }) {
   return getToken() ? children : <Navigate to="/login" replace />;
@@ -148,6 +154,13 @@ function Sidebar() {
             </svg>
             {!collapsed && 'Domain Finder'}
           </NavLink>
+          <NavLink to="/tools/data-tracker" className={linkClass} title={collapsed ? 'Data Tracker' : undefined}>
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 10h18M3 14h18M10 6h4M10 18h4M5 6a2 2 0 012-2h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6z" />
+            </svg>
+            {!collapsed && 'Data Tracker'}
+          </NavLink>
         </div>
       </nav>
 
@@ -192,6 +205,8 @@ function AppLayout() {
           <Route path="/tools/import-logs" element={<SyncLogsPage />} />
           <Route path="/tools/clicks-export" element={<ClicksExportPage />} />
           <Route path="/tools/domain-finder" element={<DomainFinderPage />} />
+          <Route path="/tools/data-tracker" element={<DataTrackerPage />} />
+          <Route path="/tools/data-tracker/:tableKey" element={<DataTrackerPageRoute />} />
         </Routes>
       </main>
     </div>

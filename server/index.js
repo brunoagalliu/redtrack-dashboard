@@ -18,6 +18,7 @@ const networksRouter = require('./routes/networks');
 const filterOptionsRouter = require('./routes/filter-options');
 const reportsRouter = require('./routes/reports');
 const { cleanupOldStats, runSync, generateAIReport, generateListReport, aiStatus, ALL_PERIODS } = require('./routes/reports');
+const { router: trackerRouter, initTrackerTables } = require('./routes/tracker');
 const costUpdaterRouter = require('./routes/cost-updater');
 const clicksExportRouter  = require('./routes/clicks-export');
 const domainFinderRouter  = require('./routes/domain-finder');
@@ -65,6 +66,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/cost-updater', costUpdaterRouter);
 app.use('/api/clicks-export',  clicksExportRouter);
 app.use('/api/domain-finder', domainFinderRouter);
+app.use('/api/tracker', trackerRouter);
 
 // Manual trigger — lets you test the bot from the dashboard without waiting for 3pm
 app.post('/api/telegram/send-report', async (_req, res) => {
@@ -162,6 +164,7 @@ function scheduleAutoSync() {
 }
 
 initDb()
+  .then(() => initTrackerTables())
   .then(() => {
     scheduleDailyCleanup();
     scheduleAutoSync();
