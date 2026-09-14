@@ -24,9 +24,20 @@ async function initTrackerTables() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
-    // Add version to tables that existed before this migration
     await pool.query(`ALTER TABLE ${t.dbTable} ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1`);
   }
+  // Change log table (shared across all tracker tables)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dt_change_log (
+      id          SERIAL PRIMARY KEY,
+      table_key   TEXT NOT NULL,
+      row_id      INTEGER NOT NULL,
+      before_data JSONB,
+      after_data  JSONB,
+      changed_at  TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS dt_change_log_lookup ON dt_change_log (table_key, row_id, changed_at DESC)`);
   console.log('[tracker] Tables ready');
 }
 
@@ -147,6 +158,11 @@ router.put('/:key/:id', async (req, res) => {
     if (!cfg) return res.status(404).json({ error: 'Unknown table' });
 
     const clientVersion = req.body.__version != null ? Number(req.body.__version) : null;
+
+    // Snapshot before state for history log
+    const beforeRes = await pool.query(`SELECT * FROM ${cfg.dbTable} WHERE id = $1`, [req.params.id]);
+    const beforeRow = beforeRes.rows[0] ?? null;
+
     const data = pickFields(cfg, req.body); // strips __version and unknown fields
     if (Object.keys(data).length === 0) return res.status(400).json({ error: 'No fields provided' });
 
@@ -178,8 +194,68 @@ router.put('/:key/:id', async (req, res) => {
       return res.status(404).json({ error: 'Not found' });
     }
 
-    broadcast({ type: 'tracker', key: req.params.key, action: 'update', row: result.rows[0] });
-    res.json(result.rows[0]);
+    const afterRow = result.rows[0];
+
+    pool.query(
+      `INSERT INTO dt_change_log (table_key, row_id, before_data, after_data) VALUES ($1, $2, $3, $4)`,
+      [req.params.key, req.params.id, JSON.stringify(beforeRow), JSON.stringify(afterRow)]
+    ).catch(e => console.error('[tracker] history log:', e.message));
+
+    broadcast({ type: 'tracker', key: req.params.key, action: 'update', row: afterRow });
+    res.json(afterRow);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Row change history
+router.get('/:key/:id/history', async (req, res) => {
+  try {
+    const cfg = TABLE_MAP[req.params.key];
+    if (!cfg) return res.status(404).json({ error: 'Unknown table' });
+    const result = await pool.query(
+      `SELECT id, before_data, after_data, changed_at FROM dt_change_log
+       WHERE table_key = $1 AND row_id = $2
+       ORDER BY changed_at DESC LIMIT 50`,
+      [req.params.key, req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Restore row to a before/after snapshot
+router.post('/:key/:id/restore', async (req, res) => {
+  try {
+    const cfg = TABLE_MAP[req.params.key];
+    if (!cfg) return res.status(404).json({ error: 'Unknown table' });
+
+    const snapshot = req.body.data;
+    if (!snapshot) return res.status(400).json({ error: 'data required' });
+
+    const data = pickFields(cfg, snapshot);
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: 'No fields in snapshot' });
+
+    const keys = Object.keys(data);
+    const vals = Object.values(data);
+    const sets = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+
+    const beforeRes = await pool.query(`SELECT * FROM ${cfg.dbTable} WHERE id = $1`, [req.params.id]);
+    const result = await pool.query(
+      `UPDATE ${cfg.dbTable} SET ${sets}, version = version + 1, updated_at = NOW() WHERE id = $${keys.length + 1} RETURNING *`,
+      [...vals, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+
+    const afterRow = result.rows[0];
+    pool.query(
+      `INSERT INTO dt_change_log (table_key, row_id, before_data, after_data) VALUES ($1, $2, $3, $4)`,
+      [req.params.key, req.params.id, JSON.stringify(beforeRes.rows[0] ?? null), JSON.stringify(afterRow)]
+    ).catch(e => console.error('[tracker] history log:', e.message));
+
+    broadcast({ type: 'tracker', key: req.params.key, action: 'update', row: afterRow });
+    res.json(afterRow);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

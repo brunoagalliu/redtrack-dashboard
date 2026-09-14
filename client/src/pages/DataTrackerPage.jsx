@@ -4,6 +4,83 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '../lib/api';
 import { useTrackerSocket } from '../lib/useTrackerSocket';
 
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (s < 60)   return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+
+function HistoryModal({ cfg, row, fields, onClose, onRestore }) {
+  const { data: history = [], isLoading } = useQuery({
+    queryKey: ['tracker-history', cfg.key, row.id],
+    queryFn:  () => api.getRowHistory(cfg.key, row.id),
+    refetchOnWindowFocus: false,
+  });
+
+  const primaryVal = row[cfg.primaryField] ?? `#${row.id}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col"
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">Change history</p>
+            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{primaryVal}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 divide-y divide-gray-50">
+          {isLoading && <p className="px-5 py-6 text-xs text-gray-400">Loading…</p>}
+          {!isLoading && history.length === 0 && (
+            <p className="px-5 py-6 text-xs text-gray-400">No changes recorded yet.</p>
+          )}
+          {history.map(entry => {
+            const changed = fields.filter(f => {
+              const b = String(entry.before_data?.[f.key] ?? '');
+              const a = String(entry.after_data?.[f.key]  ?? '');
+              return b !== a;
+            });
+            return (
+              <div key={entry.id} className="px-5 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-400">{timeAgo(entry.changed_at)}</span>
+                  <button
+                    onClick={() => onRestore(entry.before_data)}
+                    className="text-xs px-2 py-0.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50"
+                  >
+                    Restore to before this
+                  </button>
+                </div>
+                {changed.length === 0
+                  ? <p className="text-xs text-gray-300 italic">No field changes detected</p>
+                  : changed.map(f => (
+                    <div key={f.key} className="flex items-baseline gap-1.5 text-xs">
+                      <span className="text-gray-400 w-24 shrink-0">{f.label}</span>
+                      <span className="text-red-500 line-through truncate max-w-[140px]"
+                            title={String(entry.before_data?.[f.key] ?? '')}>
+                        {String(entry.before_data?.[f.key] ?? '—')}
+                      </span>
+                      <span className="text-gray-300">→</span>
+                      <span className="text-emerald-700 truncate max-w-[140px]"
+                            title={String(entry.after_data?.[f.key] ?? '')}>
+                        {String(entry.after_data?.[f.key] ?? '—')}
+                      </span>
+                    </div>
+                  ))
+                }
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Cell input ────────────────────────────────────────────────────────────────
 
 function CellInput({ field, value, onChange, onCommit, onCancel, onTab, autoFocus }) {
@@ -91,6 +168,15 @@ function TrackerTable({ cfg }) {
   const [pasteMsg, setPasteMsg] = useState('');
   // Conflict: { serverRow, myDraft } — shown when a save is rejected due to version mismatch
   const [conflict, setConflict] = useState(null);
+  // Undo / redo stacks (session-local)
+  const undoStack = useRef([]);
+  const redoStack = useRef([]);
+  const [undoCount, setUndoCount] = useState(0);
+  const [redoCount, setRedoCount] = useState(0);
+  const isUndoRedoOp = useRef(false);
+  const originalRowRef = useRef(null); // row state captured when edit begins
+  // History modal
+  const [historyRow, setHistoryRow] = useState(null);
   // Selection: { anchor: {ri, fi}, focus: {ri, fi} } — row indices in current page
   const [selAnchor, setSelAnchor] = useState(null);
   const [selFocus, setSelFocus]   = useState(null);
@@ -102,6 +188,8 @@ function TrackerTable({ cfg }) {
     setPage(1); setSearch(''); setSort('');
     setActiveCell(null); setDraft({}); setNewDraft({});
     setSelAnchor(null); setSelFocus(null);
+    undoStack.current = []; redoStack.current = [];
+    setUndoCount(0); setRedoCount(0);
   }, [cfg.key]);
 
   // ── Selection helpers ─────────────────────────────────────────────────────
@@ -201,8 +289,9 @@ function TrackerTable({ cfg }) {
   const deleteMut = useMutation({ mutationFn: id => api.deleteTrackerRow(cfg.key, id), onSuccess: invalidate });
 
   const updateMut = useMutation({
-    mutationFn: async ({ id, d, myDraft }) => {
-      const body = { ...d, __version: d.version ?? null };
+    mutationFn: async ({ id, d, myDraft, skipVersionCheck }) => {
+      const body = { ...d };
+      if (!skipVersionCheck) body.__version = d.version ?? null;
       const res = await fetch(`/api/tracker/${cfg.key}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
@@ -215,13 +304,23 @@ function TrackerTable({ cfg }) {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: result => {
+    onSuccess: (result, vars) => {
       if (result?.__conflict) {
         setConflict({ serverRow: result.serverRow, myDraft: result.myDraft });
         setActiveCell(null);
         setDraft({});
         return;
       }
+      // Push to undo stack (skip for undo/redo ops themselves)
+      if (!isUndoRedoOp.current && originalRowRef.current && originalRowRef.current.id === vars.id) {
+        const entry = { before: originalRowRef.current, after: result };
+        undoStack.current = [...undoStack.current.slice(-49), entry];
+        redoStack.current = [];
+        setUndoCount(undoStack.current.length);
+        setRedoCount(0);
+      }
+      isUndoRedoOp.current = false;
+      originalRowRef.current = null;
       invalidate();
     },
   });
@@ -257,6 +356,9 @@ function TrackerTable({ cfg }) {
   }
 
   function activate(rowId, fieldIdx, row) {
+    // Capture original state for undo
+    if (row && rowId !== 'new') originalRowRef.current = { ...row };
+
     // If leaving a different existing row, save it
     if (activeCell && activeCell.rowId !== rowId && activeCell.rowId !== 'new') {
       const prevRow = rows.find(r => r.id === activeCell.rowId);
@@ -445,6 +547,52 @@ function TrackerTable({ cfg }) {
     return () => document.removeEventListener('copy', onCopy);
   }, [rows, fields, selAnchor, selFocus]);
 
+  // ── Undo / Redo ───────────────────────────────────────────────────────────
+
+  function applySnapshot(snapshot, skipVersionCheck = true) {
+    const { version: _v, id: _id, created_at: _c, updated_at: _u, ...fields } = snapshot;
+    updateMut.mutate({ id: snapshot.id, d: fields, myDraft: fields, skipVersionCheck });
+  }
+
+  function handleUndo() {
+    if (undoStack.current.length === 0) return;
+    const entry = undoStack.current[undoStack.current.length - 1];
+    undoStack.current = undoStack.current.slice(0, -1);
+    redoStack.current = [...redoStack.current.slice(-49), entry];
+    setUndoCount(undoStack.current.length);
+    setRedoCount(redoStack.current.length);
+    isUndoRedoOp.current = true;
+    applySnapshot(entry.before);
+  }
+
+  function handleRedo() {
+    if (redoStack.current.length === 0) return;
+    const entry = redoStack.current[redoStack.current.length - 1];
+    redoStack.current = redoStack.current.slice(0, -1);
+    undoStack.current = [...undoStack.current.slice(-49), entry];
+    setUndoCount(undoStack.current.length);
+    setRedoCount(redoStack.current.length);
+    isUndoRedoOp.current = true;
+    applySnapshot(entry.after);
+  }
+
+  function handleRestore(snapshot) {
+    api.restoreRow(cfg.key, snapshot.id ?? historyRow?.id, snapshot)
+      .then(() => { invalidate(); setHistoryRow(null); })
+      .catch(err => alert('Restore failed: ' + err.message));
+  }
+
+  useEffect(() => {
+    function onKey(e) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+      if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); handleRedo(); }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []); // refs don't need deps
+
   // ── Sorting ───────────────────────────────────────────────────────────────
 
   function toggleSort(key) {
@@ -467,7 +615,21 @@ function TrackerTable({ cfg }) {
           className="text-xs border border-gray-200 rounded px-2.5 py-1.5 w-52 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         {pasteMsg && <span className="text-xs text-indigo-600">{pasteMsg}</span>}
-        <span className="text-xs text-gray-400 ml-auto">{total.toLocaleString()} rows</span>
+
+        <div className="flex items-center gap-1 ml-auto">
+          <button onClick={handleUndo} disabled={undoCount === 0}
+            title="Undo (⌘Z)"
+            className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1">
+            ↩ {undoCount > 0 && <span className="text-gray-400">{undoCount}</span>}
+          </button>
+          <button onClick={handleRedo} disabled={redoCount === 0}
+            title="Redo (⌘Y)"
+            className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1">
+            ↪ {redoCount > 0 && <span className="text-gray-400">{redoCount}</span>}
+          </button>
+        </div>
+
+        <span className="text-xs text-gray-400">{total.toLocaleString()} rows</span>
         {isMultiSel() && (
           <button
             onClick={() => {
@@ -483,6 +645,17 @@ function TrackerTable({ cfg }) {
         )}
         <span className="text-xs text-gray-300">· Drag or Shift+click to select · ⌘C copy · ⌘V paste</span>
       </div>
+
+      {/* History modal */}
+      {historyRow && (
+        <HistoryModal
+          cfg={cfg}
+          row={historyRow}
+          fields={fields}
+          onClose={() => setHistoryRow(null)}
+          onRestore={snapshot => handleRestore({ ...snapshot, id: historyRow.id })}
+        />
+      )}
 
       {/* Conflict modal */}
       {conflict && (() => {
@@ -657,11 +830,18 @@ function TrackerTable({ cfg }) {
                       </td>
                     );
                   })}
-                  <td className="px-1 py-0.5 w-8">
-                    <button
-                      onClick={() => window.confirm('Delete this row?') && deleteMut.mutate(row.id)}
-                      className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all text-xs"
-                    >✕</button>
+                  <td className="px-1 py-0.5 w-14">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={() => setHistoryRow(row)}
+                        className="text-gray-300 hover:text-indigo-500 text-xs"
+                        title="Change history"
+                      >🕐</button>
+                      <button
+                        onClick={() => window.confirm('Delete this row?') && deleteMut.mutate(row.id)}
+                        className="text-gray-300 hover:text-red-500 text-xs"
+                      >✕</button>
+                    </div>
                   </td>
                 </tr>
               );
