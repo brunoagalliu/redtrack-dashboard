@@ -94,6 +94,38 @@ router.post('/:key', async (req, res) => {
   res.status(201).json(result.rows[0]);
 });
 
+// Batch insert — accepts { rows: [...] }, returns { inserted, errors }
+router.post('/:key/batch', async (req, res) => {
+  const cfg = TABLE_MAP[req.params.key];
+  if (!cfg) return res.status(404).json({ error: 'Unknown table' });
+
+  const incoming = req.body.rows;
+  if (!Array.isArray(incoming) || incoming.length === 0)
+    return res.status(400).json({ error: 'rows must be a non-empty array' });
+
+  // Derive column set from first non-empty row
+  const allRows = incoming.map(r => pickFields(cfg, r)).filter(r => Object.keys(r).length > 0);
+  if (allRows.length === 0) return res.status(400).json({ error: 'No valid fields in any row' });
+
+  const cols = Object.keys(allRows[0]);
+  const colSql = cols.join(', ');
+
+  // Build one multi-row VALUES clause
+  const vals = [];
+  const valueClauses = allRows.map(row => {
+    const rowVals = cols.map(c => row[c] ?? null);
+    const placeholders = rowVals.map((_, i) => `$${vals.length + i + 1}`).join(', ');
+    vals.push(...rowVals);
+    return `(${placeholders})`;
+  });
+
+  const result = await pool.query(
+    `INSERT INTO ${cfg.dbTable} (${colSql}) VALUES ${valueClauses.join(', ')} RETURNING id`,
+    vals
+  );
+  res.status(201).json({ inserted: result.rowCount });
+});
+
 router.put('/:key/:id', async (req, res) => {
   const cfg = TABLE_MAP[req.params.key];
   if (!cfg) return res.status(404).json({ error: 'Unknown table' });
