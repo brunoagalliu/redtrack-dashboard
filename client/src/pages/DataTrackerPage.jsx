@@ -37,7 +37,8 @@ function CellInput({ field, value, onChange, onCommit, onCancel, onTab, autoFocu
   }
   if (field.type === 'date') {
     return (
-      <input ref={ref} type="date" value={value ?? ''} onChange={e => onChange(e.target.value)}
+      <input ref={ref} type="text" value={value ?? ''} placeholder="YYYY-MM-DD"
+        onChange={e => onChange(e.target.value)}
         onKeyDown={handleKey} onBlur={() => onCommit?.('blur')}
         className="w-full text-xs border-0 bg-transparent focus:outline-none p-0" />
     );
@@ -127,6 +128,61 @@ function TrackerTable({ cfg }) {
     const r = selRange();
     if (!r) return [];
     return rows.slice(r.r1, r.r2 + 1).map(row => row.id);
+  }
+
+  // ── Autofill ──────────────────────────────────────────────────────────────
+
+  const isFillDragging = useRef(false);
+  const [fillEnd, setFillEnd] = useState(null); // row index the fill extends to
+
+  function inFillPreview(ri) {
+    const r = selRange();
+    return r && fillEnd !== null && ri > r.r2 && ri <= fillEnd;
+  }
+
+  function computeFill(sourceVals, count) {
+    if (sourceVals.length === 0 || count === 0) return [];
+    if (sourceVals.length === 1) return Array(count).fill(sourceVals[0]);
+
+    // Date sequence
+    const dates = sourceVals.map(v => v ? new Date(v) : null);
+    if (dates.every(d => d && !isNaN(d))) {
+      const diffs = dates.slice(1).map((d, i) => d - dates[i]);
+      const step  = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+      const last  = dates[dates.length - 1];
+      return Array.from({ length: count }, (_, i) =>
+        new Date(last.getTime() + step * (i + 1)).toISOString().slice(0, 10)
+      );
+    }
+    // Numeric sequence
+    const nums = sourceVals.map(Number);
+    if (nums.every(n => !isNaN(n) && sourceVals[nums.indexOf(n)] !== '')) {
+      const diffs = nums.slice(1).map((n, i) => n - nums[i]);
+      const step  = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+      const last  = nums[nums.length - 1];
+      return Array.from({ length: count }, (_, i) => String(last + step * (i + 1)));
+    }
+    // Repeat last value
+    return Array(count).fill(sourceVals[sourceVals.length - 1]);
+  }
+
+  function applyFill() {
+    const r = selRange();
+    if (!r || fillEnd === null || fillEnd <= r.r2) { setFillEnd(null); return; }
+    const count = fillEnd - r.r2;
+    for (let fi = r.f1; fi <= r.f2; fi++) {
+      const field = fields[fi];
+      const sourceVals = rows.slice(r.r1, r.r2 + 1).map(row => String(row[field.key] ?? ''));
+      const fillVals   = computeFill(sourceVals, count);
+      fillVals.forEach((val, i) => {
+        const targetRow = rows[r.r2 + 1 + i];
+        if (targetRow) {
+          const updated = { ...targetRow, [field.key]: val };
+          updateMut.mutate({ id: targetRow.id, d: updated, myDraft: updated });
+        }
+      });
+    }
+    setFillEnd(null);
   }
 
   const { data, isLoading } = useQuery({
@@ -350,10 +406,16 @@ function TrackerTable({ cfg }) {
   // ── Global mouseup to end drag ────────────────────────────────────────────
 
   useEffect(() => {
-    function up() { isDragging.current = false; }
+    function up() {
+      if (isFillDragging.current) {
+        isFillDragging.current = false;
+        applyFill();
+      }
+      isDragging.current = false;
+    }
     document.addEventListener('mouseup', up);
     return () => document.removeEventListener('mouseup', up);
-  }, []);
+  }, [rows, selAnchor, selFocus, fillEnd]);
 
   // ── Copy selection ────────────────────────────────────────────────────────
 
@@ -541,11 +603,9 @@ function TrackerTable({ cfg }) {
                         key={f.key}
                         onMouseDown={e => {
                           if (e.shiftKey && selAnchor) {
-                            // extend selection
                             e.preventDefault();
                             setSelFocus({ ri: rowIdx, fi });
                           } else {
-                            // start new selection + enter edit
                             isDragging.current = true;
                             setSelAnchor({ ri: rowIdx, fi });
                             setSelFocus({ ri: rowIdx, fi });
@@ -553,12 +613,14 @@ function TrackerTable({ cfg }) {
                           }
                         }}
                         onMouseEnter={() => {
-                          if (isDragging.current) setSelFocus({ ri: rowIdx, fi });
+                          if (isFillDragging.current) setFillEnd(rowIdx);
+                          else if (isDragging.current) setSelFocus({ ri: rowIdx, fi });
                         }}
                         onMouseUp={() => { isDragging.current = false; }}
-                        className={`px-2 py-0.5 border-r border-gray-100 last:border-r-0 select-none ${
-                          cellActive  ? 'bg-white ring-1 ring-inset ring-indigo-400 cursor-text' :
-                          selected    ? 'bg-blue-100' :
+                        className={`relative px-2 py-0.5 border-r border-gray-100 last:border-r-0 select-none ${
+                          cellActive       ? 'bg-white ring-1 ring-inset ring-indigo-400 cursor-text' :
+                          inFillPreview(rowIdx) ? 'bg-emerald-50' :
+                          selected         ? 'bg-blue-100' :
                           'cursor-default'
                         } ${f.type === 'boolean' ? 'text-center w-12' : ''}`}
                       >
@@ -572,7 +634,25 @@ function TrackerTable({ cfg }) {
                               onCancel={cancelEdit}
                               onTab={delta => tabMove(row.id, fi, delta)}
                             />
-                          : <DisplayCell field={f} value={row[f.key]} />
+                          : <>
+                              <DisplayCell field={f} value={row[f.key]} />
+                              {(() => {
+                                const r = selRange();
+                                const isHandle = r && rowIdx === r.r2 && fi === r.f2;
+                                return isHandle ? (
+                                  <span
+                                    onMouseDown={e => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      isFillDragging.current = true;
+                                      setFillEnd(r.r2);
+                                    }}
+                                    className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-blue-500 border border-white cursor-crosshair z-10"
+                                    title="Drag to fill"
+                                  />
+                                ) : null;
+                              })()}
+                            </>
                         }
                       </td>
                     );
