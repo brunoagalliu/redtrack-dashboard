@@ -505,7 +505,13 @@ function TrackerTable({ cfg }) {
               return (
                 <tr
                   key={row.id}
-                  className={`border-b border-gray-100 group ${isRowActive ? 'bg-indigo-50/40' : 'hover:bg-gray-50/60'}`}
+                  className={`border-b border-gray-100 group ${
+                    isRowActive
+                      ? 'bg-indigo-50/50'
+                      : rowIdx % 2 === 0
+                        ? 'bg-white hover:bg-blue-50/40'
+                        : 'bg-gray-50/70 hover:bg-blue-50/40'
+                  }`}
                 >
                   {fields.map((f, fi) => {
                     const cellActive = isActive(row.id, fi);
