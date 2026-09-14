@@ -145,6 +145,14 @@ router.put('/:key/:id', async (req, res) => {
   res.json(result.rows[0]);
 });
 
+// Truncate all rows — import utility, requires auth
+router.delete('/:key', async (req, res) => {
+  const cfg = TABLE_MAP[req.params.key];
+  if (!cfg) return res.status(404).json({ error: 'Unknown table' });
+  await pool.query(`TRUNCATE TABLE ${cfg.dbTable} RESTART IDENTITY`);
+  res.json({ ok: true });
+});
+
 router.delete('/:key/:id', async (req, res) => {
   const cfg = TABLE_MAP[req.params.key];
   if (!cfg) return res.status(404).json({ error: 'Unknown table' });
