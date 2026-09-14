@@ -246,34 +246,44 @@ function TrackerTable({ cfg }) {
 
   useEffect(() => {
     function onPaste(e) {
-      // Only handle when focused within this component
       const text = e.clipboardData?.getData('text');
-      if (!text || !text.includes('\t')) return;
+      if (!text) return;
 
-      const lines = text.trim().split(/\r?\n/).filter(Boolean);
+      const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
       if (lines.length === 0) return;
 
-      const parsed = lines.map(line => {
-        const vals = line.split('\t');
-        const row = {};
-        fields.forEach((f, i) => {
-          const v = vals[i]?.trim();
-          if (!v) return;
-          if (f.type === 'boolean') row[f.key] = v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'yes';
-          else row[f.key] = v;
-        });
-        return row;
-      }).filter(r => Object.values(r).some(Boolean));
+      let parsed;
+      if (text.includes('\t')) {
+        // Multi-column TSV (from Excel or tracker copy)
+        parsed = lines.map(line => {
+          const vals = line.split('\t');
+          const row = {};
+          fields.forEach((f, i) => {
+            const v = vals[i]?.trim();
+            if (!v) return;
+            if (f.type === 'boolean') row[f.key] = v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'yes';
+            else row[f.key] = v;
+          });
+          return row;
+        }).filter(r => Object.values(r).some(Boolean));
+      } else if (lines.length > 1) {
+        // Plain newline list — fill the primary field of each row
+        parsed = lines
+          .map(l => l.trim())
+          .filter(Boolean)
+          .map(v => ({ [cfg.primaryField]: v }));
+      } else {
+        // Single value with no tabs — let the browser paste it into the focused input
+        return;
+      }
 
       if (parsed.length === 0) return;
       e.preventDefault();
 
       if (parsed.length === 1) {
-        // Single row — fill into new row draft
         setNewDraft(parsed[0]);
         setActiveCell({ rowId: 'new', fieldIdx: 0 });
       } else {
-        // Multiple rows — batch insert
         setPasteMsg(`Pasting ${parsed.length} rows…`);
         batchMut.mutate(parsed);
       }
