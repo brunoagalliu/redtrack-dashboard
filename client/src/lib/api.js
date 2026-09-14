@@ -190,6 +190,7 @@ export const api = {
     return request(`/tracker/${key}${qs ? '?' + qs : ''}`);
   },
   createTrackerRow: (key, data) => request(`/tracker/${key}`, { method: 'POST', body: JSON.stringify(data) }),
+  createTrackerRows: (key, rows) => request(`/tracker/${key}/batch`, { method: 'POST', body: JSON.stringify({ rows }) }),
   updateTrackerRow: (key, id, data) => request(`/tracker/${key}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteTrackerRow: (key, id) => request(`/tracker/${key}/${id}`, { method: 'DELETE' }),
 };
