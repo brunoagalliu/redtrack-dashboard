@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, getToken } from '../lib/api';
 import { useTrackerSocket } from '../lib/useTrackerSocket';
 
 // ── Cell input ────────────────────────────────────────────────────────────────
@@ -88,6 +88,8 @@ function TrackerTable({ cfg }) {
   const [newDraft, setNewDraft] = useState({});
   // Paste status
   const [pasteMsg, setPasteMsg] = useState('');
+  // Conflict: { serverRow, myDraft } — shown when a save is rejected due to version mismatch
+  const [conflict, setConflict] = useState(null);
   // Selection: { anchor: {ri, fi}, focus: {ri, fi} } — row indices in current page
   const [selAnchor, setSelAnchor] = useState(null);
   const [selFocus, setSelFocus]   = useState(null);
@@ -134,8 +136,33 @@ function TrackerTable({ cfg }) {
   const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: ['tracker', cfg.key] }), [qc, cfg.key]);
 
   const createMut = useMutation({ mutationFn: d => api.createTrackerRow(cfg.key, d), onSuccess: invalidate });
-  const updateMut = useMutation({ mutationFn: ({ id, d }) => api.updateTrackerRow(cfg.key, id, d), onSuccess: invalidate });
   const deleteMut = useMutation({ mutationFn: id => api.deleteTrackerRow(cfg.key, id), onSuccess: invalidate });
+
+  const updateMut = useMutation({
+    mutationFn: async ({ id, d, myDraft }) => {
+      const body = { ...d, __version: d.version ?? null };
+      const res = await fetch(`/api/tracker/${cfg.key}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 409) {
+        const payload = await res.json();
+        return { __conflict: true, serverRow: payload.current, myDraft: myDraft ?? d };
+      }
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: result => {
+      if (result?.__conflict) {
+        setConflict({ serverRow: result.serverRow, myDraft: result.myDraft });
+        setActiveCell(null);
+        setDraft({});
+        return;
+      }
+      invalidate();
+    },
+  });
   const batchMut  = useMutation({ mutationFn: rows => api.createTrackerRows(cfg.key, rows), onSuccess: () => { invalidate(); setPasteMsg(''); } });
 
   // ── Real-time sync via WebSocket ──────────────────────────────────────────
@@ -171,7 +198,7 @@ function TrackerTable({ cfg }) {
     if (activeCell && activeCell.rowId !== rowId && activeCell.rowId !== 'new') {
       const prevRow = rows.find(r => r.id === activeCell.rowId);
       if (prevRow && Object.keys(draft).length > 0) {
-        updateMut.mutate({ id: activeCell.rowId, d: draft });
+        updateMut.mutate({ id: activeCell.rowId, d: draft, myDraft: draft });
       }
     }
     // If leaving the new row
@@ -200,7 +227,7 @@ function TrackerTable({ cfg }) {
       commitNewRow();
     } else {
       if (Object.keys(draft).length > 0) {
-        updateMut.mutate({ id: activeCell.rowId, d: draft });
+        updateMut.mutate({ id: activeCell.rowId, d: draft, myDraft: draft });
       }
     }
     setActiveCell(null);
@@ -227,12 +254,12 @@ function TrackerTable({ cfg }) {
         // Next row
         if (rowIndex < rows.length - 1) {
           const nextRow = rows[rowIndex + 1];
-          if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft });
+          if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft, myDraft: draft });
           setActiveCell({ rowId: nextRow.id, fieldIdx: 0 });
           setDraft({ ...nextRow });
         } else {
           // Move to new row
-          if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft });
+          if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft, myDraft: draft });
           setActiveCell({ rowId: 'new', fieldIdx: 0 });
           setDraft({});
         }
@@ -240,7 +267,7 @@ function TrackerTable({ cfg }) {
         // Prev row
         if (rowIndex > 0) {
           const prevRow = rows[rowIndex - 1];
-          if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft });
+          if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft, myDraft: draft });
           setActiveCell({ rowId: prevRow.id, fieldIdx: fields.length - 1 });
           setDraft({ ...prevRow });
         }
@@ -253,11 +280,11 @@ function TrackerTable({ cfg }) {
     const rowIndex = rows.findIndex(r => r.id === rowId);
     if (rowIndex < rows.length - 1) {
       const nextRow = rows[rowIndex + 1];
-      if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft });
+      if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft, myDraft: draft });
       setActiveCell({ rowId: nextRow.id, fieldIdx });
       setDraft({ ...nextRow });
     } else {
-      if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft });
+      if (Object.keys(draft).length > 0) updateMut.mutate({ id: rowId, d: draft, myDraft: draft });
       setActiveCell({ rowId: 'new', fieldIdx });
       setDraft({});
     }
@@ -374,6 +401,77 @@ function TrackerTable({ cfg }) {
         <span className="text-xs text-gray-400 ml-auto">{total.toLocaleString()} rows</span>
         <span className="text-xs text-gray-300">· Drag or Shift+click to select · ⌘C to copy · Paste Excel rows to import</span>
       </div>
+
+      {/* Conflict modal */}
+      {conflict && (() => {
+        const changedFields = fields.filter(f => {
+          const mine   = String(conflict.myDraft[f.key]  ?? '');
+          const theirs = String(conflict.serverRow[f.key] ?? '');
+          return mine !== theirs;
+        });
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 border border-amber-200">
+              <div className="flex items-start gap-3 mb-4">
+                <span className="text-amber-500 text-xl mt-0.5">⚠</span>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Editing conflict</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Someone else saved this row while you were editing.
+                  </p>
+                </div>
+              </div>
+
+              {changedFields.length > 0 && (
+                <table className="w-full text-xs mb-5 border-collapse">
+                  <thead>
+                    <tr className="text-gray-400 text-left">
+                      <th className="pb-1 pr-3 font-medium">Field</th>
+                      <th className="pb-1 pr-3 font-medium">Your value</th>
+                      <th className="pb-1 font-medium">Their value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {changedFields.map(f => (
+                      <tr key={f.key} className="border-t border-gray-100">
+                        <td className="py-1 pr-3 text-gray-500">{f.label}</td>
+                        <td className="py-1 pr-3 text-red-600 font-mono">{String(conflict.myDraft[f.key] ?? '—')}</td>
+                        <td className="py-1 text-emerald-700 font-mono">{String(conflict.serverRow[f.key] ?? '—')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => {
+                    // Accept theirs — patch cache with server row
+                    qc.setQueriesData({ queryKey: ['tracker', cfg.key] }, old =>
+                      old?.rows ? { ...old, rows: old.rows.map(r => String(r.id) === String(conflict.serverRow.id) ? conflict.serverRow : r) } : old
+                    );
+                    setConflict(null);
+                  }}
+                  className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+                >
+                  Use their version
+                </button>
+                <button
+                  onClick={() => {
+                    // Overwrite with mine — resend with current server version to pass the check
+                    const overwrite = { ...conflict.myDraft, version: conflict.serverRow.version };
+                    updateMut.mutate({ id: conflict.serverRow.id, d: overwrite, myDraft: overwrite });
+                    setConflict(null);
+                  }}
+                  className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  Save mine anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Table */}
       <div className="flex-1 overflow-auto border border-gray-200 rounded-lg bg-white">

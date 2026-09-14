@@ -19,10 +19,13 @@ async function initTrackerTables() {
       CREATE TABLE IF NOT EXISTS ${t.dbTable} (
         id         SERIAL PRIMARY KEY,
         ${cols},
+        version    INTEGER NOT NULL DEFAULT 1,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    // Add version to tables that existed before this migration
+    await pool.query(`ALTER TABLE ${t.dbTable} ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1`);
   }
   console.log('[tracker] Tables ready');
 }
@@ -143,18 +146,38 @@ router.put('/:key/:id', async (req, res) => {
     const cfg = TABLE_MAP[req.params.key];
     if (!cfg) return res.status(404).json({ error: 'Unknown table' });
 
-    const data = pickFields(cfg, req.body);
+    const clientVersion = req.body.__version != null ? Number(req.body.__version) : null;
+    const data = pickFields(cfg, req.body); // strips __version and unknown fields
     if (Object.keys(data).length === 0) return res.status(400).json({ error: 'No fields provided' });
 
-    const keys   = Object.keys(data);
-    const vals   = Object.values(data);
-    const sets   = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+    const keys = Object.keys(data);
+    const vals = Object.values(data);
+    const sets = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+
+    const whereParams = [...vals, req.params.id];
+    let whereSql = `WHERE id = $${keys.length + 1}`;
+
+    if (clientVersion !== null) {
+      whereSql += ` AND version = $${keys.length + 2}`;
+      whereParams.push(clientVersion);
+    }
 
     const result = await pool.query(
-      `UPDATE ${cfg.dbTable} SET ${sets}, updated_at = NOW() WHERE id = $${keys.length + 1} RETURNING *`,
-      [...vals, req.params.id]
+      `UPDATE ${cfg.dbTable} SET ${sets}, version = version + 1, updated_at = NOW() ${whereSql} RETURNING *`,
+      whereParams
     );
-    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+
+    if (!result.rows.length) {
+      if (clientVersion !== null) {
+        // Version mismatch — fetch current row for conflict response
+        const current = await pool.query(`SELECT * FROM ${cfg.dbTable} WHERE id = $1`, [req.params.id]);
+        if (current.rows.length) {
+          return res.status(409).json({ error: 'conflict', current: current.rows[0] });
+        }
+      }
+      return res.status(404).json({ error: 'Not found' });
+    }
+
     broadcast({ type: 'tracker', key: req.params.key, action: 'update', row: result.rows[0] });
     res.json(result.rows[0]);
   } catch (err) {
