@@ -123,6 +123,12 @@ function TrackerTable({ cfg }) {
     return r && (r.r1 !== r.r2 || r.f1 !== r.f2);
   }
 
+  function selectedRowIds() {
+    const r = selRange();
+    if (!r) return [];
+    return rows.slice(r.r1, r.r2 + 1).map(row => row.id);
+  }
+
   const { data, isLoading } = useQuery({
     queryKey: ['tracker', cfg.key, page, search, sort, dir],
     queryFn:  () => api.getTrackerRows(cfg.key, { page, pageSize: 50, search: search || undefined, sort: sort || undefined, dir }),
@@ -163,7 +169,8 @@ function TrackerTable({ cfg }) {
       invalidate();
     },
   });
-  const batchMut  = useMutation({ mutationFn: rows => api.createTrackerRows(cfg.key, rows), onSuccess: () => { invalidate(); setPasteMsg(''); } });
+  const batchMut      = useMutation({ mutationFn: rows => api.createTrackerRows(cfg.key, rows), onSuccess: () => { invalidate(); setPasteMsg(''); } });
+  const bulkDeleteMut = useMutation({ mutationFn: ids => api.deleteTrackerRows(cfg.key, ids), onSuccess: () => { invalidate(); setSelAnchor(null); setSelFocus(null); } });
 
   // ── Real-time sync via WebSocket ──────────────────────────────────────────
   useTrackerSocket(cfg.key, msg => {
@@ -313,7 +320,7 @@ function TrackerTable({ cfg }) {
             else row[f.key] = v;
           });
           return row;
-        }).filter(r => Object.values(r).some(Boolean));
+        }).filter(r => r[cfg.primaryField]); // skip rows with no primary field value
       } else if (lines.length > 1) {
         // Plain newline list — fill the primary field of each row
         parsed = lines
@@ -399,7 +406,20 @@ function TrackerTable({ cfg }) {
         />
         {pasteMsg && <span className="text-xs text-indigo-600">{pasteMsg}</span>}
         <span className="text-xs text-gray-400 ml-auto">{total.toLocaleString()} rows</span>
-        <span className="text-xs text-gray-300">· Drag or Shift+click to select · ⌘C to copy · Paste Excel rows to import</span>
+        {isMultiSel() && (
+          <button
+            onClick={() => {
+              const ids = selectedRowIds();
+              if (ids.length && window.confirm(`Delete ${ids.length} selected row${ids.length > 1 ? 's' : ''}?`)) {
+                bulkDeleteMut.mutate(ids);
+              }
+            }}
+            className="text-xs px-2.5 py-1 bg-red-50 border border-red-200 text-red-600 rounded hover:bg-red-100"
+          >
+            Delete {selectedRowIds().length} rows
+          </button>
+        )}
+        <span className="text-xs text-gray-300">· Drag or Shift+click to select · ⌘C copy · ⌘V paste</span>
       </div>
 
       {/* Conflict modal */}

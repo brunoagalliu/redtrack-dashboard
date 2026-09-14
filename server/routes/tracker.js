@@ -185,6 +185,29 @@ router.put('/:key/:id', async (req, res) => {
   }
 });
 
+// Bulk delete by IDs
+router.delete('/:key/rows', async (req, res) => {
+  try {
+    const cfg = TABLE_MAP[req.params.key];
+    if (!cfg) return res.status(404).json({ error: 'Unknown table' });
+
+    const ids = req.body?.ids;
+    if (!Array.isArray(ids) || ids.length === 0)
+      return res.status(400).json({ error: 'ids must be a non-empty array' });
+
+    const params = ids.map((_, i) => `$${i + 1}`).join(', ');
+    const result = await pool.query(
+      `DELETE FROM ${cfg.dbTable} WHERE id IN (${params}) RETURNING id`, ids
+    );
+    result.rows.forEach(r =>
+      broadcast({ type: 'tracker', key: req.params.key, action: 'delete', id: String(r.id) })
+    );
+    res.json({ deleted: result.rowCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Truncate all rows — import utility, requires auth
 router.delete('/:key', async (req, res) => {
   try {

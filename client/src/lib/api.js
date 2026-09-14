@@ -193,4 +193,5 @@ export const api = {
   createTrackerRows: (key, rows) => request(`/tracker/${key}/batch`, { method: 'POST', body: JSON.stringify({ rows }) }),
   updateTrackerRow: (key, id, data) => request(`/tracker/${key}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteTrackerRow: (key, id) => request(`/tracker/${key}/${id}`, { method: 'DELETE' }),
+  deleteTrackerRows: (key, ids) => request(`/tracker/${key}/rows`, { method: 'DELETE', body: JSON.stringify({ ids }) }),
 };
